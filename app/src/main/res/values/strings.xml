@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">XHS Downloader</string>
+    <string name="enter_xhs_url">Enter XHS post share URL...</string>
+    <string name="download_button">Download</string>
+    <string name="ready_to_download">Ready to download</string>
+    <string name="please_enter_url">Please enter a URL</string>
+    <string name="grant_all_files_access">Please grant \'All files access\' permission for better functionality</string>
+    <string name="storage_permission_granted">Storage permission granted</string>
+    <string name="storage_permission_denied">Storage permission denied. Download functionality may be limited.</string>
+    <string name="processing_url">Processing %1$s</string>
+    <string name="initializing_download">Initializing download...</string>
+    <string name="error_occurred">Error: %1$s</string>
+    <string name="download_completed_successfully">Download completed successfully!</string>
+    <string name="download_failed">Download failed!</string>
+    <string name="downloaded_files_title">Downloaded files:</string>
+    <string name="app_description"><![CDATA[origin resolution & no watermark]]></string>
+</resources>

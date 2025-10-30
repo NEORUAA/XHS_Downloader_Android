@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">小红书下载器</string>
+    <string name="enter_xhs_url">输入小红书帖子分享链接...</string>
+    <string name="download_button">下载</string>
+    <string name="ready_to_download">准备下载</string>
+    <string name="please_enter_url">请输入链接</string>
+    <string name="grant_all_files_access">请授予\"所有文件访问权限\"以获得更好的功能体验</string>
+    <string name="storage_permission_granted">存储权限已授予</string>
+    <string name="storage_permission_denied">存储权限被拒绝。下载功能可能受限。</string>
+    <string name="processing_url">正在处理 %1$s</string>
+    <string name="initializing_download">正在初始化下载...</string>
+    <string name="error_occurred">错误: %1$s</string>
+    <string name="download_completed_successfully">下载成功完成！</string>
+    <string name="download_failed">下载失败！</string>
+    <string name="downloaded_files_title">已下载文件：</string>
+    <string name="app_description"><![CDATA[无损分辨率 & 无水印]]></string>
+</resources>

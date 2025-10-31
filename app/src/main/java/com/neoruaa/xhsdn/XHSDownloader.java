@@ -30,6 +30,8 @@ public class XHSDownloader {
     private static final Pattern XHS_SHORT_PATTERN = Pattern.compile("(?:https?://)?xhslink\\.com/[^\\s\\\"<>\\\\\\^`{|}，。；！？、【】《》]+");
     
     private DownloadCallback downloadCallback;
+    // Map to store the relationship between transformed URLs and original URLs for fallback
+    private java.util.Map<String, String> urlMapping = new java.util.HashMap<>();
 
     public XHSDownloader(Context context) {
         this(context, null);
@@ -86,6 +88,17 @@ public class XHSDownloader {
                                 boolean success = downloadFile(mediaUrl, fileNameWithExtension);
                                 if (!success) {
                                     Log.e(TAG, "Failed to download: " + mediaUrl);
+                                    // Notify the callback about the download error with the original URL
+                                    if (downloadCallback != null) {
+                                        // Look up the original URL in the mapping
+                                        String originalUrl = urlMapping.get(mediaUrl);
+                                        if (originalUrl != null) {
+                                            downloadCallback.onDownloadError("Failed to download: " + mediaUrl, originalUrl);
+                                        } else {
+                                            // If no mapping exists, use the URL as is
+                                            downloadCallback.onDownloadError("Failed to download: " + mediaUrl, mediaUrl);
+                                        }
+                                    }
                                 } else {
                                     Log.d(TAG, "Successfully downloaded: " + mediaUrl);
                                 }
@@ -398,15 +411,27 @@ public class XHSDownloader {
             mediaUrls.addAll(extractUrlsFromHtml(html));
         }
         
+        // Clear the URL mapping before processing new URLs
+        urlMapping.clear();
+        
         // Process media URLs to transform xhscdn.com URLs to the new format
         for (int i = 0; i < mediaUrls.size(); i++) {
             String originalUrl = mediaUrls.get(i);
             Log.d(TAG, "Original URL: " + originalUrl);
-            mediaUrls.set(i, transformXhsCdnUrl(originalUrl));
+            String transformedUrl = transformXhsCdnUrl(originalUrl);
+            // Store the mapping between transformed URL and original URL
+            urlMapping.put(transformedUrl, originalUrl);
+            mediaUrls.set(i, transformedUrl);
         }
         
-        // Add live photo URLs to the main list
-        mediaUrls.addAll(livePhotoUrls);
+        // Process and add live photo URLs to the main list, maintaining mapping
+        for (String livePhotoUrl : livePhotoUrls) {
+            Log.d(TAG, "Original URL: " + livePhotoUrl);
+            String transformedUrl = transformXhsCdnUrl(livePhotoUrl);
+            // Store the mapping between transformed URL and original URL
+            urlMapping.put(transformedUrl, livePhotoUrl);
+            mediaUrls.add(transformedUrl);
+        }
         
         Log.d(TAG, "Found " + mediaUrls);
         return mediaUrls;

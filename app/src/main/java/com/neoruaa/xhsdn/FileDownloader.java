@@ -133,13 +133,28 @@ public class FileDownloader {
                 if (response.body() != null) {
                     response.body().close();
                 }
+                
+                // Notify the callback about the download error with the original URL
+                if (callback != null) {
+                    callback.onDownloadError("Download failed. Response code: " + response.code(), url);
+                }
             }
         } catch (IOException e) {
             Log.e(TAG, "Error downloading file: " + e.getMessage());
             e.printStackTrace();
+            
+            // Notify the callback about the download error with the original URL
+            if (callback != null) {
+                callback.onDownloadError("IO Error downloading file: " + e.getMessage(), url);
+            }
         } catch (SecurityException e) {
             Log.e(TAG, "Security exception while downloading file: " + e.getMessage());
             e.printStackTrace();
+            
+            // Notify the callback about the download error with the original URL
+            if (callback != null) {
+                callback.onDownloadError("Security exception while downloading file: " + e.getMessage(), url);
+            }
         }
         
         return false;

@@ -1,6 +1,11 @@
 package com.neoruaa.xhsdn;
 
 import android.os.AsyncTask;
+import android.text.SpannableStringBuilder;
+import android.text.Spanned;
+import android.text.style.ForegroundColorSpan;
+import android.text.style.URLSpan;
+import android.view.View;
 import android.widget.Button;
 import android.widget.ProgressBar;
 import android.widget.TextView;
@@ -58,6 +63,13 @@ public class DownloadTask extends AsyncTask<String, String, Boolean> {
                 public void onDownloadProgress(String status) {
                     publishProgress(status);
                 }
+                
+                @Override
+                public void onDownloadError(String status, String originalUrl) {
+                    // For error messages with original URLs, we'll pass both the status and URL
+                    // We'll use a special format to indicate this is an error message with a clickable URL
+                    publishProgress("[ERROR_URL]" + status + "[/ERROR_URL]" + originalUrl);
+                }
             });
             
             // Extract and download the content
@@ -74,7 +86,50 @@ public class DownloadTask extends AsyncTask<String, String, Boolean> {
         super.onProgressUpdate(values);
         TextView statusText = statusTextRef.get();
         if (statusText != null && values.length > 0) {
-            statusText.append("\n" + values[0]);
+            String message = values[0];
+            
+            // Check if this is an error message with a clickable URL
+            if (message.startsWith("[ERROR_URL]")) {
+                // Extract the status message and original URL
+                int endStatusIndex = message.indexOf("[/ERROR_URL]");
+                if (endStatusIndex != -1) {
+                    String status = message.substring("[ERROR_URL]".length(), endStatusIndex);
+                    String originalUrl = message.substring(endStatusIndex + "[/ERROR_URL]".length());
+                    
+                    // Create a clickable span for the original URL
+                    android.text.SpannableStringBuilder spannable = new android.text.SpannableStringBuilder("\n" + status + " Original URL: " + originalUrl);
+                    
+                    // Find the position of the URL in the text
+                    int urlStart = status.length() + 12; // +12 for " Original URL: "
+                    int urlEnd = urlStart + originalUrl.length();
+                    
+                    // Add clickable span for the URL
+                    spannable.setSpan(new android.text.style.URLSpan(originalUrl) {
+                        @Override
+                        public void onClick(View widget) {
+                            // Open the URL in browser
+                            android.content.Intent intent = new android.content.Intent(android.content.Intent.ACTION_VIEW);
+                            intent.setData(android.net.Uri.parse(getURL()));
+                            if (intent.resolveActivity(statusText.getContext().getPackageManager()) != null) {
+                                statusText.getContext().startActivity(intent);
+                            }
+                        }
+                    }, urlStart, urlEnd, android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+                    
+                    // Change the color of the error part to red
+                    spannable.setSpan(new android.text.style.ForegroundColorSpan(android.graphics.Color.RED), 
+                                   1, 1 + status.length(), 
+                                   android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+                    
+                    statusText.append(spannable);
+                } else {
+                    // If format is wrong, just append as regular text
+                    statusText.append("\n" + message);
+                }
+            } else {
+                // Regular status update
+                statusText.append("\n" + message);
+            }
         }
     }
 

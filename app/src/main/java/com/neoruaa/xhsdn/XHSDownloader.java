@@ -478,9 +478,8 @@ public class XHSDownloader {
     
     /**
      * Convert xhscdn.com URLs to the new format using the identifier
-     * Convert from format like http://sns-webpic-qc.xhscdn.com/202404121854/a7e6fa93538d17fa5da39ed6195557d7/{{key}}!nd_dft_wlteh_webp_3
-     * to format like https://ci.xiaohongshu.com/notes_pre_post/{{key}}?imageView2/2/w/format/png
-     * or https://ci.xiaohongshu.com/{{key}}?imageView2/2/w/format/png
+     * Convert from format like http://sns-webpic-qc.xhscdn.com/202404121854/a7e6fa93538d17fa5da39ed6195557d7/{{token}}!nd_dft_wlteh_webp_3
+     * to format like https://ci.xiaohongshu.com/{{token}}?imageView2/format/png (based on original Python project)
      * Skip video URLs as they should not be transformed
      * @param originalUrl The original URL to transform
      * @return The transformed URL, or the original if transformation is not applicable
@@ -493,33 +492,22 @@ public class XHSDownloader {
                 return originalUrl;
             }
             
-            // Check if the original URL already contains "notes_pre_post"
-            boolean containsNotesPrePost = originalUrl.contains("notes_pre_post");
-            
-            // Pattern to extract the identifier (the part between the last "/" and before "!")
-            String pattern = ".*/([a-zA-Z0-9]+(?:/[a-zA-Z0-9]+)*)[!\\?]?.*$";
-            
-            java.util.regex.Pattern regex = java.util.regex.Pattern.compile(pattern);
-            java.util.regex.Matcher matcher = regex.matcher(originalUrl);
-            
-            if (matcher.find()) {
-                String identifier = matcher.group(1);
-                
-                // Create the new URL format
-                if (containsNotesPrePost) {
-                    // If original URL already contains "notes_pre_post", preserve that structure
-                    // But extract only the actual identifier after "notes_pre_post/"
-                    String[] parts = identifier.split("/");
-                    if (parts.length > 1 && "notes_pre_post".equals(parts[parts.length - 2])) {
-                        String actualIdentifier = parts[parts.length - 1];
-                        return "https://ci.xiaohongshu.com/notes_pre_post/" + actualIdentifier ;
-                    } else {
-                        return "https://ci.xiaohongshu.com/notes_pre_post/" + identifier ;
-                    }
-                } else {
-                    // If original URL doesn't contain "notes_pre_post", don't add it
-                    return "https://ci.xiaohongshu.com/" + identifier ;
+            // extract from 5th part onwards, and split by "!"
+            String[] parts = originalUrl.split("/");
+            if (parts.length > 5) {
+                // Get everything from the 5th index onwards
+                StringBuilder tokenBuilder = new StringBuilder();
+                for (int i = 5; i < parts.length; i++) {
+                    if (i > 5) tokenBuilder.append("/");
+                    tokenBuilder.append(parts[i]);
                 }
+                String fullToken = tokenBuilder.toString();
+                
+                // Remove anything after "!" or "?"
+                String token = fullToken.split("[!?]")[0];
+                
+                // Use ci.xiaohongshu.com endpoint like the original Python project for more reliable image serving
+                return "https://ci.xiaohongshu.com/" + token;
             }
         }
         

@@ -12,6 +12,7 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.Environment;
 import android.provider.Settings;
+import android.util.Log;
 import android.view.View;
 import android.view.Window;
 import android.view.WindowManager;
@@ -228,7 +229,29 @@ public class MainActivity extends Activity {
     private void openImageInExternalApp(String imagePath) {
         Intent intent = new Intent(Intent.ACTION_VIEW);
         File file = new File(imagePath);
-        Uri uri = androidx.core.content.FileProvider.getUriForFile(this, getPackageName() + ".fileprovider", file);
+        Uri uri;
+        
+        try {
+            // Try using FileProvider first
+            uri = androidx.core.content.FileProvider.getUriForFile(this, getPackageName() + ".fileprovider", file);
+        } catch (IllegalArgumentException e) {
+            // If FileProvider fails, copy file to app's cache directory and use that
+            Log.d("MainActivity", "FileProvider failed, copying file to app cache: " + e.getMessage());
+            try {
+                File cacheDir = getCacheDir();
+                File tempFile = new File(cacheDir, file.getName());
+                
+                // Copy file to app's cache directory using traditional I/O
+                copyFile(file, tempFile);
+                
+                uri = androidx.core.content.FileProvider.getUriForFile(this, getPackageName() + ".fileprovider", tempFile);
+            } catch (Exception copyException) {
+                Log.e("MainActivity", "Failed to copy file to cache: " + copyException.getMessage());
+                Toast.makeText(this, "Cannot open image: " + copyException.getMessage(), Toast.LENGTH_SHORT).show();
+                return;
+            }
+        }
+        
         intent.setDataAndType(uri, "image/*");
         intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
         try {
@@ -238,10 +261,44 @@ public class MainActivity extends Activity {
         }
     }
     
+    private void copyFile(File source, File destination) throws java.io.IOException {
+        try (java.io.FileInputStream input = new java.io.FileInputStream(source);
+             java.io.FileOutputStream output = new java.io.FileOutputStream(destination)) {
+            
+            byte[] buffer = new byte[4096];
+            int bytesRead;
+            while ((bytesRead = input.read(buffer)) != -1) {
+                output.write(buffer, 0, bytesRead);
+            }
+        }
+    }
+    
     private void openVideoInExternalApp(String videoPath) {
         Intent intent = new Intent(Intent.ACTION_VIEW);
         File file = new File(videoPath);
-        Uri uri = androidx.core.content.FileProvider.getUriForFile(this, getPackageName() + ".fileprovider", file);
+        Uri uri;
+        
+        try {
+            // Try using FileProvider first
+            uri = androidx.core.content.FileProvider.getUriForFile(this, getPackageName() + ".fileprovider", file);
+        } catch (IllegalArgumentException e) {
+            // If FileProvider fails, copy file to app's cache directory and use that
+            Log.d("MainActivity", "FileProvider failed for video, copying to app cache: " + e.getMessage());
+            try {
+                File cacheDir = getCacheDir();
+                File tempFile = new File(cacheDir, file.getName());
+                
+                // Copy file to app's cache directory using traditional I/O
+                copyFile(file, tempFile);
+                
+                uri = androidx.core.content.FileProvider.getUriForFile(this, getPackageName() + ".fileprovider", tempFile);
+            } catch (Exception copyException) {
+                Log.e("MainActivity", "Failed to copy video to cache: " + copyException.getMessage());
+                Toast.makeText(this, "Cannot open video: " + copyException.getMessage(), Toast.LENGTH_SHORT).show();
+                return;
+            }
+        }
+        
         intent.setDataAndType(uri, "video/*");
         intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
         try {
@@ -287,7 +344,29 @@ public class MainActivity extends Activity {
         Intent intent = new Intent(Intent.ACTION_VIEW);
         File file = new File(filePath);
         String mimeType = getMimeType(filePath);
-        Uri uri = androidx.core.content.FileProvider.getUriForFile(this, getPackageName() + ".fileprovider", file);
+        Uri uri;
+        
+        try {
+            // Try using FileProvider first
+            uri = androidx.core.content.FileProvider.getUriForFile(this, getPackageName() + ".fileprovider", file);
+        } catch (IllegalArgumentException e) {
+            // If FileProvider fails, copy file to app's cache directory and use that
+            Log.d("MainActivity", "FileProvider failed for generic file, copying to app cache: " + e.getMessage());
+            try {
+                File cacheDir = getCacheDir();
+                File tempFile = new File(cacheDir, file.getName());
+                
+                // Copy file to app's cache directory using traditional I/O
+                copyFile(file, tempFile);
+                
+                uri = androidx.core.content.FileProvider.getUriForFile(this, getPackageName() + ".fileprovider", tempFile);
+            } catch (Exception copyException) {
+                Log.e("MainActivity", "Failed to copy generic file to cache: " + copyException.getMessage());
+                Toast.makeText(this, "Cannot open file: " + copyException.getMessage(), Toast.LENGTH_SHORT).show();
+                return;
+            }
+        }
+        
         if (mimeType != null) {
             intent.setDataAndType(uri, mimeType);
         } else {

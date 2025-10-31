@@ -24,9 +24,9 @@ public class XHSDownloader {
     private List<String> downloadUrls;
     
     // Regex patterns for URL matching
-    private static final Pattern XHS_LINK_PATTERN = Pattern.compile("(?:https?://)?www\\\\.xiaohongshu\\\\.com/explore/\\\\S+");
-    private static final Pattern XHS_USER_PATTERN = Pattern.compile("(?:https?://)?www\\\\.xiaohongshu\\\\.com/user/profile/[a-z0-9]+/\\\\S+");
-    private static final Pattern XHS_SHARE_PATTERN = Pattern.compile("(?:https?://)?www\\\\.xiaohongshu\\\\.com/discovery/item/\\\\S+");
+    private static final Pattern XHS_LINK_PATTERN = Pattern.compile("(?:https?://)?www\\.xiaohongshu\\.com/explore/\\S+");
+    private static final Pattern XHS_USER_PATTERN = Pattern.compile("(?:https?://)?www\\.xiaohongshu\\.com/user/profile/[a-z0-9]+/\\S+");
+    private static final Pattern XHS_SHARE_PATTERN = Pattern.compile("(?:https?://)?www\\.xiaohongshu\\.com/discovery/item/\\S+");
     private static final Pattern XHS_SHORT_PATTERN = Pattern.compile("(?:https?://)?xhslink\\.com/[^\\s\\\"<>\\\\\\^`{|}，。；！？、【】《》]+");
     
     private DownloadCallback downloadCallback;
@@ -51,6 +51,8 @@ public class XHSDownloader {
     }
     
     public boolean downloadContent(String inputUrl) {
+        boolean hasErrors = false; // Track if any errors occurred
+        boolean hasContent = false; // Track if we found any content to download
         try {
             // Extract all valid XHS URLs from the input
             List<String> urls = extractLinks(inputUrl);
@@ -75,8 +77,10 @@ public class XHSDownloader {
                         List<String> mediaUrls = parsePostDetails(postDetails);
                         
                         if (!mediaUrls.isEmpty()) {
-                            Log.d(TAG, "Found " + mediaUrls);
+                            hasContent = true; // We found media to download
+                            Log.d(TAG, "Found " + mediaUrls.size() + " media URLs in post: " + postId);
                             // Download each media file with unique names
+                            boolean postHasErrors = false;
                             for (int i = 0; i < mediaUrls.size(); i++) {
                                 String mediaUrl = mediaUrls.get(i);
                                 String uniqueFileName = postId + "_" + (i + 1); // Use index to create unique name
@@ -99,22 +103,47 @@ public class XHSDownloader {
                                             downloadCallback.onDownloadError("Failed to download: " + mediaUrl, mediaUrl);
                                         }
                                     }
+                                    postHasErrors = true;
+                                    hasErrors = true;
                                 } else {
                                     Log.d(TAG, "Successfully downloaded: " + mediaUrl);
                                 }
                             }
+                            
+                            // If the post had download errors, consider it a partial failure
+                            if (postHasErrors) {
+                                hasErrors = true;
+                            }
                         } else {
                             Log.e(TAG, "No media URLs found in post: " + postId);
+                            // Notify the callback about this issue
+                            if (downloadCallback != null) {
+                                downloadCallback.onDownloadError("No media URLs found in post: " + postId, url);
+                            }
+                            hasErrors = true; // Consider this an error condition
                         }
                     } else {
                         Log.e(TAG, "Failed to fetch post details for: " + url);
+                        // Notify the callback about this issue
+                        if (downloadCallback != null) {
+                            downloadCallback.onDownloadError("Failed to fetch post details for: " + url, url);
+                        }
+                        hasErrors = true;
                     }
                 } else {
                     Log.e(TAG, "Could not extract post ID from URL: " + url);
+                    // Notify the callback about this issue
+                    if (downloadCallback != null) {
+                        downloadCallback.onDownloadError("Could not extract post ID from URL: " + url, url);
+                    }
+                    hasErrors = true;
                 }
             }
             
-            return true;
+            // Return true only if we processed everything without errors
+            // If we found content and had no errors, that's success
+            // If we found no content or had errors, that's failure
+            return !hasErrors;
         } catch (Exception e) {
             Log.e(TAG, "Error in downloadContent: " + e.getMessage());
             e.printStackTrace();

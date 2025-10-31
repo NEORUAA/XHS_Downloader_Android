@@ -131,7 +131,7 @@ public class DownloadTask extends AsyncTask<String, String, Boolean> {
                     android.text.SpannableStringBuilder spannable = new android.text.SpannableStringBuilder("\n" + status + " Original URL: " + originalUrl);
                     
                     // Find the position of the URL in the text
-                    int urlStart = status.length() + 12; // +12 for " Original URL: "
+                    int urlStart = status.length() + 16; // +16 for " Original URL: "
                     int urlEnd = urlStart + originalUrl.length();
                     
                     // Add clickable span for the URL

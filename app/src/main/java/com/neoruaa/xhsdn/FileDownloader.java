@@ -138,7 +138,6 @@ public class FileDownloader {
                         totalBytesRead += bytesRead;
                         
                         // Report progress updates less frequently to avoid UI thread contention
-                        // Update every 1MB instead of every 256KB for better performance
                         if (callback != null && contentLength > 0) {
                             // Only report progress if we have a content length and it's not 0
                             // Limit progress updates to once per 256KB to avoid excessive callbacks
@@ -190,6 +189,77 @@ public class FileDownloader {
             if (callback != null) {
                 callback.onDownloadError("Security exception while downloading file: " + e.getMessage(), url);
             }
+        }
+        
+        return false;
+    }
+    
+    /**
+     * Downloads a file directly to internal app storage (for temporary processing)
+     * @param url The URL to download from
+     * @param fileName The name of the file to save
+     * @return true if download was successful, false otherwise
+     */
+    public boolean downloadFileToInternalStorage(String url, String fileName) {
+        try {
+            // Create the request
+            Request request = new Request.Builder()
+                    .url(url)
+                    .addHeader("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36")
+                    .addHeader("Accept", "text/html,application/xhtml+xml,application/xml;q=1.0,image/avif,image/webp,image/apng,*/*;q=1.0")
+                    .addHeader("Referer", "https://www.xiaohongshu.com/")
+                    .build();
+            
+            // Execute the request
+            Response response = httpClient.newCall(request).execute();
+            
+            if (response.isSuccessful() && response.body() != null) {
+                // Get the file extension from the URL or Content-Type header
+                String fileExtension = getFileExtension(response, url);
+                String fullFileName = "xhs_" + fileName; // Add xhs_ prefix like the main download method
+                
+                // Create the destination file in internal app storage
+                File destinationFile = new File(context.getExternalFilesDir(null), fullFileName);
+                
+                // Write the response body to the file
+                ResponseBody body = response.body();
+                if (body != null) {
+                    InputStream inputStream = body.byteStream();
+                    OutputStream outputStream = new FileOutputStream(destinationFile);
+                    
+                    // Increased buffer size for better throughput (64KB instead of 4KB)
+                    byte[] buffer = new byte[65536]; // 64KB buffer
+                    int bytesRead;
+                    long totalBytesRead = 0;
+                    long contentLength = body.contentLength();
+                    
+                    while ((bytesRead = inputStream.read(buffer)) != -1) {
+                        outputStream.write(buffer, 0, bytesRead);
+                        totalBytesRead += bytesRead;
+                    }
+                    
+                    inputStream.close();
+                    outputStream.close();
+                    
+                    Log.d(TAG, "Downloaded file to internal storage: " + destinationFile.getAbsolutePath());
+                    Log.d(TAG, "Total bytes: " + totalBytesRead);
+                    Log.d(TAG, "File exists: " + destinationFile.exists());
+                    Log.d(TAG, "File size: " + destinationFile.length());
+                    
+                    return true;
+                }
+            } else {
+                Log.e(TAG, "Download failed. Response code: " + response.code());
+                if (response.body() != null) {
+                    response.body().close();
+                }
+            }
+        } catch (IOException e) {
+            Log.e(TAG, "Error downloading file: " + e.getMessage());
+            e.printStackTrace();
+        } catch (SecurityException e) {
+            Log.e(TAG, "Security exception while downloading file: " + e.getMessage());
+            e.printStackTrace();
         }
         
         return false;

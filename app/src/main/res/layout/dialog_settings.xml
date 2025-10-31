@@ -47,6 +47,22 @@
 
     </LinearLayout>
 
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:layout_marginBottom="16dp"
+        android:gravity="center_vertical">
+
+        <CheckBox
+            android:id="@+id/livePhotoCheckBox"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/create_live_photos"
+            android:textSize="16sp" />
+
+    </LinearLayout>
+
     <Button
         android:id="@+id/githubButton"
         android:layout_width="match_parent"

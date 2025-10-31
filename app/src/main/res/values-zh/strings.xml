@@ -24,4 +24,5 @@
     <string name="apply">应用</string>
     <string name="settings_saved">设置保存成功</string>
     <string name="open_github_repository">打开GitHub仓库</string>
+    <string name="create_live_photos">创建安卓动态照片（将图片和视频合并为单个文件）</string>
 </resources>

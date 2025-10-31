@@ -8,6 +8,7 @@ import android.os.Environment;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.widget.Button;
+import android.widget.CheckBox;
 import android.widget.EditText;
 
 import androidx.annotation.NonNull;
@@ -15,6 +16,7 @@ import androidx.annotation.NonNull;
 public class SettingsDialog extends Dialog {
     
     private EditText savePathEditText;
+    private CheckBox livePhotoCheckBox;
     private Button resetPathButton;
     private Button githubButton;
     private Button cancelButton;
@@ -41,6 +43,7 @@ public class SettingsDialog extends Dialog {
         
         // Initialize views
         savePathEditText = findViewById(R.id.savePathEditText);
+        livePhotoCheckBox = findViewById(R.id.livePhotoCheckBox);
         resetPathButton = findViewById(R.id.resetPathButton);
         githubButton = findViewById(R.id.githubButton);
         cancelButton = findViewById(R.id.cancelButton);
@@ -60,6 +63,10 @@ public class SettingsDialog extends Dialog {
         SharedPreferences prefs = getContext().getSharedPreferences("XHSDownloaderPrefs", Context.MODE_PRIVATE);
         String customPath = prefs.getString("custom_save_path", getDefaultSavePath());
         savePathEditText.setText(customPath);
+        
+        // Load live photo setting - now defaults to enabled
+        boolean createLivePhotos = prefs.getBoolean("create_live_photos", true);
+        livePhotoCheckBox.setChecked(createLivePhotos);
     }
     
     private void resetToDefaultPath() {
@@ -72,11 +79,13 @@ public class SettingsDialog extends Dialog {
     
     private void applySettings() {
         String savePath = savePathEditText.getText().toString().trim();
+        boolean createLivePhotos = livePhotoCheckBox.isChecked();
         
         // Save the settings
         SharedPreferences prefs = getContext().getSharedPreferences("XHSDownloaderPrefs", Context.MODE_PRIVATE);
         SharedPreferences.Editor editor = prefs.edit();
         editor.putString("custom_save_path", savePath);
+        editor.putBoolean("create_live_photos", createLivePhotos);
         editor.apply();
         
         // Notify listener

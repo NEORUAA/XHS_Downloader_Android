@@ -24,4 +24,5 @@
     <string name="apply">Apply</string>
     <string name="settings_saved">Settings saved successfully</string>
     <string name="open_github_repository">Open GitHub Repository</string>
+    <string name="create_live_photos">Create Android Live Photos (Combine image and video into single file)</string>
 </resources>

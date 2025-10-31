@@ -1,8 +1,8 @@
 package com.neoruaa.xhsdn;
 
 import android.Manifest;
-import android.app.Activity;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
@@ -13,6 +13,8 @@ import android.os.Bundle;
 import android.os.Environment;
 import android.provider.Settings;
 import android.util.Log;
+import android.view.Menu;
+import android.view.MenuItem;
 import android.view.View;
 import android.view.Window;
 import android.view.WindowManager;
@@ -26,6 +28,7 @@ import android.widget.TextView;
 import android.widget.Toast;
 import android.widget.VideoView;
 
+import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
 import androidx.core.content.FileProvider;
@@ -34,14 +37,12 @@ import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
 
-public class MainActivity extends Activity {
+public class MainActivity extends AppCompatActivity {
     private EditText urlInput;
     private Button downloadButton;
     private TextView statusText;
     private ProgressBar progressBar;
-    private TextView versionTextView;
     private android.widget.ImageButton clearButton;
-    private LinearLayout titleLayout;
     private LinearLayout imageContainer;
     private static final int PERMISSION_REQUEST_CODE = 1001;
 
@@ -55,36 +56,27 @@ public class MainActivity extends Activity {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
             window.addFlags(WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS);
             window.clearFlags(WindowManager.LayoutParams.FLAG_TRANSLUCENT_STATUS);
-            window.setStatusBarColor(Color.WHITE);
+            window.setStatusBarColor(Color.parseColor("#212121"));
             window.setNavigationBarColor(Color.WHITE);
         }
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             View decor = window.getDecorView();
-            decor.setSystemUiVisibility(View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR | View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR);
+            decor.setSystemUiVisibility(View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR);
         }
 
         urlInput = findViewById(R.id.urlInput);
         downloadButton = findViewById(R.id.downloadButton);
         statusText = findViewById(R.id.statusText);
         progressBar = findViewById(R.id.progressBar);
-        versionTextView = findViewById(R.id.versionTextView);
         clearButton = findViewById(R.id.clearButton);
-        titleLayout = findViewById(R.id.titleLayout);
         imageContainer = findViewById(R.id.imageContainer);
 
         // 检查并请求存储权限
         checkPermissions();
 
-        // Set the app version in the versionTextView
-        setAppVersion();
-
-        // Set up the title layout click functionality to open GitHub repository
-        if (titleLayout != null) {
-            titleLayout.setOnClickListener(v -> openGitHubRepository());
-        }
-
-        // Set up the clear button functionality
+        // Set the app version in the toolbar title
+        setAppVersionInToolbar();
         clearButton.setOnClickListener(v -> {
             urlInput.setText("");
         });
@@ -116,16 +108,21 @@ public class MainActivity extends Activity {
         });
     }
 
-    private void setAppVersion() {
+    private void setAppVersionInToolbar() {
         try {
             String versionName = getPackageManager().getPackageInfo(getPackageName(), 0).versionName;
-            if (versionTextView != null) {
-                versionTextView.setText("v" + versionName);
+            // Set the toolbar title with app name and version
+            if (getSupportActionBar() != null) {
+                getSupportActionBar().setTitle(getString(R.string.app_name) + " v" + versionName);
+                // Set the subtitle to the app description
+                getSupportActionBar().setSubtitle(getString(R.string.app_description));
             }
         } catch (Exception e) {
             Log.e("MainActivity", "Error getting app version: " + e.getMessage());
-            if (versionTextView != null) {
-                versionTextView.setText("v?.?.?");
+            // Fallback to just app name if version can't be retrieved
+            if (getSupportActionBar() != null) {
+                getSupportActionBar().setTitle(getString(R.string.app_name));
+                getSupportActionBar().setSubtitle(getString(R.string.app_description));
             }
         }
     }
@@ -452,5 +449,30 @@ public class MainActivity extends Activity {
         // Create download task
         DownloadTask task = new DownloadTask(this, statusText, progressBar, downloadButton);
         task.execute(url);
+    }
+    
+    @Override
+    public boolean onCreateOptionsMenu(Menu menu) {
+        getMenuInflater().inflate(R.menu.main_menu, menu);
+        return true;
+    }
+    
+    @Override
+    public boolean onOptionsItemSelected(MenuItem item) {
+        int itemId = item.getItemId();
+        if (itemId == R.id.action_settings) {
+            showSettingsDialog();
+            return true;
+        }
+        return super.onOptionsItemSelected(item);
+    }
+    
+    private void showSettingsDialog() {
+        SettingsDialog settingsDialog = new SettingsDialog(this);
+        settingsDialog.setOnSettingsAppliedListener(savePath -> {
+            // Handle settings applied if needed
+            Toast.makeText(this, getString(R.string.settings_saved), Toast.LENGTH_SHORT).show();
+        });
+        settingsDialog.show();
     }
 }

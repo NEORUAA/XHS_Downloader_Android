@@ -1,6 +1,7 @@
 package com.neoruaa.xhsdn;
 
 import android.content.Context;
+import android.content.SharedPreferences;
 import android.os.Environment;
 import android.util.Log;
 
@@ -52,40 +53,52 @@ public class FileDownloader {
                 String fileExtension = getFileExtension(response, url);
                 String fullFileName = "xhs_" + fileName;
                 
-                // Try to use public Downloads directory first (requires permissions)
-                File destinationDir = null;
-                File publicDownloadsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS);
-                if (publicDownloadsDir != null) {
-                    destinationDir = new File(publicDownloadsDir, "xhs");
-                }
+                // Check for custom save path in preferences
+                SharedPreferences prefs = context.getSharedPreferences("XHSDownloaderPrefs", Context.MODE_PRIVATE);
+                String customSavePath = prefs.getString("custom_save_path", null);
                 
-                // Check if we have permission to write to public directory
-                boolean canWriteToPublic = false;
-                if (destinationDir != null) {
-                    try {
-                        // Try to create the directory to test write permission
-                        if (!destinationDir.exists()) {
-                            canWriteToPublic = destinationDir.mkdirs();
-                        } else {
-                            // Try to create a temporary file to test write permission
-                            File testFile = new File(destinationDir, ".test_permission");
-                            canWriteToPublic = testFile.createNewFile();
-                            if (canWriteToPublic) {
-                                testFile.delete();
-                            }
-                        }
-                    } catch (Exception e) {
-                        Log.d(TAG, "Cannot write to public directory: " + e.getMessage());
-                        canWriteToPublic = false;
-                    }
-                }
-                
-                // If we can't write to public directory, fall back to app's private directory
-                if (!canWriteToPublic) {
-                    Log.d(TAG, "Falling back to app's private directory");
-                    destinationDir = new File(context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS), "xhs");
+                File destinationDir;
+                if (customSavePath != null && !customSavePath.isEmpty()) {
+                    // Use custom save path
+                    destinationDir = new File(customSavePath);
+                    Log.d(TAG, "Using custom save path: " + customSavePath);
                 } else {
-                    Log.d(TAG, "Using public Downloads directory");
+                    // Try to use public Downloads directory first (requires permissions)
+                    File publicDownloadsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS);
+                    if (publicDownloadsDir != null) {
+                        destinationDir = new File(publicDownloadsDir, "xhs");
+                    } else {
+                        destinationDir = null;
+                    }
+                    
+                    // Check if we have permission to write to public directory
+                    boolean canWriteToPublic = false;
+                    if (destinationDir != null) {
+                        try {
+                            // Try to create the directory to test write permission
+                            if (!destinationDir.exists()) {
+                                canWriteToPublic = destinationDir.mkdirs();
+                            } else {
+                                // Try to create a temporary file to test write permission
+                                File testFile = new File(destinationDir, ".test_permission");
+                                canWriteToPublic = testFile.createNewFile();
+                                if (canWriteToPublic) {
+                                    testFile.delete();
+                                }
+                            }
+                        } catch (Exception e) {
+                            Log.d(TAG, "Cannot write to public directory: " + e.getMessage());
+                            canWriteToPublic = false;
+                        }
+                    }
+                    
+                    // If we can't write to public directory, fall back to app's private directory
+                    if (!canWriteToPublic) {
+                        Log.d(TAG, "Falling back to app's private directory");
+                        destinationDir = new File(context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS), "xhs");
+                    } else {
+                        Log.d(TAG, "Using public Downloads directory");
+                    }
                 }
                 
                 // Ensure the directory exists

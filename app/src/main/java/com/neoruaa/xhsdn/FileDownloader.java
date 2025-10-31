@@ -111,6 +111,15 @@ public class FileDownloader {
                     while ((bytesRead = inputStream.read(buffer)) != -1) {
                         outputStream.write(buffer, 0, bytesRead);
                         totalBytesRead += bytesRead;
+                        
+                        // Report progress updates periodically (every 4KB or when a significant portion is downloaded)
+                        if (callback != null && contentLength > 0) {
+                            // Only report progress if we have a content length and it's not 0
+                            // Limit progress updates to once per 256KB to avoid excessive callbacks
+                            if (totalBytesRead % 262144 == 0 || totalBytesRead == contentLength) { // 256KB = 262144 bytes
+                                callback.onDownloadProgressUpdate(totalBytesRead, contentLength);
+                            }
+                        }
                     }
                     
                     inputStream.close();

@@ -39,6 +39,9 @@ public class MainActivity extends Activity {
     private Button downloadButton;
     private TextView statusText;
     private ProgressBar progressBar;
+    private TextView versionTextView;
+    private android.widget.ImageButton clearButton;
+    private LinearLayout titleLayout;
     private LinearLayout imageContainer;
     private static final int PERMISSION_REQUEST_CODE = 1001;
 
@@ -65,11 +68,40 @@ public class MainActivity extends Activity {
         downloadButton = findViewById(R.id.downloadButton);
         statusText = findViewById(R.id.statusText);
         progressBar = findViewById(R.id.progressBar);
+        versionTextView = findViewById(R.id.versionTextView);
+        clearButton = findViewById(R.id.clearButton);
+        titleLayout = findViewById(R.id.titleLayout);
         imageContainer = findViewById(R.id.imageContainer);
 
         // 检查并请求存储权限
         checkPermissions();
 
+        // Set the app version in the versionTextView
+        setAppVersion();
+
+        // Set up the title layout click functionality to open GitHub repository
+        if (titleLayout != null) {
+            titleLayout.setOnClickListener(v -> openGitHubRepository());
+        }
+
+        // Set up the clear button functionality
+        clearButton.setOnClickListener(v -> {
+            urlInput.setText("");
+        });
+
+        // Show/hide clear button based on text input
+        urlInput.addTextChangedListener(new android.text.TextWatcher() {
+            @Override
+            public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
+
+            @Override
+            public void onTextChanged(CharSequence s, int start, int before, int count) {}
+
+            @Override
+            public void afterTextChanged(android.text.Editable s) {
+                clearButton.setVisibility(s.length() > 0 ? android.view.View.VISIBLE : android.view.View.GONE);
+            }
+        });
 
         downloadButton.setOnClickListener(v -> {
             // 清除之前显示的图片
@@ -82,6 +114,32 @@ public class MainActivity extends Activity {
             }
             startDownload(url);
         });
+    }
+
+    private void setAppVersion() {
+        try {
+            String versionName = getPackageManager().getPackageInfo(getPackageName(), 0).versionName;
+            if (versionTextView != null) {
+                versionTextView.setText("v" + versionName);
+            }
+        } catch (Exception e) {
+            Log.e("MainActivity", "Error getting app version: " + e.getMessage());
+            if (versionTextView != null) {
+                versionTextView.setText("v?.?.?");
+            }
+        }
+    }
+
+    private void openGitHubRepository() {
+        String url = "https://github.com/NEORUAA/XHS_Downloader_Android";
+        try {
+            Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
+            startActivity(intent);
+        } catch (Exception e) {
+            Log.e("MainActivity", "Error opening GitHub repository: " + e.getMessage());
+            // Fallback: try to show a toast message
+            Toast.makeText(this, "Cannot open browser", Toast.LENGTH_SHORT).show();
+        }
     }
 
     private void checkPermissions() {

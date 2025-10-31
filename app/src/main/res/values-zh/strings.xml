@@ -13,6 +13,7 @@
     <string name="error_occurred">错误: %1$s</string>
     <string name="download_completed_successfully">下载成功完成！</string>
     <string name="download_failed">下载失败！</string>
+    <string name="clear_input">清除输入</string>
     <string name="downloaded_files_title">已下载文件：</string>
     <string name="app_description"><![CDATA[无损分辨率 & 无水印]]></string>
 </resources>

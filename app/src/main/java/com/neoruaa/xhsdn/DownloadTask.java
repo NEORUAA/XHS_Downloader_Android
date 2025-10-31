@@ -1,6 +1,7 @@
 package com.neoruaa.xhsdn;
 
 import android.os.AsyncTask;
+import android.util.Log;
 import android.text.SpannableStringBuilder;
 import android.text.Spanned;
 import android.text.style.ForegroundColorSpan;
@@ -61,7 +62,13 @@ public class DownloadTask extends AsyncTask<String, String, Boolean> {
 
                 @Override
                 public void onDownloadProgress(String status) {
-                    publishProgress(status);
+                    publishProgress("STATUS:" + status);
+                }
+                
+                @Override
+                public void onDownloadProgressUpdate(long downloaded, long total) {
+                    // Publish progress as a special format that can be identified in onProgressUpdate
+                    publishProgress("PROGRESS:" + downloaded + ":" + total);
                 }
                 
                 @Override
@@ -85,11 +92,35 @@ public class DownloadTask extends AsyncTask<String, String, Boolean> {
     protected void onProgressUpdate(String... values) {
         super.onProgressUpdate(values);
         TextView statusText = statusTextRef.get();
-        if (statusText != null && values.length > 0) {
+        ProgressBar progressBar = progressBarRef.get();
+        
+        if (values.length > 0 && statusText != null) {
             String message = values[0];
             
+            // Check if this is a progress update
+            if (message.startsWith("PROGRESS:")) {
+                // Extract downloaded and total bytes
+                String[] parts = message.substring("PROGRESS:".length()).split(":");
+                if (parts.length == 2) {
+                    try {
+                        long downloaded = Long.parseLong(parts[0]);
+                        long total = Long.parseLong(parts[1]);
+                        
+                        if (progressBar != null) {
+                            // Set progress bar to be indeterminate initially, then set max and progress
+                            if (total > 0) {
+                                progressBar.setMax((int) Math.min(total, Integer.MAX_VALUE));
+                                progressBar.setProgress((int) Math.min(downloaded, Integer.MAX_VALUE));
+                                progressBar.setVisibility(View.VISIBLE); // Ensure it's visible during download
+                            }
+                        }
+                    } catch (NumberFormatException e) {
+                        Log.e("DownloadTask", "Error parsing progress: " + e.getMessage());
+                    }
+                }
+            } 
             // Check if this is an error message with a clickable URL
-            if (message.startsWith("[ERROR_URL]")) {
+            else if (message.startsWith("[ERROR_URL]")) {
                 // Extract the status message and original URL
                 int endStatusIndex = message.indexOf("[/ERROR_URL]");
                 if (endStatusIndex != -1) {
@@ -126,8 +157,13 @@ public class DownloadTask extends AsyncTask<String, String, Boolean> {
                     // If format is wrong, just append as regular text
                     statusText.append("\n" + message);
                 }
+            } 
+            // Handle regular status updates
+            else if (message.startsWith("STATUS:")) {
+                String status = message.substring("STATUS:".length());
+                statusText.append("\n" + status);
             } else {
-                // Regular status update
+                // Regular status update (backward compatibility)
                 statusText.append("\n" + message);
             }
         }

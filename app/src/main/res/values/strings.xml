@@ -14,5 +14,6 @@
     <string name="download_completed_successfully">Download completed successfully!</string>
     <string name="download_failed">Download failed!</string>
     <string name="downloaded_files_title">Downloaded files:</string>
+    <string name="clear_input">Clear input</string>
     <string name="app_description"><![CDATA[origin resolution & no watermark]]></string>
 </resources>

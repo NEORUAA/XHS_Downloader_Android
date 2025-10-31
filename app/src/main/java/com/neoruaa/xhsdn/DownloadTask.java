@@ -73,6 +73,17 @@ public class DownloadTask extends AsyncTask<String, String, Boolean> {
                 
                 @Override
                 public void onDownloadError(String status, String originalUrl) {
+                    // Check if the error indicates JSON parsing failure to show web crawl option
+                    MainActivity activity = activityReference.get();
+                    if (activity != null) {
+                        if (status.contains("No media URLs found") || 
+                            status.contains("Failed to fetch post details") ||
+                            status.contains("Could not extract post ID")) {
+                            // Run on UI thread to update the interface
+                            activity.runOnUiThread(() -> activity.showWebCrawlOption());
+                        }
+                    }
+                    
                     // For error messages with original URLs, we'll pass both the status and URL
                     // We'll use a special format to indicate this is an error message with a clickable URL
                     publishProgress("[ERROR_URL]" + status + "[/ERROR_URL]" + originalUrl);
@@ -126,6 +137,17 @@ public class DownloadTask extends AsyncTask<String, String, Boolean> {
                 if (endStatusIndex != -1) {
                     String status = message.substring("[ERROR_URL]".length(), endStatusIndex);
                     String originalUrl = message.substring(endStatusIndex + "[/ERROR_URL]".length());
+                    
+                    // Check if the error indicates JSON parsing failure to show web crawl option
+                    MainActivity mainActivity = activityReference.get();
+                    if (status.contains("No media URLs found") || 
+                        status.contains("Failed to fetch post details") ||
+                        status.contains("Could not extract post ID")) {
+                        // Run on UI thread to update the interface
+                        if (mainActivity != null) {
+                            mainActivity.runOnUiThread(() -> mainActivity.showWebCrawlOption());
+                        }
+                    }
                     
                     // Create a clickable span for the original URL
                     android.text.SpannableStringBuilder spannable = new android.text.SpannableStringBuilder("\n" + status + " Original URL: " + originalUrl);

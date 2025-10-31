@@ -25,4 +25,21 @@
     <string name="settings_saved">Settings saved successfully</string>
     <string name="open_github_repository">Open GitHub Repository</string>
     <string name="create_live_photos">Create Android Live Photos (Combine image and video into single file)</string>
+    <string name="webview_title">Fetch Via WebView</string>
+    <string name="no_urls_found_javascript_null">No URLs found on the page (JavaScript returned null)</string>
+    <string name="no_accessible_urls_found">No accessible URLs found on the page</string>
+    <string name="error_parsing_urls">Error parsing URLs: %1$s</string>
+    <string name="invalid_url_format">Invalid URL format</string>
+    <string name="no_url_to_process">No URL to process</string>
+    <string name="cannot_open_image">Cannot open image: %1$s</string>
+    <string name="cannot_open_video">Cannot open video: %1$s</string>
+    <string name="cannot_open_file">Cannot open file: %1$s</string>
+    <string name="found_images_via_web_crawl">Found %1$d images via web crawl:</string>
+    <string name="json_parsing_failed_web_crawl">JSON parsing failed. Click \'%1$s\' to try web-based extraction.</string>
+    <string name="web_crawl">Fetch via Web Crawl</string>
+    <string name="converted_cdn_original_images">Converted CDN original images</string>
+    <string name="no_images_found_via_web_crawl">No images found via web crawl.</string>
+    <string name="download_error_for_url">Download Error: %1$s for URL: %2$s</string>
+    <string name="all_downloads_completed">All downloads completed.</string>
+    <string name="error_processing_image_urls">Error processing image URLs: %1$s</string>
 </resources>

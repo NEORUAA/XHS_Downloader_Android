@@ -79,31 +79,31 @@ public class XHSDownloader {
 
 
                     // 将postDetails保存到download目录下的postId.txt文件中
-                    if (postDetails != null && !postDetails.isEmpty()) {
-                        // 获取应用的外部存储目录
-                        File externalStorageDir = context.getExternalFilesDir(null);
-                        if (externalStorageDir != null) {
-                            // 构建目标目录路径
-                            File downloadDir = new File(externalStorageDir.getParentFile(), "Download");
-                            // 创建目录（如果不存在）
-                            if (!downloadDir.exists()) {
-                                downloadDir.mkdirs();
-                            }
-                            
-                            // 创建文件对象
-                            File postDetailsFile = new File(downloadDir, postId + ".txt");
-                            
-                            // 写入文件
-                            try {
-                                java.io.FileWriter writer = new java.io.FileWriter(postDetailsFile);
-                                writer.write(postDetails);
-                                writer.close();
-                                Log.d(TAG, "Saved post details to: " + postDetailsFile.getAbsolutePath());
-                            } catch (java.io.IOException e) {
-                                Log.e(TAG, "Failed to save post details to file: " + e.getMessage());
-                            }
-                        }
-                    }
+//                    if (postDetails != null && !postDetails.isEmpty()) {
+//                        // 获取应用的外部存储目录
+//                        File externalStorageDir = context.getExternalFilesDir(null);
+//                        if (externalStorageDir != null) {
+//                            // 构建目标目录路径
+//                            File downloadDir = new File(externalStorageDir.getParentFile(), "Download");
+//                            // 创建目录（如果不存在）
+//                            if (!downloadDir.exists()) {
+//                                downloadDir.mkdirs();
+//                            }
+//
+//                            // 创建文件对象
+//                            File postDetailsFile = new File(downloadDir, postId + ".txt");
+//
+//                            // 写入文件
+//                            try {
+//                                java.io.FileWriter writer = new java.io.FileWriter(postDetailsFile);
+//                                writer.write(postDetails);
+//                                writer.close();
+//                                Log.d(TAG, "Saved post details to: " + postDetailsFile.getAbsolutePath());
+//                            } catch (java.io.IOException e) {
+//                                Log.e(TAG, "Failed to save post details to file: " + e.getMessage());
+//                            }
+//                        }
+//                    }
                     
                     if (postDetails != null) {
                         // Parse the post details to extract media URLs
@@ -252,6 +252,10 @@ public class XHSDownloader {
                             // Notify the callback about this issue
                             if (downloadCallback != null) {
                                 downloadCallback.onDownloadError("No media URLs found in post: " + postId, url);
+                                // Show web crawl option if JSON parsing failed
+                                if (context instanceof MainActivity) {
+                                    ((MainActivity) context).showWebCrawlOption();
+                                }
                             }
                             hasErrors = true; // Consider this an error condition
                         }
@@ -260,6 +264,10 @@ public class XHSDownloader {
                         // Notify the callback about this issue
                         if (downloadCallback != null) {
                             downloadCallback.onDownloadError("Failed to fetch post details for: " + url, url);
+                            // Show web crawl option if we couldn't fetch post details
+                            if (context instanceof MainActivity) {
+                                ((MainActivity) context).showWebCrawlOption();
+                            }
                         }
                         hasErrors = true;
                     }
@@ -268,6 +276,10 @@ public class XHSDownloader {
                     // Notify the callback about this issue
                     if (downloadCallback != null) {
                         downloadCallback.onDownloadError("Could not extract post ID from URL: " + url, url);
+                        // Show web crawl option if we couldn't extract post ID
+                        if (context instanceof MainActivity) {
+                            ((MainActivity) context).showWebCrawlOption();
+                        }
                     }
                     hasErrors = true;
                 }
@@ -280,6 +292,10 @@ public class XHSDownloader {
         } catch (Exception e) {
             Log.e(TAG, "Error in downloadContent: " + e.getMessage());
             e.printStackTrace();
+            // Show web crawl option if there's a general error
+            if (context instanceof MainActivity) {
+                ((MainActivity) context).showWebCrawlOption();
+            }
             return false;
         }
     }
@@ -1041,7 +1057,7 @@ public class XHSDownloader {
      * @param originalUrl The original URL to transform
      * @return The transformed URL, or the original if transformation is not applicable
      */
-    private String transformXhsCdnUrl(String originalUrl) {
+    public String transformXhsCdnUrl(String originalUrl) {
         // Skip transformation for video URLs, only transform image URLs
         if (originalUrl != null && originalUrl.contains("xhscdn.com")) {
             // Don't transform video URLs

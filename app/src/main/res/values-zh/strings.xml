@@ -25,4 +25,21 @@
     <string name="settings_saved">设置保存成功</string>
     <string name="open_github_repository">打开GitHub仓库</string>
     <string name="create_live_photos">创建安卓动态照片（将图片和视频合并为单个文件）</string>
+    <string name="webview_title">通过网页爬取</string>
+    <string name="no_urls_found_javascript_null">页面上未找到URL（JavaScript返回空值）</string>
+    <string name="no_accessible_urls_found">页面上未找到可访问的URL</string>
+    <string name="error_parsing_urls">解析URL时出错：%1$s</string>
+    <string name="invalid_url_format">无效的URL格式</string>
+    <string name="no_url_to_process">没有要处理的URL</string>
+    <string name="cannot_open_image">无法打开图片：%1$s</string>
+    <string name="cannot_open_video">无法打开视频：%1$s</string>
+    <string name="cannot_open_file">无法打开文件：%1$s</string>
+    <string name="found_images_via_web_crawl">通过网页爬取找到%1$d张图片：</string>
+    <string name="json_parsing_failed_web_crawl">JSON解析失败。点击\'%1$s\'尝试基于网页的提取。</string>
+    <string name="web_crawl">通过网页爬取</string>
+    <string name="converted_cdn_original_images">已转换CDN原图链接</string>
+    <string name="no_images_found_via_web_crawl">通过网页爬取未找到图片。</string>
+    <string name="download_error_for_url">下载错误：%1$s，URL：%2$s</string>
+    <string name="all_downloads_completed">所有下载已完成。</string>
+    <string name="error_processing_image_urls">处理图片URL时出错：%1$s</string>
 </resources>

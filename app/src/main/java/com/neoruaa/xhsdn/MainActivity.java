@@ -40,11 +40,14 @@ import java.util.List;
 public class MainActivity extends AppCompatActivity {
     private EditText urlInput;
     private Button downloadButton;
+    private Button webCrawlButton;
     private TextView statusText;
     private ProgressBar progressBar;
     private android.widget.ImageButton clearButton;
     private LinearLayout imageContainer;
     private static final int PERMISSION_REQUEST_CODE = 1001;
+    private static final int WEBVIEW_REQUEST_CODE = 1002;
+    private String currentUrl; // Store the URL being processed to pass to WebView
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -67,6 +70,7 @@ public class MainActivity extends AppCompatActivity {
 
         urlInput = findViewById(R.id.urlInput);
         downloadButton = findViewById(R.id.downloadButton);
+        webCrawlButton = findViewById(R.id.webCrawlButton);
         statusText = findViewById(R.id.statusText);
         progressBar = findViewById(R.id.progressBar);
         clearButton = findViewById(R.id.clearButton);
@@ -104,8 +108,30 @@ public class MainActivity extends AppCompatActivity {
                 Toast.makeText(this, getString(R.string.please_enter_url), Toast.LENGTH_SHORT).show();
                 return;
             }
+            // Store the current URL for potential web crawl fallback
+            currentUrl = url;
             startDownload(url);
         });
+        
+        // Set up web crawl button
+        webCrawlButton.setOnClickListener(v -> {
+            if (currentUrl != null && !currentUrl.isEmpty()) {
+                // Extract clean URL from input text (in case it contains extra text)
+                String cleanUrl = extractCleanUrl(currentUrl);
+                
+                if (cleanUrl != null && !cleanUrl.isEmpty()) {
+                    // Start WebView activity with the clean URL
+                    Intent intent = new Intent(MainActivity.this, WebViewActivity.class);
+                    intent.putExtra("url", cleanUrl);
+                    startActivityForResult(intent, WEBVIEW_REQUEST_CODE);
+                } else {
+                    Toast.makeText(this, getString(R.string.invalid_url_format), Toast.LENGTH_SHORT).show();
+                }
+            } else {
+                Toast.makeText(this, getString(R.string.no_url_to_process), Toast.LENGTH_SHORT).show();
+            }
+        });
+
     }
 
     private void setAppVersionInToolbar() {
@@ -124,18 +150,6 @@ public class MainActivity extends AppCompatActivity {
                 getSupportActionBar().setTitle(getString(R.string.app_name));
                 getSupportActionBar().setSubtitle(getString(R.string.app_description));
             }
-        }
-    }
-
-    private void openGitHubRepository() {
-        String url = "https://github.com/NEORUAA/XHS_Downloader_Android";
-        try {
-            Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
-            startActivity(intent);
-        } catch (Exception e) {
-            Log.e("MainActivity", "Error opening GitHub repository: " + e.getMessage());
-            // Fallback: try to show a toast message
-            Toast.makeText(this, "Cannot open browser", Toast.LENGTH_SHORT).show();
         }
     }
 
@@ -302,7 +316,7 @@ public class MainActivity extends AppCompatActivity {
                 uri = androidx.core.content.FileProvider.getUriForFile(this, getPackageName() + ".fileprovider", tempFile);
             } catch (Exception copyException) {
                 Log.e("MainActivity", "Failed to copy file to cache: " + copyException.getMessage());
-                Toast.makeText(this, "Cannot open image: " + copyException.getMessage(), Toast.LENGTH_SHORT).show();
+                Toast.makeText(this, getString(R.string.cannot_open_image, copyException.getMessage()), Toast.LENGTH_SHORT).show();
                 return;
             }
         }
@@ -312,7 +326,7 @@ public class MainActivity extends AppCompatActivity {
         try {
             startActivity(intent);
         } catch (Exception e) {
-            Toast.makeText(this, "Cannot open image: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, getString(R.string.cannot_open_image, e.getMessage()), Toast.LENGTH_SHORT).show();
         }
     }
     
@@ -349,7 +363,7 @@ public class MainActivity extends AppCompatActivity {
                 uri = androidx.core.content.FileProvider.getUriForFile(this, getPackageName() + ".fileprovider", tempFile);
             } catch (Exception copyException) {
                 Log.e("MainActivity", "Failed to copy video to cache: " + copyException.getMessage());
-                Toast.makeText(this, "Cannot open video: " + copyException.getMessage(), Toast.LENGTH_SHORT).show();
+                Toast.makeText(this, getString(R.string.cannot_open_video, copyException.getMessage()), Toast.LENGTH_SHORT).show();
                 return;
             }
         }
@@ -359,7 +373,7 @@ public class MainActivity extends AppCompatActivity {
         try {
             startActivity(intent);
         } catch (Exception e) {
-            Toast.makeText(this, "Cannot open video: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, getString(R.string.cannot_open_video, e.getMessage()), Toast.LENGTH_SHORT).show();
         }
     }
     
@@ -417,7 +431,7 @@ public class MainActivity extends AppCompatActivity {
                 uri = androidx.core.content.FileProvider.getUriForFile(this, getPackageName() + ".fileprovider", tempFile);
             } catch (Exception copyException) {
                 Log.e("MainActivity", "Failed to copy generic file to cache: " + copyException.getMessage());
-                Toast.makeText(this, "Cannot open file: " + copyException.getMessage(), Toast.LENGTH_SHORT).show();
+                Toast.makeText(this, getString(R.string.cannot_open_file, copyException.getMessage()), Toast.LENGTH_SHORT).show();
                 return;
             }
         }
@@ -432,7 +446,7 @@ public class MainActivity extends AppCompatActivity {
         try {
             startActivity(intent);
         } catch (Exception e) {
-            Toast.makeText(this, "Cannot open file: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, getString(R.string.cannot_open_file, e.getMessage()), Toast.LENGTH_SHORT).show();
         }
     }
 
@@ -443,12 +457,178 @@ public class MainActivity extends AppCompatActivity {
     private void startDownload(String url) {
         // Disable button and show progress
         downloadButton.setEnabled(false);
+        webCrawlButton.setVisibility(View.GONE); // Hide the web crawl button during processing
         progressBar.setVisibility(View.VISIBLE);
         statusText.setText(getString(R.string.processing_url, url));
 
         // Create download task
         DownloadTask task = new DownloadTask(this, statusText, progressBar, downloadButton);
         task.execute(url);
+    }
+    
+    /**
+     * Method to show the web crawl button when JSON parsing fails
+     */
+    public void showWebCrawlOption() {
+        runOnUiThread(() -> {
+            webCrawlButton.setVisibility(View.VISIBLE);
+                    statusText.append("\n" + getString(R.string.json_parsing_failed_web_crawl, getString(R.string.webview_title)));
+        });
+    }
+    
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        
+        if (requestCode == WEBVIEW_REQUEST_CODE) {
+            if (resultCode == RESULT_OK && data != null) {
+                // Get the image URLs from the WebView activity
+                ArrayList<String> imageUrls = data.getStringArrayListExtra("image_urls");
+                if (imageUrls != null && !imageUrls.isEmpty()) {
+                    // Process the found image URLs
+                    statusText.setText(getString(R.string.found_images_via_web_crawl, imageUrls.size()));
+                    
+                    // Transform the URLs using the XHSDownloader's transformXhsCdnUrl method to get better quality images
+                    List<String> transformedUrls = new ArrayList<>();
+                    XHSDownloader xhsDownloader = new XHSDownloader(this); // Create temporary instance for URL transformation
+                    for (String url : imageUrls) {
+                        String transformedUrl = xhsDownloader.transformXhsCdnUrl(url);
+                        if (transformedUrl != null && !transformedUrl.isEmpty()) {
+                            transformedUrls.add(transformedUrl);
+                        } else {
+                            // If transformation fails, keep the original URL
+                            transformedUrls.add(url);
+                        }
+                    }
+
+                    statusText.append("\n" + getString(R.string.converted_cdn_original_images));
+
+                    for (String url : transformedUrls) {
+                        statusText.append("\n" + url);
+                    }
+                    
+                    // Start downloading the transformed images
+                    processImageUrls(new ArrayList<>(transformedUrls)); // Convert to ArrayList for compatibility
+                } else {
+                    statusText.append("\n" + getString(R.string.no_images_found_via_web_crawl));
+                }
+            }
+        }
+    }
+    
+    /**
+     * Process the image URLs found via web crawl
+     */
+    private void processImageUrls(ArrayList<String> imageUrls) {
+        // Move the downloading to a background thread to avoid NetworkOnMainThreadException
+        new Thread(() -> {
+            try {
+                // Create a temporary XHSDownloader to handle the downloads
+                XHSDownloader xhsDownloader = new XHSDownloader(this, new DownloadCallback() {
+                    @Override
+                    public void onFileDownloaded(String filePath) {
+                        // Add the downloaded file to the display on the UI thread
+                        runOnUiThread(() -> addMediaToDisplay(filePath));
+                    }
+
+                    @Override
+                    public void onDownloadError(String error, String originalUrl) {
+                        runOnUiThread(() -> statusText.append("\n" + getString(R.string.download_error_for_url, error, originalUrl)));
+                    }
+                    
+                    @Override
+                    public void onDownloadProgress(String status) {
+                        runOnUiThread(() -> statusText.append("\n" + status));
+                    }
+
+                    @Override
+                    public void onDownloadProgressUpdate(long downloaded, long total) {
+                        // Not used in this context
+                    }
+                });
+                
+                // Get the post ID from the current URL to use as a prefix for filenames
+                String postId = new XHSDownloader(this).extractPostId(extractCleanUrl(currentUrl));
+                
+                // Download each image
+                for (int i = 0; i < imageUrls.size(); i++) {
+                    String imageUrl = imageUrls.get(i);
+                    String fileName = postId + "_" + (i + 1) + ".jpg"; // Use .jpg as default or determine from URL
+                    
+                    // Determine file extension based on URL
+                    String extension = determineFileExtension(imageUrl);
+                    fileName = postId + "_" + (i + 1) + "." + extension;
+                    
+                    xhsDownloader.downloadFile(imageUrl, fileName);
+                }
+                
+                runOnUiThread(() -> statusText.append("\n" + getString(R.string.all_downloads_completed)));
+            } catch (Exception e) {
+                Log.e("MainActivity", "Error processing image URLs", e);
+                runOnUiThread(() -> statusText.append("\n" + getString(R.string.error_processing_image_urls, e.getMessage())));
+            }
+        }).start();
+    }
+
+    /**
+     * Extract clean URL from input text that may contain extra text
+     * @param inputText Input text that may contain a URL mixed with other text
+     * @return Clean URL or null if no valid URL found
+     */
+    private String extractCleanUrl(String inputText) {
+        if (inputText == null || inputText.isEmpty()) {
+            return null;
+        }
+        
+        // First try to find URLs with common XHS patterns
+        java.util.regex.Pattern xhsPattern = java.util.regex.Pattern.compile("https?://[\\w\\-.]+\\.xhscdn\\.com/[\\w\\-._~:/?#\\[\\]@!$&'()*+,;=%]+");
+        java.util.regex.Matcher xhsMatcher = xhsPattern.matcher(inputText);
+        if (xhsMatcher.find()) {
+            return xhsMatcher.group();
+        }
+        
+        // Then try to find xhslink.com URLs
+        java.util.regex.Pattern xhsLinkPattern = java.util.regex.Pattern.compile("https?://xhslink\\.com/[\\w\\-._~:/?#\\[\\]@!$&'()*+,;=%]+");
+        java.util.regex.Matcher xhsLinkMatcher = xhsLinkPattern.matcher(inputText);
+        if (xhsLinkMatcher.find()) {
+            return xhsLinkMatcher.group();
+        }
+        
+        // Then try to find general xiaohongshu.com URLs
+        java.util.regex.Pattern xhsComPattern = java.util.regex.Pattern.compile("https?://[\\w\\-.]*xiaohongshu\\.com/[\\w\\-._~:/?#\\[\\]@!$&'()*+,;=%]+");
+        java.util.regex.Matcher xhsComMatcher = xhsComPattern.matcher(inputText);
+        if (xhsComMatcher.find()) {
+            return xhsComMatcher.group();
+        }
+        
+        // Finally try to find any HTTP/HTTPS URL
+        java.util.regex.Pattern urlPattern = java.util.regex.Pattern.compile("https?://[\\w\\-._~:/?#\\[\\]@!$&'()*+,;=%]+");
+        java.util.regex.Matcher urlMatcher = urlPattern.matcher(inputText);
+        if (urlMatcher.find()) {
+            return urlMatcher.group();
+        }
+        
+        // If no URL found, return null
+        return null;
+    }
+    
+    /**
+     * Determine the appropriate file extension based on the URL
+     */
+    private String determineFileExtension(String url) {
+        if (url != null) {
+            // Check for common image extensions in the URL
+            if (url.toLowerCase().contains(".jpg") || url.toLowerCase().contains(".jpeg")) {
+                return "jpg";
+            } else if (url.toLowerCase().contains(".png")) {
+                return "png";
+            } else if (url.toLowerCase().contains(".gif")) {
+                return "gif";
+            } else if (url.toLowerCase().contains(".webp")) {
+                return "webp";
+            }
+        }
+        return "jpg"; // Default fallback
     }
     
     @Override

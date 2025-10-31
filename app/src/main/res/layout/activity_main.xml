@@ -44,7 +44,15 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:text="@string/download_button"
-        android:layout_marginBottom="16dp" />
+        android:layout_marginBottom="8dp" />
+
+    <Button
+        android:id="@+id/webCrawlButton"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="@string/webview_title"
+        android:layout_marginBottom="8dp"
+        android:visibility="gone" />
 
     <ProgressBar
         android:id="@+id/progressBar"

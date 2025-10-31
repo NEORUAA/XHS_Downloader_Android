@@ -10,6 +10,9 @@ import org.json.JSONObject;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -79,34 +82,99 @@ public class XHSDownloader {
                         if (!mediaUrls.isEmpty()) {
                             hasContent = true; // We found media to download
                             Log.d(TAG, "Found " + mediaUrls.size() + " media URLs in post: " + postId);
-                            // Download each media file with unique names
+                            // Download each media file with unique names using concurrent threads for better performance
                             boolean postHasErrors = false;
-                            for (int i = 0; i < mediaUrls.size(); i++) {
-                                String mediaUrl = mediaUrls.get(i);
-                                String uniqueFileName = postId + "_" + (i + 1); // Use index to create unique name
+                            
+                            // Use executor service for concurrent downloads if multiple files exist
+                            if (mediaUrls.size() > 1) {
+                                // For posts with multiple files, use concurrent downloads
+                                ExecutorService executor = Executors.newFixedThreadPool(Math.min(mediaUrls.size(), 4)); // Max 4 concurrent downloads
+                                List<Future<Boolean>> futures = new ArrayList<>();
                                 
-                                // Determine file extension based on URL content
-                                String fileExtension = determineFileExtension(mediaUrl);
-                                String fileNameWithExtension = uniqueFileName + "." + fileExtension;
+                                for (int i = 0; i < mediaUrls.size(); i++) {
+                                    final int index = i;
+                                    final String mediaUrl = mediaUrls.get(i);
+                                    Future<Boolean> future = executor.submit(() -> {
+                                        String uniqueFileName = postId + "_" + (index + 1); // Use index to create unique name
+                                        
+                                        // Determine file extension based on URL content
+                                        String fileExtension = determineFileExtension(mediaUrl);
+                                        String fileNameWithExtension = uniqueFileName + "." + fileExtension;
+                                        
+                                        return downloadFile(mediaUrl, fileNameWithExtension);
+                                    });
+                                    futures.add(future);
+                                }
                                 
-                                boolean success = downloadFile(mediaUrl, fileNameWithExtension);
-                                if (!success) {
-                                    Log.e(TAG, "Failed to download: " + mediaUrl);
-                                    // Notify the callback about the download error with the original URL
-                                    if (downloadCallback != null) {
-                                        // Look up the original URL in the mapping
-                                        String originalUrl = urlMapping.get(mediaUrl);
-                                        if (originalUrl != null) {
-                                            downloadCallback.onDownloadError("Failed to download: " + mediaUrl, originalUrl);
+                                // Wait for all downloads to complete and collect results
+                                for (int i = 0; i < futures.size(); i++) {
+                                    try {
+                                        boolean success = futures.get(i).get();
+                                        String mediaUrl = mediaUrls.get(i);
+                                        if (!success) {
+                                            Log.e(TAG, "Failed to download: " + mediaUrl);
+                                            // Notify the callback about the download error with the original URL
+                                            if (downloadCallback != null) {
+                                                // Look up the original URL in the mapping
+                                                String originalUrl = urlMapping.get(mediaUrl);
+                                                if (originalUrl != null) {
+                                                    downloadCallback.onDownloadError("Failed to download: " + mediaUrl, originalUrl);
+                                                } else {
+                                                    // If no mapping exists, use the URL as is
+                                                    downloadCallback.onDownloadError("Failed to download: " + mediaUrl, mediaUrl);
+                                                }
+                                            }
+                                            postHasErrors = true;
+                                            hasErrors = true;
                                         } else {
-                                            // If no mapping exists, use the URL as is
-                                            downloadCallback.onDownloadError("Failed to download: " + mediaUrl, mediaUrl);
+                                            Log.d(TAG, "Successfully downloaded: " + mediaUrl);
                                         }
+                                    } catch (Exception e) {
+                                        String mediaUrl = mediaUrls.get(i);
+                                        Log.e(TAG, "Exception during concurrent download: " + e.getMessage());
+                                        if (downloadCallback != null) {
+                                            String originalUrl = urlMapping.get(mediaUrl);
+                                            if (originalUrl != null) {
+                                                downloadCallback.onDownloadError("Exception downloading: " + mediaUrl, originalUrl);
+                                            } else {
+                                                downloadCallback.onDownloadError("Exception downloading: " + mediaUrl, mediaUrl);
+                                            }
+                                        }
+                                        postHasErrors = true;
+                                        hasErrors = true;
                                     }
-                                    postHasErrors = true;
-                                    hasErrors = true;
-                                } else {
-                                    Log.d(TAG, "Successfully downloaded: " + mediaUrl);
+                                }
+                                
+                                executor.shutdown();
+                            } else {
+                                // Single file download - keep existing behavior
+                                for (int i = 0; i < mediaUrls.size(); i++) {
+                                    String mediaUrl = mediaUrls.get(i);
+                                    String uniqueFileName = postId + "_" + (i + 1); // Use index to create unique name
+                                    
+                                    // Determine file extension based on URL content
+                                    String fileExtension = determineFileExtension(mediaUrl);
+                                    String fileNameWithExtension = uniqueFileName + "." + fileExtension;
+                                    
+                                    boolean success = downloadFile(mediaUrl, fileNameWithExtension);
+                                    if (!success) {
+                                        Log.e(TAG, "Failed to download: " + mediaUrl);
+                                        // Notify the callback about the download error with the original URL
+                                        if (downloadCallback != null) {
+                                            // Look up the original URL in the mapping
+                                            String originalUrl = urlMapping.get(mediaUrl);
+                                            if (originalUrl != null) {
+                                                downloadCallback.onDownloadError("Failed to download: " + mediaUrl, originalUrl);
+                                            } else {
+                                                // If no mapping exists, use the URL as is
+                                                downloadCallback.onDownloadError("Failed to download: " + mediaUrl, mediaUrl);
+                                            }
+                                        }
+                                        postHasErrors = true;
+                                        hasErrors = true;
+                                    } else {
+                                        Log.d(TAG, "Successfully downloaded: " + mediaUrl);
+                                    }
                                 }
                             }
                             

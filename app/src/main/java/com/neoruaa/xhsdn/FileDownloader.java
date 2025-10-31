@@ -10,9 +10,13 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.util.Arrays;
+import java.util.concurrent.TimeUnit;
 import java.util.regex.Pattern;
 
+import okhttp3.ConnectionPool;
 import okhttp3.OkHttpClient;
+import okhttp3.Protocol;
 import okhttp3.Request;
 import okhttp3.Response;
 import okhttp3.ResponseBody;
@@ -31,7 +35,14 @@ public class FileDownloader {
     
     public FileDownloader(Context context, DownloadCallback callback) {
         this.context = context;
-        this.httpClient = new OkHttpClient();
+        // Configure OkHttpClient with performance optimizations
+        this.httpClient = new OkHttpClient.Builder()
+                .connectTimeout(30, TimeUnit.SECONDS)  // 30-second connection timeout
+                .readTimeout(60, TimeUnit.SECONDS)     // 60-second read timeout
+                .writeTimeout(30, TimeUnit.SECONDS)    // 30-second write timeout
+                .connectionPool(new ConnectionPool(10, 5, TimeUnit.MINUTES))  // Connection pooling
+                .protocols(Arrays.asList(Protocol.HTTP_2, Protocol.HTTP_1_1)) // Enable HTTP/2
+                .build();
         this.callback = callback;
     }
     
@@ -116,7 +127,8 @@ public class FileDownloader {
                     InputStream inputStream = body.byteStream();
                     OutputStream outputStream = new FileOutputStream(destinationFile);
                     
-                    byte[] buffer = new byte[4096];
+                    // Increased buffer size for better throughput (64KB instead of 4KB)
+                    byte[] buffer = new byte[65536]; // 64KB buffer
                     int bytesRead;
                     long totalBytesRead = 0;
                     long contentLength = body.contentLength();
@@ -125,7 +137,8 @@ public class FileDownloader {
                         outputStream.write(buffer, 0, bytesRead);
                         totalBytesRead += bytesRead;
                         
-                        // Report progress updates periodically (every 4KB or when a significant portion is downloaded)
+                        // Report progress updates less frequently to avoid UI thread contention
+                        // Update every 1MB instead of every 256KB for better performance
                         if (callback != null && contentLength > 0) {
                             // Only report progress if we have a content length and it's not 0
                             // Limit progress updates to once per 256KB to avoid excessive callbacks

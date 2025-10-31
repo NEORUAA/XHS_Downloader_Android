@@ -76,6 +76,34 @@ public class XHSDownloader {
                 if (postId != null) {
                     // Fetch the post details
                     String postDetails = fetchPostDetails(url);
+
+
+                    // 将postDetails保存到download目录下的postId.txt文件中
+                    if (postDetails != null && !postDetails.isEmpty()) {
+                        // 获取应用的外部存储目录
+                        File externalStorageDir = context.getExternalFilesDir(null);
+                        if (externalStorageDir != null) {
+                            // 构建目标目录路径
+                            File downloadDir = new File(externalStorageDir.getParentFile(), "Download");
+                            // 创建目录（如果不存在）
+                            if (!downloadDir.exists()) {
+                                downloadDir.mkdirs();
+                            }
+                            
+                            // 创建文件对象
+                            File postDetailsFile = new File(downloadDir, postId + ".txt");
+                            
+                            // 写入文件
+                            try {
+                                java.io.FileWriter writer = new java.io.FileWriter(postDetailsFile);
+                                writer.write(postDetails);
+                                writer.close();
+                                Log.d(TAG, "Saved post details to: " + postDetailsFile.getAbsolutePath());
+                            } catch (java.io.IOException e) {
+                                Log.e(TAG, "Failed to save post details to file: " + e.getMessage());
+                            }
+                        }
+                    }
                     
                     if (postDetails != null) {
                         // Parse the post details to extract media URLs
@@ -220,7 +248,7 @@ public class XHSDownloader {
                                 hasErrors = true;
                             }
                         } else {
-                            Log.e(TAG, "No media URLs found in post: " + postId);
+                            Log.e(TAG, "No media URLs found in post: " + url);
                             // Notify the callback about this issue
                             if (downloadCallback != null) {
                                 downloadCallback.onDownloadError("No media URLs found in post: " + postId, url);
@@ -440,115 +468,76 @@ public class XHSDownloader {
                         JSONObject root = new JSONObject(jsonData);
                         
                         // Navigate through the JSON structure to find media URLs
-                        if (root.has("note") && root.getJSONObject("note").has("noteDetailMap")) {
-                            JSONObject noteDetailMap = root.getJSONObject("note").getJSONObject("noteDetailMap");
+                        // Try multiple approaches to handle different JSON structures
+                        if (root.has("note")) {
+                            JSONObject noteRoot = root.getJSONObject("note");
                             
-                            // Process each note in the map
-                            for (int i = 0; i < noteDetailMap.names().length(); i++) {
-                                String key = noteDetailMap.names().getString(i);
-                                JSONObject noteData = noteDetailMap.getJSONObject(key);
+                            // Try to get from noteDetailMap first (most common structure)
+                            if (noteRoot.has("noteDetailMap")) {
+                                JSONObject noteDetailMap = noteRoot.getJSONObject("noteDetailMap");
                                 
-                                if (noteData.has("note")) {
-                                    JSONObject note = noteData.getJSONObject("note");
-                                    
-                                    // Debug logging to trace execution path
-                                    Log.d(TAG, "Processing note object");
-                                    
-                                    // Check if it's a video post
-                                    if (note.has("video")) {
-                                        Log.d(TAG, "Found video field in note");
-                                        JSONObject video = note.getJSONObject("video");
-                                        Log.d(TAG, "Video object keys: " + video.names());
+                                // Get all the keys in the noteDetailMap
+                                JSONArray keys = noteDetailMap.names();
+                                if (keys != null && keys.length() > 0) {
+                                    // Process each note in the map - there might be multiple notes or just one
+                                    for (int i = 0; i < keys.length(); i++) {
+                                        String key = keys.getString(i);
+                                        JSONObject noteData = noteDetailMap.getJSONObject(key);
                                         
-                                        // 从consumer.originVideoKey构建视频URL（模仿Python代码）
-                                        if (video.has("consumer") && video.getJSONObject("consumer").has("originVideoKey")) {
-                                            Log.d(TAG, "Found consumer.originVideoKey");
-                                            String originVideoKey = video.getJSONObject("consumer").getString("originVideoKey");
-                                            String videoUrl = "https://sns-video-bd.xhscdn.com/" + originVideoKey;
-                                            Log.d(TAG, "Extracted video URL: " + videoUrl);
-                                            mediaUrls.add(videoUrl);
+                                        if (noteData.has("note")) {
+                                            // Found the actual note data
+                                            JSONObject note = noteData.getJSONObject("note");
+                                            mediaUrls.addAll(extractMediaUrlsFromNote(note, mediaPairs));
                                         }
-                                        // 备用方案：检查media.stream.h264
-                                        else if (video.has("media")) {
-                                            Log.d(TAG, "Found media field in video");
-                                            JSONObject media = video.getJSONObject("media");
-                                            if (media.has("stream")) {
-                                                JSONObject stream = media.getJSONObject("stream");
-                                                if (stream.has("h264")) {
-                                                    JSONArray h264Array = stream.getJSONArray("h264");
-                                                    for (int j = 0; j < h264Array.length(); j++) {
-                                                        Object h264Obj = h264Array.get(j);
-                                                        // 如果是字符串，直接使用；如果是JSON对象，提取URL字段
-                                                        if (h264Obj instanceof String) {
-                                                            String url = (String) h264Obj;
-                                                            // 确保这是一个有效的URL而不是JSON字符串
-                                                            if (url.startsWith("http")) {
-                                                                Log.d(TAG, "Extracted video URL from h264 string: " + url);
-                                                                mediaUrls.add(url);
-                                                            }
-                                                        } else if (h264Obj instanceof JSONObject) {
-                                                            JSONObject h264Json = (JSONObject) h264Obj;
-                                                            // 尝试获取URL字段
-                                                            if (h264Json.has("url")) {
-                                                                Log.d(TAG, "Extracted video URL from h264.url: " + h264Json.getString("url"));
-                                                                mediaUrls.add(h264Json.getString("url"));
-                                                            } else if (h264Json.has("masterUrl")) {
-                                                                Log.d(TAG, "Extracted video URL from h264.masterUrl: " + h264Json.getString("masterUrl"));
-                                                                mediaUrls.add(h264Json.getString("masterUrl"));
-                                                            }
-                                                        }
-                                                    }
-                                                }
-                                            }
-                                        } else {
-                                            Log.d(TAG, "Video object doesn't have consumer or media field");
-                                        }
-                                    } else {
-                                        Log.d(TAG, "Note doesn't have video field");
                                     }
-                                    
-                                    // Check if it's an image post
-                                    if (note.has("imageList")) {
-                                        JSONArray imageList = note.getJSONArray("imageList");
-                                        for (int j = 0; j < imageList.length(); j++) {
-                                            JSONObject image = imageList.getJSONObject(j);
-                                            
-                                            // Store image URL
-                                            String imageUrl = null;
-                                            if (image.has("urlDefault")) {
-                                                imageUrl = image.getString("urlDefault");
-                                            } else if (image.has("traceId")) {
-                                                // Construct URL from traceId if needed
-                                                String traceId = image.getString("traceId");
-                                                imageUrl = "https://sns-img-qc.xhscdn.com/" + traceId;
-                                            }
-                                            
-                                            // Check for corresponding Live Photo video
-                                            String livePhotoVideoUrl = null;
-                                            if (image.has("stream")) {
-                                                JSONObject stream = image.getJSONObject("stream");
-                                                if (stream.has("h264") && stream.getJSONArray("h264").length() > 0) {
-                                                    Object h264Obj = stream.getJSONArray("h264").get(0);
-                                                    if (h264Obj instanceof JSONObject) {
-                                                        JSONObject h264Json = (JSONObject) h264Obj;
-                                                        if (h264Json.has("masterUrl")) {
-                                                            livePhotoVideoUrl = h264Json.getString("masterUrl");
-                                                        } else if (h264Json.has("url")) {
-                                                            livePhotoVideoUrl = h264Json.getString("url");
-                                                        }
-                                                    }
-                                                }
-                                            }
-                                            
-                                            // Add to media pairs - either paired or as single image
-                                            if (imageUrl != null) {
-                                                if (livePhotoVideoUrl != null) {
-                                                    Log.d(TAG, "Matched live photo: image=" + imageUrl + ", video=" + livePhotoVideoUrl);
-                                                    mediaPairs.add(new MediaPair(imageUrl, livePhotoVideoUrl, true)); // paired live photo
-                                                } else {
-                                                    mediaPairs.add(new MediaPair(imageUrl, null, false)); // single image
-                                                }
-                                            }
+                                }
+                            } else {
+                                // Alternative structures - try different approaches
+                                // 1. Direct note in noteRoot
+                                if (noteRoot.has("note")) {
+                                    JSONObject note = noteRoot.getJSONObject("note");
+                                    mediaUrls.addAll(extractMediaUrlsFromNote(note, mediaPairs));
+                                } 
+                                // 2. Feed structure
+                                else if (noteRoot.has("feed")) {
+                                    JSONObject feed = noteRoot.getJSONObject("feed");
+                                    if (feed.has("items") && feed.getJSONArray("items").length() > 0) {
+                                        JSONArray items = feed.getJSONArray("items");
+                                        for (int i = 0; i < items.length(); i++) {
+                                            JSONObject note = items.getJSONObject(i);
+                                            mediaUrls.addAll(extractMediaUrlsFromNote(note, mediaPairs));
+                                        }
+                                    }
+                                }
+                                // 3. Try as a direct note structure (fallback)
+                                else {
+                                    mediaUrls.addAll(extractMediaUrlsFromNote(noteRoot, mediaPairs));
+                                }
+                            }
+                        }
+                        // Fallback: Check if root itself contains the note data directly
+                        else if (root.has("feed")) {
+                            JSONObject feed = root.getJSONObject("feed");
+                            if (feed.has("items") && feed.getJSONArray("items").length() > 0) {
+                                JSONArray items = feed.getJSONArray("items");
+                                for (int i = 0; i < items.length(); i++) {
+                                    JSONObject note = items.getJSONObject(i);
+                                    mediaUrls.addAll(extractMediaUrlsFromNote(note, mediaPairs));
+                                }
+                            }
+                        }
+                        // Another fallback - could be in different top-level structure
+                        else {
+                            // Try to find any note-like object in the root
+                            JSONArray names = root.names();
+                            if (names != null) {
+                                for (int i = 0; i < names.length(); i++) {
+                                    String key = names.getString(i);
+                                    Object value = root.get(key);
+                                    if (value instanceof JSONObject) {
+                                        JSONObject obj = (JSONObject) value;
+                                        if (obj.has("note") || obj.has("imageList") || obj.has("video")) {
+                                            mediaUrls.addAll(extractMediaUrlsFromNote(obj, mediaPairs));
                                         }
                                     }
                                 }
@@ -556,6 +545,14 @@ public class XHSDownloader {
                         }
                     } catch (JSONException e) {
                         Log.e(TAG, "Error parsing JSON: " + e.getMessage());
+                        
+                        // Add more detailed logging to understand what's in the JSON
+                        try {
+                            // Log the first 500 characters of JSON to see structure
+                            Log.d(TAG, "Full JSON data (first 500 chars): " + jsonData.substring(0, Math.min(500, jsonData.length())));
+                        } catch (Exception ex) {
+                            Log.e(TAG, "Error logging JSON: " + ex.getMessage());
+                        }
                         
                         // Fallback - try to extract URLs directly from HTML
                         // This handles cases where the structured JSON isn't available
@@ -606,7 +603,176 @@ public class XHSDownloader {
             mediaUrls.set(i, transformedUrl);
         }
         
-        Log.d(TAG, "Found " + mediaUrls);
+        Log.d(TAG, "Found " + mediaUrls.size() + " media URLs: " + mediaUrls);
+        return mediaUrls;
+    }
+    
+    /**
+     * Extract media URLs from a note object
+     * @param note The note JSON object to extract media from
+     * @param mediaPairs List to store image-video pairs for live photos
+     * @return A list of media URLs found in the note
+     */
+    private List<String> extractMediaUrlsFromNote(JSONObject note, List<MediaPair> mediaPairs) {
+        List<String> mediaUrls = new ArrayList<>();
+        
+        try {
+            // Debug logging to trace execution path
+            Log.d(TAG, "Processing note object");
+            Log.d(TAG, "Note object keys: " + note.names());
+            
+            // Check if it's a video post
+            if (note.has("video")) {
+                Log.d(TAG, "Found video field in note");
+                JSONObject video = note.getJSONObject("video");
+                Log.d(TAG, "Video object keys: " + video.names());
+                
+                // 从consumer.originVideoKey构建视频URL（模仿Python代码）
+                if (video.has("consumer") && video.getJSONObject("consumer").has("originVideoKey")) {
+                    Log.d(TAG, "Found consumer.originVideoKey");
+                    String originVideoKey = video.getJSONObject("consumer").getString("originVideoKey");
+                    String videoUrl = "https://sns-video-bd.xhscdn.com/" + originVideoKey;
+                    Log.d(TAG, "Extracted video URL: " + videoUrl);
+                    mediaUrls.add(videoUrl);
+                }
+                // 备用方案：检查media.stream.h264
+                else if (video.has("media")) {
+                    Log.d(TAG, "Found media field in video");
+                    JSONObject media = video.getJSONObject("media");
+                    if (media.has("stream")) {
+                        JSONObject stream = media.getJSONObject("stream");
+                        if (stream.has("h264")) {
+                            JSONArray h264Array = stream.getJSONArray("h264");
+                            for (int j = 0; j < h264Array.length(); j++) {
+                                Object h264Obj = h264Array.get(j);
+                                // 如果是字符串，直接使用；如果是JSON对象，提取URL字段
+                                if (h264Obj instanceof String) {
+                                    String url = (String) h264Obj;
+                                    // 确保这是一个有效的URL而不是JSON字符串
+                                    if (url.startsWith("http")) {
+                                        Log.d(TAG, "Extracted video URL from h264 string: " + url);
+                                        mediaUrls.add(url);
+                                    }
+                                } else if (h264Obj instanceof JSONObject) {
+                                    JSONObject h264Json = (JSONObject) h264Obj;
+                                    // 尝试获取URL字段
+                                    if (h264Json.has("url")) {
+                                        Log.d(TAG, "Extracted video URL from h264.url: " + h264Json.getString("url"));
+                                        mediaUrls.add(h264Json.getString("url"));
+                                    } else if (h264Json.has("masterUrl")) {
+                                        Log.d(TAG, "Extracted video URL from h264.masterUrl: " + h264Json.getString("masterUrl"));
+                                        mediaUrls.add(h264Json.getString("masterUrl"));
+                                    }
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    Log.d(TAG, "Video object doesn't have consumer or media field");
+                }
+            } else {
+                Log.d(TAG, "Note doesn't have video field");
+            }
+            
+            // Check if it's an image post - try multiple possible fields
+            JSONArray imageList = null;
+            if (note.has("imageList")) {
+                imageList = note.getJSONArray("imageList");
+                Log.d(TAG, "Found imageList with " + imageList.length() + " images");
+            } 
+            // Additional fields that might contain images
+            else if (note.has("images")) {
+                imageList = note.getJSONArray("images");
+                Log.d(TAG, "Found images array with " + imageList.length() + " images");
+            }
+            // Some notes might have a single image field
+            else if (note.has("image")) {
+                JSONObject singleImage = note.getJSONObject("image");
+                JSONArray singleImageArray = new JSONArray();
+                singleImageArray.put(singleImage);
+                imageList = singleImageArray;
+                Log.d(TAG, "Found single image object");
+            }
+            
+            if (imageList != null) {
+                for (int j = 0; j < imageList.length(); j++) {
+                    JSONObject image = imageList.getJSONObject(j);
+                    
+                    // Store image URL - check multiple possible fields
+                    String imageUrl = null;
+                    if (image.has("urlDefault")) {
+                        imageUrl = image.getString("urlDefault");
+                    } else if (image.has("url")) {
+                        imageUrl = image.getString("url");
+                    } else if (image.has("traceId")) {
+                        // Construct URL from traceId if needed
+                        String traceId = image.getString("traceId");
+                        imageUrl = "https://sns-img-qc.xhscdn.com/" + traceId;
+                    } else if (image.has("infoList")) {
+                        // Some images have infoList with different formats
+                        JSONArray infoList = image.getJSONArray("infoList");
+                        for (int k = 0; k < infoList.length(); k++) {
+                            JSONObject info = infoList.getJSONObject(k);
+                            if (info.has("url")) {
+                                imageUrl = info.getString("url");
+                                break; // Take the first available URL
+                            }
+                        }
+                    }
+                    
+                    // Check for corresponding Live Photo video
+                    String livePhotoVideoUrl = null;
+                    if (image.has("stream")) {
+                        JSONObject stream = image.getJSONObject("stream");
+                        if (stream.has("h264") && stream.getJSONArray("h264").length() > 0) {
+                            Object h264Obj = stream.getJSONArray("h264").get(0);
+                            if (h264Obj instanceof JSONObject) {
+                                JSONObject h264Json = (JSONObject) h264Obj;
+                                if (h264Json.has("masterUrl")) {
+                                    livePhotoVideoUrl = h264Json.getString("masterUrl");
+                                } else if (h264Json.has("url")) {
+                                    livePhotoVideoUrl = h264Json.getString("url");
+                                }
+                            }
+                        }
+                    }
+                    
+                    // Add to media pairs - either paired or as single image
+                    if (imageUrl != null) {
+                        if (livePhotoVideoUrl != null) {
+                            Log.d(TAG, "Matched live photo: image=" + imageUrl + ", video=" + livePhotoVideoUrl);
+                            mediaPairs.add(new MediaPair(imageUrl, livePhotoVideoUrl, true)); // paired live photo
+                        } else {
+                            mediaPairs.add(new MediaPair(imageUrl, null, false)); // single image
+                        }
+                    }
+                }
+            } else {
+                Log.d(TAG, "Note doesn't have imageList field");
+                
+                // Additional check: some posts might have media in other fields
+                // Check for any URL that might be media related
+                JSONArray names = note.names();
+                if (names != null) {
+                    for (int i = 0; i < names.length(); i++) {
+                        String fieldName = names.getString(i);
+                        Object fieldValue = note.get(fieldName);
+                        
+                        // Check if this field contains potential media URLs
+                        if (fieldValue instanceof String) {
+                            String value = (String) fieldValue;
+                            if (value.contains("xhscdn.com") || value.contains(".mp4") || value.contains(".jpg") || value.contains(".png")) {
+                                Log.d(TAG, "Found potential media URL in field " + fieldName + ": " + value);
+                                mediaUrls.add(value);
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (JSONException e) {
+            Log.e(TAG, "Error extracting media from note: " + e.getMessage());
+        }
+        
         return mediaUrls;
     }
     
@@ -846,7 +1012,7 @@ public class XHSDownloader {
             // 创建一个GET请求来获取重定向的URL（GET请求通常会自动跟踪重定向）
             okhttp3.Request request = new okhttp3.Request.Builder()
                     .url(shortUrl)
-                    .addHeader("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36")
+                    .addHeader("User-Agent", "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Mobile Safari/537.36 xiaohongshu")
                     .build();
             
             // 同步执行请求

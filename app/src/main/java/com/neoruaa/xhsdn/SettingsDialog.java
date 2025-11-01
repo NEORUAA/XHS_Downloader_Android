@@ -74,7 +74,7 @@ public class SettingsDialog extends Dialog {
     }
     
     private String getDefaultSavePath() {
-        return Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS).getAbsolutePath() + "/xhs";
+        return Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES).getAbsolutePath() + "/xhs";
     }
     
     private void applySettings() {

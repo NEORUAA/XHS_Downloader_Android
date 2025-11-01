@@ -34,12 +34,13 @@
     <string name="cannot_open_image">无法打开图片：%1$s</string>
     <string name="cannot_open_video">无法打开视频：%1$s</string>
     <string name="cannot_open_file">无法打开文件：%1$s</string>
-    <string name="found_images_via_web_crawl">通过网页爬取找到%1$d张图片：</string>
-    <string name="json_parsing_failed_web_crawl">JSON解析失败。点击\'%1$s\'尝试基于网页的提取。</string>
+    <string name="found_images_via_web_crawl">通过网页爬取找到%1$d个媒体：</string>
+    <string name="json_parsing_failed_web_crawl">JSON解析失败。点击「%1$s」尝试基于网页的提取。</string>
     <string name="web_crawl">通过网页爬取</string>
-    <string name="converted_cdn_original_images">已转换CDN原图链接</string>
-    <string name="no_images_found_via_web_crawl">通过网页爬取未找到图片。</string>
+    <string name="converted_cdn_original_images">已转换CDN无压缩链接，下载中...</string>
+    <string name="no_images_found_via_web_crawl">通过网页爬取未找到媒体。</string>
     <string name="download_error_for_url">下载错误：%1$s，URL：%2$s</string>
     <string name="all_downloads_completed">所有下载已完成。</string>
     <string name="error_processing_image_urls">处理图片URL时出错：%1$s</string>
+    <string name="crawl_medias">爬取网页上的媒体</string>
 </resources>

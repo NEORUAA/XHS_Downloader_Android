@@ -998,11 +998,11 @@ public class XHSDownloader {
                         if (customSavePath != null && !customSavePath.isEmpty()) {
                             destinationDir = new File(customSavePath);
                         } else {
-                            File publicDownloadsDir = android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS);
-                            if (publicDownloadsDir != null) {
-                                destinationDir = new File(publicDownloadsDir, "xhs");
+                            File publicPicturesDir = android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_PICTURES);
+                            if (publicPicturesDir != null) {
+                                destinationDir = new File(publicPicturesDir, "xhs");
                             } else {
-                                destinationDir = context.getExternalFilesDir(android.os.Environment.DIRECTORY_DOWNLOADS);
+                                destinationDir = context.getExternalFilesDir(android.os.Environment.DIRECTORY_PICTURES);
                             }
                         }
                         
@@ -1071,7 +1071,7 @@ public class XHSDownloader {
                             if (downloadCallback != null && anySeparateFilesDownloaded) {
                                 if (imageDownloadedFallback) {
                                     File separateImageFile = new File(
-                                        android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS),
+                                        android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_PICTURES),
                                         "xhs_" + imageFileName.replace("xhs_", "")
                                     );
                                     if (separateImageFile.exists()) {
@@ -1080,7 +1080,7 @@ public class XHSDownloader {
                                 }
                                 if (videoDownloadedFallback) {
                                     File separateVideoFile = new File(
-                                        android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS),
+                                        android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_PICTURES),
                                         "xhs_" + videoFileName.replace("xhs_", "")
                                     );
                                     if (separateVideoFile.exists()) {

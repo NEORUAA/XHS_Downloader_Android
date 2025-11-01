@@ -625,8 +625,20 @@ public class MainActivity extends AppCompatActivity {
      */
     private String determineFileExtension(String url) {
         if (url != null) {
+            // Check for common video extensions in the URL first
+            if (url.toLowerCase().contains(".mp4")) {
+                return "mp4";
+            } else if (url.toLowerCase().contains(".mov")) {
+                return "mov";
+            } else if (url.toLowerCase().contains(".avi")) {
+                return "avi";
+            } else if (url.toLowerCase().contains(".mkv")) {
+                return "mkv";
+            } else if (url.toLowerCase().contains(".webm")) {
+                return "webm";
+            }
             // Check for common image extensions in the URL
-            if (url.toLowerCase().contains(".jpg") || url.toLowerCase().contains(".jpeg")) {
+            else if (url.toLowerCase().contains(".jpg") || url.toLowerCase().contains(".jpeg")) {
                 return "jpg";
             } else if (url.toLowerCase().contains(".png")) {
                 return "png";
@@ -636,7 +648,11 @@ public class MainActivity extends AppCompatActivity {
                 return "webp";
             }
         }
-        return "jpg"; // Default fallback
+        // If URL has "video" in it or "sns-video" (Xiaohongshu video pattern), assume it's a video
+        if (url != null && (url.contains("video") || url.contains("sns-video"))) {
+            return "mp4";
+        }
+        return "jpg"; // Default fallback for images
     }
     
     @Override

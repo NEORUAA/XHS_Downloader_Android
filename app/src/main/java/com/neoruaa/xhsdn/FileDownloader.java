@@ -74,10 +74,10 @@ public class FileDownloader {
                     destinationDir = new File(customSavePath);
                     Log.d(TAG, "Using custom save path: " + customSavePath);
                 } else {
-                    // Try to use public Downloads directory first (requires permissions)
-                    File publicDownloadsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS);
-                    if (publicDownloadsDir != null) {
-                        destinationDir = new File(publicDownloadsDir, "xhs");
+                    // Try to use public Pictures directory first (requires permissions)
+                    File publicPicturesDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES);
+                    if (publicPicturesDir != null) {
+                        destinationDir = new File(publicPicturesDir, "xhs");
                     } else {
                         destinationDir = null;
                     }
@@ -106,9 +106,9 @@ public class FileDownloader {
                     // If we can't write to public directory, fall back to app's private directory
                     if (!canWriteToPublic) {
                         Log.d(TAG, "Falling back to app's private directory");
-                        destinationDir = new File(context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS), "xhs");
+                        destinationDir = new File(context.getExternalFilesDir(Environment.DIRECTORY_PICTURES), "xhs");
                     } else {
-                        Log.d(TAG, "Using public Downloads directory");
+                        Log.d(TAG, "Using public Pictures directory");
                     }
                 }
                 

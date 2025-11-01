@@ -34,12 +34,13 @@
     <string name="cannot_open_image">Cannot open image: %1$s</string>
     <string name="cannot_open_video">Cannot open video: %1$s</string>
     <string name="cannot_open_file">Cannot open file: %1$s</string>
-    <string name="found_images_via_web_crawl">Found %1$d images via web crawl:</string>
-    <string name="json_parsing_failed_web_crawl">JSON parsing failed. Click \'%1$s\' to try web-based extraction.</string>
+    <string name="found_images_via_web_crawl">Found %1$d medias via web crawl:</string>
+    <string name="json_parsing_failed_web_crawl">JSON parsing failed. Click 「%1$s」 to try web-based extraction.</string>
     <string name="web_crawl">Fetch via Web Crawl</string>
-    <string name="converted_cdn_original_images">Converted CDN original images</string>
-    <string name="no_images_found_via_web_crawl">No images found via web crawl.</string>
+    <string name="converted_cdn_original_images">Converted CDN original files, downloading...</string>
+    <string name="no_images_found_via_web_crawl">No medias found via web crawl.</string>
     <string name="download_error_for_url">Download Error: %1$s for URL: %2$s</string>
     <string name="all_downloads_completed">All downloads completed.</string>
     <string name="error_processing_image_urls">Error processing image URLs: %1$s</string>
+    <string name="crawl_medias">Crawl Medias On Page</string>
 </resources>

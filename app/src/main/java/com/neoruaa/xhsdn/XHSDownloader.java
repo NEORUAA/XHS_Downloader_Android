@@ -37,6 +37,9 @@ public class XHSDownloader {
     private DownloadCallback downloadCallback;
     // Map to store the relationship between transformed URLs and original URLs for fallback
     private java.util.Map<String, String> urlMapping = new java.util.HashMap<>();
+    
+    // Track successful downloads for the overall download result
+    private int successfulDownloads = 0;
 
     public XHSDownloader(Context context) {
         this(context, null);
@@ -46,7 +49,33 @@ public class XHSDownloader {
         this.context = context;
         this.httpClient = new OkHttpClient();
         this.downloadUrls = new ArrayList<>();
-        this.downloadCallback = callback;
+        // Wrap the original callback to track successful downloads
+        if (callback != null) {
+            this.downloadCallback = new DownloadCallback() {
+                @Override
+                public void onFileDownloaded(String filePath) {
+                    successfulDownloads++; // Increment counter when a file is successfully downloaded
+                    callback.onFileDownloaded(filePath);
+                }
+
+                @Override
+                public void onDownloadError(String status, String originalUrl) {
+                    callback.onDownloadError(status, originalUrl);
+                }
+                
+                @Override
+                public void onDownloadProgress(String status) {
+                    callback.onDownloadProgress(status);
+                }
+
+                @Override
+                public void onDownloadProgressUpdate(long downloaded, long total) {
+                    callback.onDownloadProgressUpdate(downloaded, total);
+                }
+            };
+        } else {
+            this.downloadCallback = callback;
+        }
     }
     
     public boolean downloadFile(String url, String filename) {
@@ -56,6 +85,8 @@ public class XHSDownloader {
     }
     
     public boolean downloadContent(String inputUrl) {
+        // Reset successful downloads counter for this download session
+        this.successfulDownloads = 0;
         boolean hasErrors = false; // Track if any errors occurred
         boolean hasContent = false; // Track if we found any content to download
         try {
@@ -285,10 +316,17 @@ public class XHSDownloader {
                 }
             }
             
-            // Return true only if we processed everything without errors
-            // If we found content and had no errors, that's success
-            // If we found no content or had errors, that's failure
-            return !hasErrors;
+            // Clear state variables to prevent issues in subsequent downloads
+            downloadUrls.clear();
+            urlMapping.clear();
+            
+            // Return true if we successfully downloaded at least one file, even if some had errors
+            // For the overall process, return success if successfulDownloads > 0
+            boolean overallSuccess = successfulDownloads > 0;
+            
+            Log.d(TAG, "Download process completed with " + successfulDownloads + " successful downloads, hasErrors: " + hasErrors);
+            
+            return overallSuccess;
         } catch (Exception e) {
             Log.e(TAG, "Error in downloadContent: " + e.getMessage());
             e.printStackTrace();
@@ -296,6 +334,9 @@ public class XHSDownloader {
             if (context instanceof MainActivity) {
                 ((MainActivity) context).showWebCrawlOption();
             }
+            // Clear state variables in case of exception as well
+            downloadUrls.clear();
+            urlMapping.clear();
             return false;
         }
     }
@@ -581,9 +622,29 @@ public class XHSDownloader {
             mediaUrls.addAll(extractUrlsFromHtml(html));
         }
         
+        // Clear the URL mapping before processing new URLs
+        urlMapping.clear();
+        
         // If we have media pairs, process them and add to main mediaUrls
         // But preserve any existing mediaUrls (like videos from note.video section)
         List<String> existingMediaUrls = new ArrayList<>(mediaUrls); // Preserve existing URLs
+        
+        // Transform URLs for all media pairs first to maintain proper pairing
+        for (MediaPair pair : mediaPairs) {
+            if (pair.originalImageUrl != null) {
+                pair.imageUrl = transformXhsCdnUrl(pair.originalImageUrl);
+                // Store mapping for original to transformed URL
+                urlMapping.put(pair.imageUrl, pair.originalImageUrl);
+                Log.d(TAG, "Transformed image URL: " + pair.originalImageUrl + " -> " + pair.imageUrl);
+            }
+            if (pair.originalVideoUrl != null) {
+                pair.videoUrl = transformXhsCdnUrl(pair.originalVideoUrl);
+                // Store mapping for original to transformed URL
+                urlMapping.put(pair.videoUrl, pair.originalVideoUrl);
+                Log.d(TAG, "Transformed video URL: " + pair.originalVideoUrl + " -> " + pair.videoUrl);
+            }
+        }
+        
         if (!mediaPairs.isEmpty()) {
             mediaUrls.clear(); // Clear the existing mediaUrls to start fresh with properly paired items
             for (MediaPair pair : mediaPairs) {
@@ -606,17 +667,9 @@ public class XHSDownloader {
             }
         }
         
-        // Clear the URL mapping before processing new URLs
-        urlMapping.clear();
-        
-        // Process media URLs to transform xhscdn.com URLs to the new format
-        for (int i = 0; i < mediaUrls.size(); i++) {
-            String originalUrl = mediaUrls.get(i);
-            Log.d(TAG, "Original URL: " + originalUrl);
-            String transformedUrl = transformXhsCdnUrl(originalUrl);
-            // Store the mapping between transformed URL and original URL
-            urlMapping.put(transformedUrl, originalUrl);
-            mediaUrls.set(i, transformedUrl);
+        // Log the final media URLs for debugging
+        for (String url : mediaUrls) {
+            Log.d(TAG, "Original URL: " + url);
         }
         
         Log.d(TAG, "Found " + mediaUrls.size() + " media URLs: " + mediaUrls);
@@ -757,9 +810,9 @@ public class XHSDownloader {
                     if (imageUrl != null) {
                         if (livePhotoVideoUrl != null) {
                             Log.d(TAG, "Matched live photo: image=" + imageUrl + ", video=" + livePhotoVideoUrl);
-                            mediaPairs.add(new MediaPair(imageUrl, livePhotoVideoUrl, true)); // paired live photo
+                            mediaPairs.add(new MediaPair(imageUrl, livePhotoVideoUrl, true)); // paired live photo with original URLs
                         } else {
-                            mediaPairs.add(new MediaPair(imageUrl, null, false)); // single image
+                            mediaPairs.add(new MediaPair(imageUrl, null, false)); // single image with original URL
                         }
                     }
                 }
@@ -796,13 +849,17 @@ public class XHSDownloader {
      * Class to hold image-video pairs for live photos
      */
     private static class MediaPair {
+        String originalImageUrl;
+        String originalVideoUrl;
         String imageUrl;
         String videoUrl;
         boolean isLivePhoto;
         
-        MediaPair(String imageUrl, String videoUrl, boolean isLivePhoto) {
-            this.imageUrl = imageUrl;
-            this.videoUrl = videoUrl;
+        MediaPair(String originalImageUrl, String originalVideoUrl, boolean isLivePhoto) {
+            this.originalImageUrl = originalImageUrl;
+            this.originalVideoUrl = originalVideoUrl;
+            this.imageUrl = originalImageUrl;  // Initialize with original, will be transformed later
+            this.videoUrl = originalVideoUrl;  // Initialize with original, will be transformed later
             this.isLivePhoto = isLivePhoto;
         }
     }
@@ -860,6 +917,8 @@ public class XHSDownloader {
         
         // Process media URLs in pairs: [image, video, image, video, ...] for live photos
         // Regular images/videos that are not part of live photos are handled separately
+        int livePhotoIndex = 0; // Track the live photo number separately to ensure correct pairing
+        
         for (int i = 0; i < mediaUrls.size(); i++) {
             String currentUrl = mediaUrls.get(i);
             
@@ -881,12 +940,18 @@ public class XHSDownloader {
                     String imageUrl = currentUrl;
                     String videoUrl = mediaUrls.get(i + 1);
                     
+                    livePhotoIndex++; // Increment the live photo index for this pair
+                    
                     try {
+                        Log.d(TAG, "Creating live photo " + livePhotoIndex + " for post: " + postId);
+                        Log.d(TAG, "Image URL: " + imageUrl);
+                        Log.d(TAG, "Video URL: " + videoUrl);
+                        
                         // Create a temporary downloader that downloads to the app's internal storage
                         FileDownloader tempDownloader = new FileDownloader(context, null); // No callback to avoid premature notification
                         
                         // Download the image to a temporary location (app's internal storage)
-                        String imageFileName = postId + "_img_" + ((i/2) + 1) + "." + determineFileExtension(imageUrl);
+                        String imageFileName = postId + "_img_" + livePhotoIndex + "." + determineFileExtension(imageUrl);
                         boolean imageDownloaded = tempDownloader.downloadFileToInternalStorage(imageUrl, imageFileName);
                         if (!imageDownloaded) {
                             Log.e(TAG, "Failed to download image for live photo: " + imageUrl);
@@ -897,7 +962,7 @@ public class XHSDownloader {
                         }
                         
                         // Download the video to a temporary location (app's internal storage)
-                        String videoFileName = postId + "_vid_" + ((i/2) + 1) + "." + determineFileExtension(videoUrl);
+                        String videoFileName = postId + "_vid_" + livePhotoIndex + "." + determineFileExtension(videoUrl);
                         boolean videoDownloaded = tempDownloader.downloadFileToInternalStorage(videoUrl, videoFileName);
                         if (!videoDownloaded) {
                             Log.e(TAG, "Failed to download video for live photo: " + videoUrl);
@@ -914,6 +979,9 @@ public class XHSDownloader {
                         // The files are downloaded to internal storage with "xhs_" prefix
                         File actualTempImageFile = new File(context.getExternalFilesDir(null), "xhs_" + imageFileName);
                         File actualTempVideoFile = new File(context.getExternalFilesDir(null), "xhs_" + videoFileName);
+                        
+                        Log.d(TAG, "Image file downloaded to: " + actualTempImageFile.getAbsolutePath());
+                        Log.d(TAG, "Video file downloaded to: " + actualTempVideoFile.getAbsolutePath());
                         
                         if (!actualTempImageFile.exists() || !actualTempVideoFile.exists()) {
                             Log.e(TAG, "Downloaded temporary files do not exist. Image: " + actualTempImageFile.exists() + ", Video: " + actualTempVideoFile.exists());
@@ -943,34 +1011,89 @@ public class XHSDownloader {
                         }
                         
                         // Create the live photo in the final destination
-                        String livePhotoFileName = postId + "_live_" + ((i/2) + 1) + ".jpg";
+                        String livePhotoFileName = postId + "_live_" + livePhotoIndex + ".jpg";
                         File livePhotoFile = new File(destinationDir, "xhs_" + livePhotoFileName);
+                        
+                        Log.d(TAG, "Creating live photo with image: " + actualTempImageFile.getAbsolutePath() + 
+                               " and video: " + actualTempVideoFile.getAbsolutePath() + 
+                               " -> output: " + livePhotoFile.getAbsolutePath());
                         
                         boolean livePhotoCreated = LivePhotoCreator.createLivePhoto(actualTempImageFile, actualTempVideoFile, livePhotoFile);
                         
                         if (livePhotoCreated) {
-                            // Notify the callback that the live photo has been downloaded
-                            if (downloadCallback != null) {
-                                downloadCallback.onFileDownloaded(livePhotoFile.getAbsolutePath());
+                            // Additional check: verify if the created live photo file can be opened by checking if it was created properly
+                            if (livePhotoFile.exists() && livePhotoFile.length() > 0) {
+                                // Notify the callback that the live photo has been downloaded
+                                if (downloadCallback != null) {
+                                    downloadCallback.onFileDownloaded(livePhotoFile.getAbsolutePath());
+                                }
+                                Log.d(TAG, "Successfully created live photo: " + livePhotoFile.getAbsolutePath());
+                                
+                                // Clean up temporary files
+                                if (actualTempImageFile.exists()) {
+                                    actualTempImageFile.delete();
+                                }
+                                if (actualTempVideoFile.exists()) {
+                                    actualTempVideoFile.delete();
+                                }
+                            } else {
+                                // Live photo file is invalid, treat as failure
+                                Log.e(TAG, "Live photo file was created but is invalid (zero size or doesn't exist)");
+                                livePhotoCreated = false;
                             }
-                            Log.d(TAG, "Successfully created live photo: " + livePhotoFile.getAbsolutePath());
-                            
-                            // Clean up temporary files
-                            if (actualTempImageFile.exists()) {
-                                actualTempImageFile.delete();
-                            }
-                            if (actualTempVideoFile.exists()) {
-                                actualTempVideoFile.delete();
-                            }
-                        } else {
+                        }
+                        
+                        if (!livePhotoCreated) {
                             Log.e(TAG, "Failed to create live photo from image: " + actualTempImageFile.getAbsolutePath() + 
-                                   " and video: " + actualTempVideoFile.getAbsolutePath());
+                                   " and video: " + actualTempVideoFile.getAbsolutePath() + 
+                                   " -> output: " + livePhotoFile.getAbsolutePath() + 
+                                   ". Falling back to separate files.");
                             hasErrors = true;
                             
-                            // If live photo creation failed, download the files separately to final location
-                            // by using the main downloadFile method which handles the callback
-                            downloadFile(imageUrl, imageFileName.replace("xhs_", ""));
-                            downloadFile(videoUrl, videoFileName.replace("xhs_", ""));
+                            // Notify the callback about live photo creation failure with i18n message
+                            if (downloadCallback != null) {
+                                String fallbackMessage = "Live photo creation failed for post " + postId + ", index " + livePhotoIndex + 
+                                    ". Falling back to downloading separate image and video files.";
+                                downloadCallback.onDownloadError(fallbackMessage, 
+                                    "Live photo creation for " + postId + " (item " + livePhotoIndex + ")");
+                            }
+                            
+                            // Only download separately if the downloadFile calls were successful
+                            boolean imageDownloadedFallback = downloadFile(imageUrl, imageFileName.replace("xhs_", ""));
+                            boolean videoDownloadedFallback = downloadFile(videoUrl, videoFileName.replace("xhs_", ""));
+                            
+                            Log.d(TAG, "Fallback download - Image: " + (imageDownloadedFallback ? "Success" : "Failed") + 
+                                   ", Video: " + (videoDownloadedFallback ? "Success" : "Failed"));
+                            
+                            // Notify the callback if the separate downloads were successful
+                            // Only notify once per live photo pair that couldn't be merged
+                            boolean anySeparateFilesDownloaded = imageDownloadedFallback || videoDownloadedFallback;
+                            if (downloadCallback != null && anySeparateFilesDownloaded) {
+                                if (imageDownloadedFallback) {
+                                    File separateImageFile = new File(
+                                        android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS),
+                                        "xhs_" + imageFileName.replace("xhs_", "")
+                                    );
+                                    if (separateImageFile.exists()) {
+                                        downloadCallback.onFileDownloaded(separateImageFile.getAbsolutePath());
+                                    }
+                                }
+                                if (videoDownloadedFallback) {
+                                    File separateVideoFile = new File(
+                                        android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS),
+                                        "xhs_" + videoFileName.replace("xhs_", "")
+                                    );
+                                    if (separateVideoFile.exists()) {
+                                        downloadCallback.onFileDownloaded(separateVideoFile.getAbsolutePath());
+                                    }
+                                }
+                            } else if (downloadCallback != null && !anySeparateFilesDownloaded) {
+                                // If neither separate file downloaded successfully, notify about the failure
+                                downloadCallback.onDownloadError(
+                                    "Both image and video failed to download separately after live photo creation failure",
+                                    "Post " + postId + ", item " + livePhotoIndex
+                                );
+                            }
                             
                             // Clean up temporary files
                             if (actualTempImageFile.exists()) {
@@ -978,6 +1101,13 @@ public class XHSDownloader {
                             }
                             if (actualTempVideoFile.exists()) {
                                 actualTempVideoFile.delete();
+                            }
+                            
+                            // Also delete the failed live photo file if it exists
+                            if (livePhotoFile.exists()) {
+                                boolean deleted = livePhotoFile.delete();
+                                Log.d(TAG, "Deleted failed live photo file: " + livePhotoFile.getAbsolutePath() + 
+                                       ", deletion result: " + deleted);
                             }
                         }
                         

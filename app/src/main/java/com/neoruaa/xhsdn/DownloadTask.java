@@ -18,7 +18,7 @@ public class DownloadTask extends AsyncTask<String, String, Boolean> {
     private WeakReference<TextView> statusTextRef;
     private WeakReference<ProgressBar> progressBarRef;
     private WeakReference<Button> buttonRef;
-    private final java.util.List<String> downloadedFiles = new java.util.ArrayList<>();  // 保存下载文件路径
+    private final java.util.Set<String> downloadedFiles = new java.util.HashSet<>();  // 保存下载文件路径，使用Set去重
 
     DownloadTask(MainActivity context, TextView statusText, ProgressBar progressBar, Button button) {
         activityReference = new WeakReference<>(context);
@@ -53,7 +53,7 @@ public class DownloadTask extends AsyncTask<String, String, Boolean> {
                     // 在UI线程中更新
                     if (activity != null) {
                         activity.addMediaToDisplay(filePath);
-                        // 记录下载完成的文件路径
+                        // 记录下载完成的文件路径，使用Set自动去重
                         synchronized (downloadedFiles) {
                             downloadedFiles.add(filePath);
                         }
@@ -217,7 +217,9 @@ public class DownloadTask extends AsyncTask<String, String, Boolean> {
                 if (!downloadedFiles.isEmpty()) {
                     statusText.append("\n" + statusText.getContext().getString(R.string.downloaded_files_title));
                     synchronized (downloadedFiles) {
-                        for (String filePath : downloadedFiles) {
+                        java.util.List<String> sortedFiles = new java.util.ArrayList<>(downloadedFiles);
+                        java.util.Collections.sort(sortedFiles); // Sort for consistent display
+                        for (String filePath : sortedFiles) {
                             statusText.append("\n" + filePath);
                         }
                     }

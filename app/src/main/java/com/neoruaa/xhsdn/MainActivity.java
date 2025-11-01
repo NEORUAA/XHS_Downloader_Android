@@ -450,8 +450,16 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
+    private final java.util.Set<String> displayedFiles = new java.util.HashSet<>();
+
     public void addMediaToDisplay(String filePath) {
-        runOnUiThread(() -> addMediaView(filePath));
+        runOnUiThread(() -> {
+            // Check if this file has already been added to prevent duplicates
+            if (!displayedFiles.contains(filePath)) {
+                displayedFiles.add(filePath);
+                addMediaView(filePath);
+            }
+        });
     }
 
     private void startDownload(String url) {

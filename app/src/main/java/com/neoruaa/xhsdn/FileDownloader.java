@@ -1,9 +1,18 @@
 package com.neoruaa.xhsdn;
 
+import android.content.ContentResolver;
+import android.content.ContentValues;
 import android.content.Context;
+import android.content.Intent;
 import android.content.SharedPreferences;
+import android.media.MediaScannerConnection;
+import android.net.Uri;
+import android.os.Build;
 import android.os.Environment;
+import android.provider.MediaStore;
 import android.util.Log;
+
+import androidx.annotation.RequiresApi;
 
 import java.io.File;
 import java.io.FileOutputStream;
@@ -64,100 +73,41 @@ public class FileDownloader {
                 String fileExtension = getFileExtension(response, url);
                 String fullFileName = "xhs_" + fileName;
                 
+                File destinationFile = null;
+                
                 // Check for custom save path in preferences
                 SharedPreferences prefs = context.getSharedPreferences("XHSDownloaderPrefs", Context.MODE_PRIVATE);
                 String customSavePath = prefs.getString("custom_save_path", null);
                 
-                File destinationDir;
-                if (customSavePath != null && !customSavePath.isEmpty()) {
-                    // Use custom save path
-                    destinationDir = new File(customSavePath);
-                    Log.d(TAG, "Using custom save path: " + customSavePath);
-                } else {
-                    // Try to use public Pictures directory first (requires permissions)
-                    File publicPicturesDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES);
-                    if (publicPicturesDir != null) {
-                        destinationDir = new File(publicPicturesDir, "xhs");
-                    } else {
-                        destinationDir = null;
-                    }
-                    
-                    // Check if we have permission to write to public directory
-                    boolean canWriteToPublic = false;
-                    if (destinationDir != null) {
-                        try {
-                            // Try to create the directory to test write permission
-                            if (!destinationDir.exists()) {
-                                canWriteToPublic = destinationDir.mkdirs();
-                            } else {
-                                // Try to create a temporary file to test write permission
-                                File testFile = new File(destinationDir, ".test_permission");
-                                canWriteToPublic = testFile.createNewFile();
-                                if (canWriteToPublic) {
-                                    testFile.delete();
-                                }
-                            }
-                        } catch (Exception e) {
-                            Log.d(TAG, "Cannot write to public directory: " + e.getMessage());
-                            canWriteToPublic = false;
-                        }
-                    }
-                    
-                    // If we can't write to public directory, fall back to app's private directory
-                    if (!canWriteToPublic) {
-                        Log.d(TAG, "Falling back to app's private directory");
-                        destinationDir = new File(context.getExternalFilesDir(Environment.DIRECTORY_PICTURES), "xhs");
-                    } else {
-                        Log.d(TAG, "Using public Pictures directory");
-                    }
+                // Try to save directly to MediaStore for Android 10+ to ensure gallery visibility
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    destinationFile = saveToMediaStore(fullFileName, response.body(), fileExtension, customSavePath);
                 }
                 
-                // Ensure the directory exists
-                if (!destinationDir.exists()) {
-                    boolean dirCreated = destinationDir.mkdirs();
-                    Log.d(TAG, "Directory creation result: " + dirCreated + " for " + destinationDir.getAbsolutePath());
+                // If MediaStore save failed or we're on older Android, fall back to file-based save
+                if (destinationFile == null) {
+                    destinationFile = saveToFileSystem(url, fullFileName, response.body(), customSavePath);
                 }
                 
-                // Create the destination file
-                File destinationFile = new File(destinationDir, fullFileName);
-                
-                // Write the response body to the file
-                ResponseBody body = response.body();
-                if (body != null) {
-                    InputStream inputStream = body.byteStream();
-                    OutputStream outputStream = new FileOutputStream(destinationFile);
-                    
-                    // Increased buffer size for better throughput (64KB instead of 4KB)
-                    byte[] buffer = new byte[65536]; // 64KB buffer
-                    int bytesRead;
-                    long totalBytesRead = 0;
-                    long contentLength = body.contentLength();
-                    
-                    while ((bytesRead = inputStream.read(buffer)) != -1) {
-                        outputStream.write(buffer, 0, bytesRead);
-                        totalBytesRead += bytesRead;
-                        
-                        // Report progress updates less frequently to avoid UI thread contention
-                        if (callback != null && contentLength > 0) {
-                            // Only report progress if we have a content length and it's not 0
-                            // Limit progress updates to once per 256KB to avoid excessive callbacks
-                            if (totalBytesRead % 262144 == 0 || totalBytesRead == contentLength) { // 256KB = 262144 bytes
-                                callback.onDownloadProgressUpdate(totalBytesRead, contentLength);
-                            }
-                        }
-                    }
-                    
-                    inputStream.close();
-                    outputStream.close();
-                    
+                if (destinationFile != null && destinationFile.exists()) {
                     Log.d(TAG, "Downloaded file: " + destinationFile.getAbsolutePath());
-                    Log.d(TAG, "Total bytes: " + totalBytesRead);
+                    Log.d(TAG, "Total bytes: " + (response.body() != null ? response.body().contentLength() : 0));
                     Log.d(TAG, "File exists: " + destinationFile.exists());
                     Log.d(TAG, "File size: " + destinationFile.length());
+                    
+                    // For files that aren't already in MediaStore (like those saved to app's private directory),
+                    // we still need to notify MediaStore
+                    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q || isFileInPrivateDirectory(destinationFile)) {
+                        notifyMediaStore(destinationFile);
+                    }
                     
                     // 通知回调下载完成
                     if (callback != null) {
                         callback.onFileDownloaded(destinationFile.getAbsolutePath());
+                    }
+                    
+                    if (response.body() != null) {
+                        response.body().close();
                     }
                     
                     return true;
@@ -192,6 +142,299 @@ public class FileDownloader {
         }
         
         return false;
+    }
+    
+    /**
+     * Save file directly to MediaStore (Android 10+ with scoped storage support)
+     */
+    @RequiresApi(api = Build.VERSION_CODES.Q)
+    private File saveToMediaStore(String fileName, ResponseBody body, String fileExtension, String customSavePath) {
+        try {
+            ContentResolver contentResolver = context.getContentResolver();
+            ContentValues values = new ContentValues();
+            
+            String mimeType = getMimeTypeForFileExtension(fileExtension);
+            values.put(MediaStore.MediaColumns.DISPLAY_NAME, fileName);
+            values.put(MediaStore.MediaColumns.MIME_TYPE, mimeType);
+            
+            // Determine the collection based on file type
+            Uri collectionUri;
+            if (isImageFile(fileExtension)) {
+                collectionUri = MediaStore.Images.Media.EXTERNAL_CONTENT_URI;
+                if (customSavePath != null && !customSavePath.isEmpty()) {
+                    values.put(MediaStore.MediaColumns.RELATIVE_PATH, 
+                        Environment.DIRECTORY_PICTURES + File.separator + "xhs");
+                } else {
+                    values.put(MediaStore.MediaColumns.RELATIVE_PATH, 
+                        Environment.DIRECTORY_PICTURES + File.separator + "xhs");
+                }
+            } else if (isVideoFile(fileExtension)) {
+                collectionUri = MediaStore.Video.Media.EXTERNAL_CONTENT_URI;
+                if (customSavePath != null && !customSavePath.isEmpty()) {
+                    values.put(MediaStore.MediaColumns.RELATIVE_PATH, 
+                        Environment.DIRECTORY_MOVIES + File.separator + "xhs");
+                } else {
+                    values.put(MediaStore.MediaColumns.RELATIVE_PATH, 
+                        Environment.DIRECTORY_MOVIES + File.separator + "xhs");
+                }
+            } else {
+                collectionUri = MediaStore.Downloads.EXTERNAL_CONTENT_URI;
+                if (customSavePath != null && !customSavePath.isEmpty()) {
+                    values.put(MediaStore.MediaColumns.RELATIVE_PATH, 
+                        Environment.DIRECTORY_DOWNLOADS + File.separator + "xhs");
+                } else {
+                    values.put(MediaStore.MediaColumns.RELATIVE_PATH, 
+                        Environment.DIRECTORY_DOWNLOADS + File.separator + "xhs");
+                }
+            }
+            
+            Uri uri = contentResolver.insert(collectionUri, values);
+            
+            if (uri != null) {
+                try (OutputStream outputStream = contentResolver.openOutputStream(uri)) {
+                    if (outputStream != null && body != null) {
+                        // Write the response body to the content URI
+                        byte[] buffer = new byte[65536]; // 64KB buffer
+                        int bytesRead;
+                        long totalBytesRead = 0;
+                        long contentLength = body.contentLength();
+                        
+                        InputStream inputStream = body.byteStream();
+                        while ((bytesRead = inputStream.read(buffer)) != -1) {
+                            outputStream.write(buffer, 0, bytesRead);
+                            totalBytesRead += bytesRead;
+                            
+                            // Report progress updates less frequently to avoid UI thread contention
+                            if (callback != null && contentLength > 0) {
+                                // Only report progress if we have a content length and it's not 0
+                                // Limit progress updates to once per 256KB to avoid excessive callbacks
+                                if (totalBytesRead % 262144 == 0 || totalBytesRead == contentLength) { // 256KB = 262144 bytes
+                                    callback.onDownloadProgressUpdate(totalBytesRead, contentLength);
+                                }
+                            }
+                        }
+                        
+                        inputStream.close();
+                        outputStream.close();
+                        
+                        // File is now in MediaStore, find the actual file path
+                        return getFileFromUri(uri);
+                    }
+                } catch (IOException e) {
+                    Log.e(TAG, "Error writing to MediaStore URI: " + e.getMessage());
+                    // Try to delete the partially created entry
+                    try {
+                        contentResolver.delete(uri, null, null);
+                    } catch (Exception deleteEx) {
+                        Log.e(TAG, "Error deleting partial MediaStore entry: " + deleteEx.getMessage());
+                    }
+                }
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "Error saving to MediaStore: " + e.getMessage());
+            e.printStackTrace();
+        }
+        
+        return null; // Return null if MediaStore save failed
+    }
+    
+    /**
+     * Save file to filesystem (fallback for older Android versions or MediaStore failures)
+     */
+    private File saveToFileSystem(String url, String fileName, ResponseBody body, String customSavePath) throws IOException {
+        File destinationDir;
+        if (customSavePath != null && !customSavePath.isEmpty()) {
+            // Use custom save path
+            destinationDir = new File(customSavePath);
+            Log.d(TAG, "Using custom save path: " + customSavePath);
+        } else {
+            // Try to use public Pictures directory first (requires permissions)
+            File publicPicturesDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES);
+            if (publicPicturesDir != null) {
+                destinationDir = new File(publicPicturesDir, "xhs");
+            } else {
+                destinationDir = null;
+            }
+            
+            // Check if we have permission to write to public directory
+            boolean canWriteToPublic = false;
+            if (destinationDir != null) {
+                try {
+                    // Try to create the directory to test write permission
+                    if (!destinationDir.exists()) {
+                        canWriteToPublic = destinationDir.mkdirs();
+                    } else {
+                        // Try to create a temporary file to test write permission
+                        File testFile = new File(destinationDir, ".test_permission");
+                        canWriteToPublic = testFile.createNewFile();
+                        if (canWriteToPublic) {
+                            testFile.delete();
+                        }
+                    }
+                } catch (Exception e) {
+                    Log.d(TAG, "Cannot write to public directory: " + e.getMessage());
+                    canWriteToPublic = false;
+                }
+            }
+            
+            // If we can't write to public directory, fall back to app's private directory
+            if (!canWriteToPublic) {
+                Log.d(TAG, "Falling back to app's private directory");
+                destinationDir = new File(context.getExternalFilesDir(Environment.DIRECTORY_PICTURES), "xhs");
+            } else {
+                Log.d(TAG, "Using public Pictures directory");
+            }
+        }
+        
+        // Ensure the directory exists
+        if (!destinationDir.exists()) {
+            boolean dirCreated = destinationDir.mkdirs();
+            Log.d(TAG, "Directory creation result: " + dirCreated + " for " + destinationDir.getAbsolutePath());
+        }
+        
+        // Create the destination file
+        File destinationFile = new File(destinationDir, fileName);
+        
+        // Write the response body to the file
+        if (body != null) {
+            InputStream inputStream = body.byteStream();
+            OutputStream outputStream = new FileOutputStream(destinationFile);
+            
+            // Increased buffer size for better throughput (64KB instead of 4KB)
+            byte[] buffer = new byte[65536]; // 64KB buffer
+            int bytesRead;
+            long totalBytesRead = 0;
+            long contentLength = body.contentLength();
+            
+            while ((bytesRead = inputStream.read(buffer)) != -1) {
+                outputStream.write(buffer, 0, bytesRead);
+                totalBytesRead += bytesRead;
+                
+                // Report progress updates less frequently to avoid UI thread contention
+                if (callback != null && contentLength > 0) {
+                    // Only report progress if we have a content length and it's not 0
+                    // Limit progress updates to once per 256KB to avoid excessive callbacks
+                    if (totalBytesRead % 262144 == 0 || totalBytesRead == contentLength) { // 256KB = 262144 bytes
+                        callback.onDownloadProgressUpdate(totalBytesRead, contentLength);
+                    }
+                }
+            }
+            
+            inputStream.close();
+            outputStream.close();
+        }
+        
+        return destinationFile;
+    }
+    
+    /**
+     * Helper method to get file extension MIME type
+     */
+    private String getMimeTypeForFileExtension(String fileExtension) {
+        if (fileExtension == null) return "application/octet-stream";
+        
+        String ext = fileExtension.toLowerCase();
+        switch (ext) {
+            case "jpg":
+            case "jpeg":
+                return "image/jpeg";
+            case "png":
+                return "image/png";
+            case "gif":
+                return "image/gif";
+            case "mp4":
+                return "video/mp4";
+            case "mov":
+                return "video/quicktime";
+            case "webp":
+                return "image/webp";
+            default:
+                return "application/octet-stream";
+        }
+    }
+    
+    /**
+     * Helper method to check if file extension is for an image
+     */
+    private boolean isImageFile(String fileExtension) {
+        if (fileExtension == null) return false;
+        
+        String ext = fileExtension.toLowerCase();
+        return ext.equals("jpg") || ext.equals("jpeg") || ext.equals("png") || 
+               ext.equals("gif") || ext.equals("webp");
+    }
+    
+    /**
+     * Helper method to check if file extension is for a video
+     */
+    private boolean isVideoFile(String fileExtension) {
+        if (fileExtension == null) return false;
+        
+        String ext = fileExtension.toLowerCase();
+        return ext.equals("mp4") || ext.equals("mov");
+    }
+    
+    /**
+     * Helper method to check if file is in app's private directory
+     */
+    private boolean isFileInPrivateDirectory(File file) {
+        String appPrivateDir = context.getExternalFilesDir(null).getAbsolutePath();
+        return file.getAbsolutePath().startsWith(appPrivateDir);
+    }
+    
+    /**
+     * Helper method to get actual file from MediaStore URI
+     */
+    private File getFileFromUri(Uri uri) {
+        try {
+            String[] projection = {MediaStore.MediaColumns.DATA};
+            try (android.database.Cursor cursor = context.getContentResolver().query(uri, projection, null, null, null)) {
+                if (cursor != null && cursor.moveToFirst()) {
+                    int columnIndex = cursor.getColumnIndex(MediaStore.MediaColumns.DATA);
+                    if (columnIndex != -1) {
+                        String filePath = cursor.getString(columnIndex);
+                        if (filePath != null) {
+                            return new File(filePath);
+                        }
+                    }
+                }
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "Error getting file path from URI: " + e.getMessage());
+        }
+        
+        // If we can't get the file path from URI, return a dummy file with the display name
+        try {
+            String displayName = getDisplayNameFromUri(uri);
+            if (displayName != null) {
+                // Return a file object that just represents the URI
+                return new File(context.getExternalFilesDir(null), displayName);
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "Error getting display name from URI: " + e.getMessage());
+        }
+        
+        return null;
+    }
+    
+    /**
+     * Helper method to get display name from MediaStore URI
+     */
+    private String getDisplayNameFromUri(Uri uri) {
+        try {
+            String[] projection = {MediaStore.MediaColumns.DISPLAY_NAME};
+            try (android.database.Cursor cursor = context.getContentResolver().query(uri, projection, null, null, null)) {
+                if (cursor != null && cursor.moveToFirst()) {
+                    int columnIndex = cursor.getColumnIndex(MediaStore.MediaColumns.DISPLAY_NAME);
+                    if (columnIndex != -1) {
+                        return cursor.getString(columnIndex);
+                    }
+                }
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "Error getting display name from URI: " + e.getMessage());
+        }
+        return null;
     }
     
     /**
@@ -306,5 +549,130 @@ public class FileDownloader {
         
         // If all else fails, try to guess based on URL structure
         return "jpg"; // Default to image format
+    }
+    
+    /**
+     * Notify MediaStore about the new file so it appears in gallery immediately
+     * @param file The file to register with MediaStore
+     */
+    private void notifyMediaStore(File file) {
+        // Check if the file is in a public directory (e.g., Downloads, Pictures)
+        // Only files in public directories will appear in gallery and other apps
+        String filePath = file.getAbsolutePath();
+        String publicPicturesPath = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES).getAbsolutePath();
+        String publicDownloadsPath = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS).getAbsolutePath();
+        
+        if (filePath.startsWith(publicPicturesPath) || filePath.startsWith(publicDownloadsPath)) {
+            // File is in a public directory, so we should make it visible to MediaStore
+            
+            // For Android 10+ (API 29+), use MediaStore.insert() for better reliability
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                try {
+                    ContentResolver contentResolver = context.getContentResolver();
+                    ContentValues values = new ContentValues();
+                    
+                    // Determine if it's an image or video file
+                    String mimeType = getMimeTypeForFile(file);
+                    values.put(MediaStore.MediaColumns.DISPLAY_NAME, file.getName());
+                    values.put(MediaStore.MediaColumns.MIME_TYPE, mimeType);
+                    values.put(MediaStore.MediaColumns.RELATIVE_PATH, getRelativePathForFile(file, publicPicturesPath, publicDownloadsPath));
+                    
+                    Uri uri = contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values);
+                    
+                    if (uri != null) {
+                        // Successfully inserted into MediaStore
+                        try (OutputStream out = contentResolver.openOutputStream(uri)) {
+                            // File already exists, so we don't need to copy it again
+                            Log.d(TAG, "File inserted into MediaStore via direct method: " + file.getAbsolutePath());
+                        } catch (IOException e) {
+                            Log.e(TAG, "Error writing to content URI: " + e.getMessage());
+                        }
+                    } else {
+                        // Fallback to MediaScannerConnection
+                        fallbackMediaScan(file);
+                    }
+                } catch (Exception e) {
+                    Log.e(TAG, "Error inserting file into MediaStore: " + e.getMessage());
+                    // Fallback to MediaScannerConnection
+                    fallbackMediaScan(file);
+                }
+            } else {
+                // For older Android versions, use MediaScannerConnection and broadcast
+                fallbackMediaScan(file);
+            }
+        } else {
+            // File is in app's private directory, no need to notify MediaStore
+            Log.d(TAG, "File is in private directory, no MediaStore notification needed: " + filePath);
+        }
+    }
+    
+    /**
+     * Fallback method using MediaScannerConnection and broadcast for older Android versions
+     */
+    private void fallbackMediaScan(File file) {
+        // Use MediaScannerConnection to scan the file
+        MediaScannerConnection.scanFile(
+            context,
+            new String[]{file.getAbsolutePath()},
+            null,
+            new MediaScannerConnection.OnScanCompletedListener() {
+                @Override
+                public void onScanCompleted(String path, Uri uri) {
+                    Log.d(TAG, "MediaScanner scanned file: " + path + ", URI: " + uri);
+                }
+            }
+        );
+        
+        // For older versions, also send a broadcast
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+            // Send broadcast to refresh media store on older Android versions
+            Intent mediaScanIntent = new Intent(Intent.ACTION_MEDIA_SCANNER_SCAN_FILE);
+            Uri contentUri = Uri.fromFile(file);
+            mediaScanIntent.setData(contentUri);
+            context.sendBroadcast(mediaScanIntent);
+        }
+    }
+    
+    /**
+     * Get the MIME type for a file based on its extension
+     */
+    private String getMimeTypeForFile(File file) {
+        String fileName = file.getName().toLowerCase();
+        if (fileName.endsWith(".jpg") || fileName.endsWith(".jpeg")) {
+            return "image/jpeg";
+        } else if (fileName.endsWith(".png")) {
+            return "image/png";
+        } else if (fileName.endsWith(".gif")) {
+            return "image/gif";
+        } else if (fileName.endsWith(".mp4")) {
+            return "video/mp4";
+        } else if (fileName.endsWith(".mov")) {
+            return "video/quicktime";
+        } else if (fileName.endsWith(".webp")) {
+            return "image/webp";
+        } else {
+            // Default to image/jpeg if unknown
+            return "image/jpeg";
+        }
+    }
+    
+    /**
+     * Get the relative path for MediaStore insertion
+     */
+    private String getRelativePathForFile(File file, String publicPicturesPath, String publicDownloadsPath) {
+        String filePath = file.getAbsolutePath();
+        
+        if (filePath.startsWith(publicPicturesPath)) {
+            // Remove the public pictures path and add to MediaStore.Images.Media.DIRECTORY
+            String subPath = filePath.substring(publicPicturesPath.length());
+            return Environment.DIRECTORY_PICTURES + subPath.substring(0, subPath.lastIndexOf('/'));
+        } else if (filePath.startsWith(publicDownloadsPath)) {
+            // Remove the public downloads path and add to MediaStore.Downloads.DIRECTORY
+            String subPath = filePath.substring(publicDownloadsPath.length());
+            return Environment.DIRECTORY_DOWNLOADS + subPath.substring(0, subPath.lastIndexOf('/'));
+        }
+        
+        // Default to Pictures
+        return Environment.DIRECTORY_PICTURES;
     }
 }

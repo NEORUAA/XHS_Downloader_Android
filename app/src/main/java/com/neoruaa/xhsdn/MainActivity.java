@@ -24,6 +24,7 @@ import android.widget.HorizontalScrollView;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ProgressBar;
+import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
 import android.widget.VideoView;
@@ -45,6 +46,7 @@ public class MainActivity extends AppCompatActivity {
     private ProgressBar progressBar;
     private android.widget.ImageButton clearButton;
     private androidx.recyclerview.widget.RecyclerView imageContainer;
+    private ScrollView statusScrollView;
     private MediaAdapter mediaAdapter;
     private static final int PERMISSION_REQUEST_CODE = 1001;
     private static final int WEBVIEW_REQUEST_CODE = 1002;
@@ -74,12 +76,16 @@ public class MainActivity extends AppCompatActivity {
         downloadButton = findViewById(R.id.downloadButton);
         webCrawlButton = findViewById(R.id.webCrawlButton);
         statusText = findViewById(R.id.statusText);
+        statusScrollView = findViewById(R.id.statusScrollView);
         progressBar = findViewById(R.id.progressBar);
         clearButton = findViewById(R.id.clearButton);
         imageContainer = findViewById(R.id.imageContainer);
 
         // 启用 statusText 的滚动功能
         statusText.setMovementMethod(new android.text.method.ScrollingMovementMethod());
+        
+        // 默认滚动到底部
+        statusScrollView.post(() -> statusScrollView.fullScroll(ScrollView.FOCUS_DOWN));
 
         // 初始化瀑布流布局
         setupWaterfallLayout();
@@ -449,6 +455,16 @@ public class MainActivity extends AppCompatActivity {
             Toast.makeText(this, getString(R.string.cannot_open_file, e.getMessage()), Toast.LENGTH_SHORT).show();
         }
     }
+    
+    /**
+     * Auto-scroll the status ScrollView to the bottom
+     */
+    public void autoScrollToBottom() {
+        if (statusScrollView != null) {
+            // Use post to ensure the scroll happens after the layout is updated
+            statusScrollView.post(() -> statusScrollView.fullScroll(ScrollView.FOCUS_DOWN));
+        }
+    }
 
     private final java.util.Set<String> displayedFiles = new java.util.HashSet<>();
 
@@ -458,6 +474,17 @@ public class MainActivity extends AppCompatActivity {
             if (!displayedFiles.contains(filePath)) {
                 displayedFiles.add(filePath);
                 addMediaView(filePath);
+                
+                // Auto-scroll to bottom of the image container
+                if (imageContainer != null && mediaAdapter != null) {
+                    imageContainer.post(() -> {
+                        // Scroll to the last item (bottom of the list)
+                        int lastPosition = mediaAdapter.getItemCount() - 1;
+                        if (lastPosition >= 0) {
+                            imageContainer.smoothScrollToPosition(lastPosition);
+                        }
+                    });
+                }
             }
         });
     }
@@ -468,10 +495,12 @@ public class MainActivity extends AppCompatActivity {
         webCrawlButton.setVisibility(View.GONE); // Hide the web crawl button during processing
         progressBar.setVisibility(View.VISIBLE);
         statusText.setText(getString(R.string.processing_url, url));
+        autoScrollToBottom();
 
         // Create download task
         DownloadTask task = new DownloadTask(this, statusText, progressBar, downloadButton);
         task.execute(url);
+        autoScrollToBottom(); // Scroll to bottom initially when starting download
     }
     
     /**
@@ -481,6 +510,7 @@ public class MainActivity extends AppCompatActivity {
         runOnUiThread(() -> {
             webCrawlButton.setVisibility(View.VISIBLE);
                     statusText.append("\n" + getString(R.string.json_parsing_failed_web_crawl, getString(R.string.webview_title)));
+                    autoScrollToBottom();
         });
     }
     
@@ -498,6 +528,7 @@ public class MainActivity extends AppCompatActivity {
                     
                     // Process the found image URLs
                     statusText.setText(getString(R.string.found_images_via_web_crawl, imageUrls.size()));
+                    autoScrollToBottom();
                     
                     // Transform the URLs using the XHSDownloader's transformXhsCdnUrl method to get better quality images
                     List<String> transformedUrls = new ArrayList<>();
@@ -513,15 +544,18 @@ public class MainActivity extends AppCompatActivity {
                     }
 
                     statusText.append("\n" + getString(R.string.converted_cdn_original_images));
+                    autoScrollToBottom();
 
                     for (String url : transformedUrls) {
                         statusText.append("\n" + url);
+                        autoScrollToBottom();
                     }
                     
                     // Start downloading the transformed images
                     processImageUrls(new ArrayList<>(transformedUrls)); // Convert to ArrayList for compatibility
                 } else {
                     statusText.append("\n" + getString(R.string.no_images_found_via_web_crawl));
+                    autoScrollToBottom();
                 }
             }
         }
@@ -544,12 +578,18 @@ public class MainActivity extends AppCompatActivity {
 
                     @Override
                     public void onDownloadError(String error, String originalUrl) {
-                        runOnUiThread(() -> statusText.append("\n" + getString(R.string.download_error_for_url, error, originalUrl)));
+                        runOnUiThread(() -> {
+                            statusText.append("\n" + getString(R.string.download_error_for_url, error, originalUrl));
+                            autoScrollToBottom();
+                        });
                     }
                     
                     @Override
                     public void onDownloadProgress(String status) {
-                        runOnUiThread(() -> statusText.append("\n" + status));
+                        runOnUiThread(() -> {
+                            statusText.append("\n" + status);
+                            autoScrollToBottom();
+                        });
                     }
 
                     @Override
@@ -573,10 +613,16 @@ public class MainActivity extends AppCompatActivity {
                     xhsDownloader.downloadFile(imageUrl, fileName);
                 }
                 
-                runOnUiThread(() -> statusText.append("\n" + getString(R.string.all_downloads_completed)));
+                runOnUiThread(() -> {
+                    statusText.append("\n" + getString(R.string.all_downloads_completed));
+                    autoScrollToBottom();
+                });
             } catch (Exception e) {
                 Log.e("MainActivity", "Error processing image URLs", e);
-                runOnUiThread(() -> statusText.append("\n" + getString(R.string.error_processing_image_urls, e.getMessage())));
+                runOnUiThread(() -> {
+                statusText.append("\n" + getString(R.string.error_processing_image_urls, e.getMessage()));
+                autoScrollToBottom();
+            });
             }
         }).start();
     }

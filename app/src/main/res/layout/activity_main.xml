@@ -10,7 +10,7 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="horizontal"
-        android:layout_marginBottom="16dp">
+        android:layout_marginBottom="10dp">
 
         <EditText
             android:id="@+id/urlInput"
@@ -44,14 +44,14 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:text="@string/download_button"
-        android:layout_marginBottom="8dp" />
+        android:layout_marginBottom="10dp" />
 
     <Button
         android:id="@+id/webCrawlButton"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:text="@string/webview_title"
-        android:layout_marginBottom="8dp"
+        android:layout_marginBottom="10dp"
         android:visibility="gone" />
 
     <ProgressBar
@@ -59,9 +59,11 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:visibility="gone"
+        android:layout_marginBottom="10dp"
         style="?android:attr/progressBarStyleHorizontal" />
 
     <ScrollView
+        android:id="@+id/statusScrollView"
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:layout_weight="0.3"
@@ -82,7 +84,7 @@
         android:id="@+id/imageContainer"
         android:layout_width="match_parent"
         android:layout_weight="0.7"
-        android:layout_marginTop="8dp"
+        android:layout_marginTop="10dp"
         android:background="#f0f0f0"
         android:layout_height="0dp"
         android:padding="4dp"

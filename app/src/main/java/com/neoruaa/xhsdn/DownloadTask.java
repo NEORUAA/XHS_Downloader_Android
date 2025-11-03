@@ -140,6 +140,11 @@ public class DownloadTask extends AsyncTask<String, String, Boolean> {
                                 } else {
                                     // 添加新的进度行
                                     statusText.append("\n" + progressInfo);
+                                    // Auto-scroll to bottom after updating status
+                                    MainActivity activity = activityReference.get();
+                                    if (activity != null) {
+                                        activity.runOnUiThread(() -> activity.autoScrollToBottom());
+                                    }
                                 }
                             }
                         }
@@ -193,6 +198,12 @@ public class DownloadTask extends AsyncTask<String, String, Boolean> {
                                    android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
                     
                     statusText.append(spannable);
+                    
+                    // Auto-scroll to bottom after updating status
+                    MainActivity activity = activityReference.get();
+                    if (activity != null) {
+                        activity.runOnUiThread(() -> activity.autoScrollToBottom());
+                    }
                 } else {
                     // If format is wrong, just append as regular text
                     statusText.append("\n" + message);
@@ -202,9 +213,19 @@ public class DownloadTask extends AsyncTask<String, String, Boolean> {
             else if (message.startsWith("STATUS:")) {
                 String status = message.substring("STATUS:".length());
                 statusText.append("\n" + status);
+                // Auto-scroll to bottom after updating status
+                MainActivity activity = activityReference.get();
+                if (activity != null) {
+                    activity.runOnUiThread(() -> activity.autoScrollToBottom());
+                }
             } else {
                 // Regular status update (backward compatibility)
                 statusText.append("\n" + message);
+                // Auto-scroll to bottom after updating status
+                MainActivity activity = activityReference.get();
+                if (activity != null) {
+                    activity.runOnUiThread(() -> activity.autoScrollToBottom());
+                }
             }
         }
     }
@@ -231,6 +252,11 @@ public class DownloadTask extends AsyncTask<String, String, Boolean> {
         if (statusText != null) {
             if (success) {
                 statusText.append("\n" + statusText.getContext().getString(R.string.download_completed_successfully));
+                // Auto-scroll to bottom after updating status
+                if (activity != null) {
+                    activity.runOnUiThread(() -> activity.autoScrollToBottom());
+                }
+                
                 // 只显示存放目录路径，不显示每个文件的详细路径
                 if (!downloadedFiles.isEmpty()) {
                     synchronized (downloadedFiles) {
@@ -243,10 +269,19 @@ public class DownloadTask extends AsyncTask<String, String, Boolean> {
                         int fileCount = downloadedFiles.size();
                         statusText.append("\n成功下载 " + fileCount + " 个文件");
                         statusText.append("\n存放路径: " + directoryPath);
+                        
+                        // Auto-scroll to bottom again after adding download info
+                        if (activity != null) {
+                            activity.runOnUiThread(() -> activity.autoScrollToBottom());
+                        }
                     }
                 }
             } else {
                 statusText.append("\n" + statusText.getContext().getString(R.string.download_failed));
+                // Auto-scroll to bottom after updating status
+                if (activity != null) {
+                    activity.runOnUiThread(() -> activity.autoScrollToBottom());
+                }
             }
         }
     }

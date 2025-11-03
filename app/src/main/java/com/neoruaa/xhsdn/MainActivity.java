@@ -673,7 +673,7 @@ public class MainActivity extends AppCompatActivity {
     
     private void showSettingsDialog() {
         SettingsDialog settingsDialog = new SettingsDialog(this);
-        settingsDialog.setOnSettingsAppliedListener(savePath -> {
+        settingsDialog.setOnSettingsAppliedListener(() -> {
             // Handle settings applied if needed
             Toast.makeText(this, getString(R.string.settings_saved), Toast.LENGTH_SHORT).show();
         });

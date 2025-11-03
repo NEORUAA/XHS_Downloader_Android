@@ -990,20 +990,13 @@ public class XHSDownloader {
                             continue;
                         }
                         
-                        // Get the destination directory for final save
-                        SharedPreferences prefs = context.getSharedPreferences("XHSDownloaderPrefs", Context.MODE_PRIVATE);
-                        String customSavePath = prefs.getString("custom_save_path", null);
-                        
+                        // Always use MediaStore with "xhs" subfolder - ignore any custom save path
+                        File publicPicturesDir = android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_PICTURES);
                         File destinationDir;
-                        if (customSavePath != null && !customSavePath.isEmpty()) {
-                            destinationDir = new File(customSavePath);
+                        if (publicPicturesDir != null) {
+                            destinationDir = new File(publicPicturesDir, "xhs");
                         } else {
-                            File publicPicturesDir = android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_PICTURES);
-                            if (publicPicturesDir != null) {
-                                destinationDir = new File(publicPicturesDir, "xhs");
-                            } else {
-                                destinationDir = context.getExternalFilesDir(android.os.Environment.DIRECTORY_PICTURES);
-                            }
+                            destinationDir = context.getExternalFilesDir(android.os.Environment.DIRECTORY_PICTURES);
                         }
                         
                         if (!destinationDir.exists()) {

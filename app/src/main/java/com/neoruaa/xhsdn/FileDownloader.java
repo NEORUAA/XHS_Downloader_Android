@@ -75,18 +75,17 @@ public class FileDownloader {
                 
                 File destinationFile = null;
                 
-                // Check for custom save path in preferences
+                // Always use MediaStore path with "xhs" subfolder - ignore any custom save path
                 SharedPreferences prefs = context.getSharedPreferences("XHSDownloaderPrefs", Context.MODE_PRIVATE);
-                String customSavePath = prefs.getString("custom_save_path", null);
                 
                 // Try to save directly to MediaStore for Android 10+ to ensure gallery visibility
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                    destinationFile = saveToMediaStore(fullFileName, response.body(), fileExtension, customSavePath);
+                    destinationFile = saveToMediaStore(fullFileName, response.body(), fileExtension);
                 }
                 
                 // If MediaStore save failed or we're on older Android, fall back to file-based save
                 if (destinationFile == null) {
-                    destinationFile = saveToFileSystem(url, fullFileName, response.body(), customSavePath);
+                    destinationFile = saveToFileSystem(url, fullFileName, response.body());
                 }
                 
                 if (destinationFile != null && destinationFile.exists()) {
@@ -148,7 +147,7 @@ public class FileDownloader {
      * Save file directly to MediaStore (Android 10+ with scoped storage support)
      */
     @RequiresApi(api = Build.VERSION_CODES.Q)
-    private File saveToMediaStore(String fileName, ResponseBody body, String fileExtension, String customSavePath) {
+    private File saveToMediaStore(String fileName, ResponseBody body, String fileExtension) {
         try {
             ContentResolver contentResolver = context.getContentResolver();
             ContentValues values = new ContentValues();
@@ -161,31 +160,16 @@ public class FileDownloader {
             Uri collectionUri;
             if (isImageFile(fileExtension)) {
                 collectionUri = MediaStore.Images.Media.EXTERNAL_CONTENT_URI;
-                if (customSavePath != null && !customSavePath.isEmpty()) {
-                    values.put(MediaStore.MediaColumns.RELATIVE_PATH, 
-                        Environment.DIRECTORY_PICTURES + File.separator + "xhs");
-                } else {
-                    values.put(MediaStore.MediaColumns.RELATIVE_PATH, 
-                        Environment.DIRECTORY_PICTURES + File.separator + "xhs");
-                }
+                values.put(MediaStore.MediaColumns.RELATIVE_PATH, 
+                    Environment.DIRECTORY_PICTURES + File.separator + "xhs");
             } else if (isVideoFile(fileExtension)) {
                 collectionUri = MediaStore.Video.Media.EXTERNAL_CONTENT_URI;
-                if (customSavePath != null && !customSavePath.isEmpty()) {
-                    values.put(MediaStore.MediaColumns.RELATIVE_PATH, 
-                        Environment.DIRECTORY_MOVIES + File.separator + "xhs");
-                } else {
-                    values.put(MediaStore.MediaColumns.RELATIVE_PATH, 
-                        Environment.DIRECTORY_MOVIES + File.separator + "xhs");
-                }
+                values.put(MediaStore.MediaColumns.RELATIVE_PATH, 
+                    Environment.DIRECTORY_MOVIES + File.separator + "xhs");
             } else {
                 collectionUri = MediaStore.Downloads.EXTERNAL_CONTENT_URI;
-                if (customSavePath != null && !customSavePath.isEmpty()) {
-                    values.put(MediaStore.MediaColumns.RELATIVE_PATH, 
-                        Environment.DIRECTORY_DOWNLOADS + File.separator + "xhs");
-                } else {
-                    values.put(MediaStore.MediaColumns.RELATIVE_PATH, 
-                        Environment.DIRECTORY_DOWNLOADS + File.separator + "xhs");
-                }
+                values.put(MediaStore.MediaColumns.RELATIVE_PATH, 
+                    Environment.DIRECTORY_DOWNLOADS + File.separator + "xhs");
             }
             
             Uri uri = contentResolver.insert(collectionUri, values);
@@ -241,49 +225,43 @@ public class FileDownloader {
     /**
      * Save file to filesystem (fallback for older Android versions or MediaStore failures)
      */
-    private File saveToFileSystem(String url, String fileName, ResponseBody body, String customSavePath) throws IOException {
+    private File saveToFileSystem(String url, String fileName, ResponseBody body) throws IOException {
         File destinationDir;
-        if (customSavePath != null && !customSavePath.isEmpty()) {
-            // Use custom save path
-            destinationDir = new File(customSavePath);
-            Log.d(TAG, "Using custom save path: " + customSavePath);
+        // Always use public Pictures directory with "xhs" subfolder
+        File publicPicturesDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES);
+        if (publicPicturesDir != null) {
+            destinationDir = new File(publicPicturesDir, "xhs");
         } else {
-            // Try to use public Pictures directory first (requires permissions)
-            File publicPicturesDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES);
-            if (publicPicturesDir != null) {
-                destinationDir = new File(publicPicturesDir, "xhs");
-            } else {
-                destinationDir = null;
-            }
-            
-            // Check if we have permission to write to public directory
-            boolean canWriteToPublic = false;
-            if (destinationDir != null) {
-                try {
-                    // Try to create the directory to test write permission
-                    if (!destinationDir.exists()) {
-                        canWriteToPublic = destinationDir.mkdirs();
-                    } else {
-                        // Try to create a temporary file to test write permission
-                        File testFile = new File(destinationDir, ".test_permission");
-                        canWriteToPublic = testFile.createNewFile();
-                        if (canWriteToPublic) {
-                            testFile.delete();
-                        }
+            destinationDir = null;
+        }
+        
+        // Check if we have permission to write to public directory
+        boolean canWriteToPublic = false;
+        if (destinationDir != null) {
+            try {
+                // Try to create the directory to test write permission
+                if (!destinationDir.exists()) {
+                    canWriteToPublic = destinationDir.mkdirs();
+                } else {
+                    // Try to create a temporary file to test write permission
+                    File testFile = new File(destinationDir, ".test_permission");
+                    canWriteToPublic = testFile.createNewFile();
+                    if (canWriteToPublic) {
+                        testFile.delete();
                     }
-                } catch (Exception e) {
-                    Log.d(TAG, "Cannot write to public directory: " + e.getMessage());
-                    canWriteToPublic = false;
                 }
+            } catch (Exception e) {
+                Log.d(TAG, "Cannot write to public directory: " + e.getMessage());
+                canWriteToPublic = false;
             }
-            
-            // If we can't write to public directory, fall back to app's private directory
-            if (!canWriteToPublic) {
-                Log.d(TAG, "Falling back to app's private directory");
-                destinationDir = new File(context.getExternalFilesDir(Environment.DIRECTORY_PICTURES), "xhs");
-            } else {
-                Log.d(TAG, "Using public Pictures directory");
-            }
+        }
+        
+        // If we can't write to public directory, fall back to app's private directory
+        if (!canWriteToPublic) {
+            Log.d(TAG, "Falling back to app's private directory");
+            destinationDir = new File(context.getExternalFilesDir(Environment.DIRECTORY_PICTURES), "xhs");
+        } else {
+            Log.d(TAG, "Using public Pictures directory");
         }
         
         // Ensure the directory exists

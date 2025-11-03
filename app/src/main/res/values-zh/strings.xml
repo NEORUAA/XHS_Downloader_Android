@@ -17,9 +17,7 @@
     <string name="downloaded_files_title">已下载文件：</string>
     <string name="app_description"><![CDATA[无损分辨率 & 无水印]]></string>
     <string name="settings">设置</string>
-    <string name="custom_save_path">自定义保存路径</string>
-    <string name="enter_save_path">输入保存路径</string>
-    <string name="reset_default">恢复默认</string>
+    <string name="default_save_path_info">所有文件将保存到MediaStore Downloads/Pictures/Movies + \"xhs\"子文件夹</string>
     <string name="cancel">取消</string>
     <string name="apply">应用</string>
     <string name="settings_saved">设置保存成功</string>

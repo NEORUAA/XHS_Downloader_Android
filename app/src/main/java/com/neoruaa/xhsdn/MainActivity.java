@@ -677,7 +677,7 @@ public class MainActivity extends AppCompatActivity {
     private void showSettingsDialog() {
         SettingsDialog settingsDialog = new SettingsDialog(this);
         settingsDialog.setOnSettingsAppliedListener(savePath -> {
-            // Handle settings applied if needed
+            // Handle settings applied if needed - savePath now represents the default path
             Toast.makeText(this, getString(R.string.settings_saved), Toast.LENGTH_SHORT).show();
         });
         settingsDialog.show();

@@ -15,9 +15,7 @@ import androidx.annotation.NonNull;
 
 public class SettingsDialog extends Dialog {
     
-    private EditText savePathEditText;
     private CheckBox livePhotoCheckBox;
-    private Button resetPathButton;
     private Button githubButton;
     private Button cancelButton;
     private Button applyButton;
@@ -42,9 +40,7 @@ public class SettingsDialog extends Dialog {
         setContentView(R.layout.dialog_settings);
         
         // Initialize views
-        savePathEditText = findViewById(R.id.savePathEditText);
         livePhotoCheckBox = findViewById(R.id.livePhotoCheckBox);
-        resetPathButton = findViewById(R.id.resetPathButton);
         githubButton = findViewById(R.id.githubButton);
         cancelButton = findViewById(R.id.cancelButton);
         applyButton = findViewById(R.id.applyButton);
@@ -53,7 +49,6 @@ public class SettingsDialog extends Dialog {
         loadCurrentSettings();
         
         // Set up button listeners
-        resetPathButton.setOnClickListener(v -> resetToDefaultPath());
         githubButton.setOnClickListener(v -> openGitHubRepository());
         cancelButton.setOnClickListener(v -> dismiss());
         applyButton.setOnClickListener(v -> applySettings());
@@ -61,16 +56,10 @@ public class SettingsDialog extends Dialog {
     
     private void loadCurrentSettings() {
         SharedPreferences prefs = getContext().getSharedPreferences("XHSDownloaderPrefs", Context.MODE_PRIVATE);
-        String customPath = prefs.getString("custom_save_path", getDefaultSavePath());
-        savePathEditText.setText(customPath);
         
         // Load live photo setting - now defaults to enabled
         boolean createLivePhotos = prefs.getBoolean("create_live_photos", true);
         livePhotoCheckBox.setChecked(createLivePhotos);
-    }
-    
-    private void resetToDefaultPath() {
-        savePathEditText.setText(getDefaultSavePath());
     }
     
     private String getDefaultSavePath() {
@@ -78,19 +67,17 @@ public class SettingsDialog extends Dialog {
     }
     
     private void applySettings() {
-        String savePath = savePathEditText.getText().toString().trim();
         boolean createLivePhotos = livePhotoCheckBox.isChecked();
         
         // Save the settings
         SharedPreferences prefs = getContext().getSharedPreferences("XHSDownloaderPrefs", Context.MODE_PRIVATE);
         SharedPreferences.Editor editor = prefs.edit();
-        editor.putString("custom_save_path", savePath);
         editor.putBoolean("create_live_photos", createLivePhotos);
         editor.apply();
         
-        // Notify listener
+        // Notify listener with default save path
         if (settingsAppliedListener != null) {
-            settingsAppliedListener.onSettingsApplied(savePath);
+            settingsAppliedListener.onSettingsApplied(getDefaultSavePath());
         }
         
         dismiss();

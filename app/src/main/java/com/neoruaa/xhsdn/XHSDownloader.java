@@ -990,9 +990,9 @@ public class XHSDownloader {
                             continue;
                         }
                         
-                        // Always use MediaStore with "xhs" subfolder - ignore any custom save path
-                        File publicPicturesDir = android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_PICTURES);
+                        // Always use MediaStore directory with "xhs" subfolder for consistent location
                         File destinationDir;
+                        File publicPicturesDir = android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_PICTURES);
                         if (publicPicturesDir != null) {
                             destinationDir = new File(publicPicturesDir, "xhs");
                         } else {
@@ -1111,13 +1111,6 @@ public class XHSDownloader {
                             }
                             if (actualTempVideoFile.exists()) {
                                 actualTempVideoFile.delete();
-                            }
-                            
-                            // Also delete the failed live photo file if it exists
-                            if (livePhotoFile.exists()) {
-                                boolean deleted = livePhotoFile.delete();
-                                Log.d(TAG, "Deleted failed live photo file: " + livePhotoFile.getAbsolutePath() + 
-                                       ", deletion result: " + deleted);
                             }
                         }
                         

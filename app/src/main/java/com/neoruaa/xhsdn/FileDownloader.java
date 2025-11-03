@@ -69,20 +69,23 @@ public class FileDownloader {
             Response response = httpClient.newCall(request).execute();
             
             if (response.isSuccessful() && response.body() != null) {
-                // Get the file extension from the Content-Type header (prioritize this over URL)
+                // 优先从响应中获取文件扩展名 (Content-Type header)
                 String fileExtension = getFileExtension(response, url);
                 
-                // Remove any existing extension from fileName to prevent double extensions like .jpg.webp
-                String baseFileName = removeFileExtension(fileName);
+                // 从原始文件名中提取基础名称（去掉扩展名）
+                String baseFileName = fileName;
+                int lastDotIndex = fileName.lastIndexOf('.');
+                if (lastDotIndex > 0 && lastDotIndex < fileName.length() - 1) {
+                    baseFileName = fileName.substring(0, lastDotIndex);
+                    Log.d(TAG, "Original filename has extension: " + fileName.substring(lastDotIndex + 1).toLowerCase() + 
+                          ", but using Content-Type based extension: " + fileExtension);
+                }
                 
                 String fullFileName = "xhs_" + baseFileName + "." + fileExtension;
                 
                 File destinationFile = null;
                 
-                // Always use MediaStore path with "xhs" subfolder - ignore any custom save path
-                SharedPreferences prefs = context.getSharedPreferences("XHSDownloaderPrefs", Context.MODE_PRIVATE);
-                
-                // Try to save directly to MediaStore for Android 10+ to ensure gallery visibility
+                // For Android 10+ use MediaStore to ensure gallery visibility
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                     destinationFile = saveToMediaStore(fullFileName, response.body(), fileExtension);
                 }
@@ -155,32 +158,29 @@ public class FileDownloader {
         try {
             ContentResolver contentResolver = context.getContentResolver();
             
-            // Check if file already exists and delete it to prevent duplicate files with (1), (2), etc.
-            if (deleteExistingFile(fileName, fileExtension)) {
-                Log.d(TAG, "Deleted existing file with name: " + fileName);
+            // Determine the collection based on file type and use MediaStore directory + xhs subfolder
+            Uri collectionUri;
+            String relativePath;
+            if (isImageFile(fileExtension)) {
+                collectionUri = MediaStore.Images.Media.EXTERNAL_CONTENT_URI;
+                relativePath = Environment.DIRECTORY_PICTURES + File.separator + "xhs";
+            } else if (isVideoFile(fileExtension)) {
+                collectionUri = MediaStore.Video.Media.EXTERNAL_CONTENT_URI;
+                relativePath = Environment.DIRECTORY_MOVIES + File.separator + "xhs";
+            } else {
+                collectionUri = MediaStore.Downloads.EXTERNAL_CONTENT_URI;
+                relativePath = Environment.DIRECTORY_DOWNLOADS + File.separator + "xhs";
             }
             
-            ContentValues values = new ContentValues();
+            // 删除已存在的同名文件，以避免重复文件
+            deleteExistingFilesInMediaStore(contentResolver, collectionUri, fileName, relativePath);
             
+            // 准备插入新文件 (we can now use the original filename since duplicates have been removed)
+            ContentValues values = new ContentValues();
             String mimeType = getMimeTypeForFileExtension(fileExtension);
             values.put(MediaStore.MediaColumns.DISPLAY_NAME, fileName);
             values.put(MediaStore.MediaColumns.MIME_TYPE, mimeType);
-            
-            // Determine the collection based on file type
-            Uri collectionUri;
-            if (isImageFile(fileExtension)) {
-                collectionUri = MediaStore.Images.Media.EXTERNAL_CONTENT_URI;
-                values.put(MediaStore.MediaColumns.RELATIVE_PATH, 
-                    Environment.DIRECTORY_PICTURES + File.separator + "xhs");
-            } else if (isVideoFile(fileExtension)) {
-                collectionUri = MediaStore.Video.Media.EXTERNAL_CONTENT_URI;
-                values.put(MediaStore.MediaColumns.RELATIVE_PATH, 
-                    Environment.DIRECTORY_MOVIES + File.separator + "xhs");
-            } else {
-                collectionUri = MediaStore.Downloads.EXTERNAL_CONTENT_URI;
-                values.put(MediaStore.MediaColumns.RELATIVE_PATH, 
-                    Environment.DIRECTORY_DOWNLOADS + File.separator + "xhs");
-            }
+            values.put(MediaStore.MediaColumns.RELATIVE_PATH, relativePath);
             
             Uri uri = contentResolver.insert(collectionUri, values);
             
@@ -236,8 +236,9 @@ public class FileDownloader {
      * Save file to filesystem (fallback for older Android versions or MediaStore failures)
      */
     private File saveToFileSystem(String url, String fileName, ResponseBody body) throws IOException {
+        // Always use public directory with "xhs" subfolder
         File destinationDir;
-        // Always use public Pictures directory with "xhs" subfolder
+        // Try to use public Pictures directory first (requires permissions)
         File publicPicturesDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES);
         if (publicPicturesDir != null) {
             destinationDir = new File(publicPicturesDir, "xhs");
@@ -274,23 +275,22 @@ public class FileDownloader {
             Log.d(TAG, "Using public Pictures directory");
         }
         
-        // Check for and delete existing file to prevent duplicates with (1), (2), etc.
-        if (destinationDir != null && destinationDir.exists()) {
-            File existingFile = new File(destinationDir, fileName);
-            if (existingFile.exists()) {
-                boolean deleted = existingFile.delete();
-                Log.d(TAG, "Deleted existing file: " + existingFile.getAbsolutePath() + ", success: " + deleted);
-            }
-        }
-        
         // Ensure the directory exists
         if (!destinationDir.exists()) {
             boolean dirCreated = destinationDir.mkdirs();
             Log.d(TAG, "Directory creation result: " + dirCreated + " for " + destinationDir.getAbsolutePath());
         }
         
-        // Create the destination file
+        // 检查是否有同名文件，如果有则删除
+        File existingFile = new File(destinationDir, fileName);
+        if (existingFile.exists()) {
+            boolean deleted = existingFile.delete();
+            Log.d(TAG, "Deleted existing file: " + existingFile.getAbsolutePath() + ", success: " + deleted);
+        }
+        
         File destinationFile = new File(destinationDir, fileName);
+        
+        Log.d(TAG, "Saving file to: " + destinationFile.getAbsolutePath());
         
         // Write the response body to the file
         if (body != null) {
@@ -454,16 +454,16 @@ public class FileDownloader {
             Response response = httpClient.newCall(request).execute();
             
             if (response.isSuccessful() && response.body() != null) {
-                // Get the file extension from the Content-Type header (prioritize this over URL)
+                // Get the file extension from the URL or Content-Type header
                 String fileExtension = getFileExtension(response, url);
+                String fullFileName = "xhs_" + fileName; // Add xhs_ prefix like the main download method
                 
-                // Remove any existing extension from fileName to prevent double extensions like .jpg.webp
-                String baseFileName = removeFileExtension(fileName);
+                // 生成唯一文件名（如果文件已存在，使用 xxx_(1).jpg 格式）
+                File internalDir = context.getExternalFilesDir(null);
+                String uniqueFileName = getUniqueFileName(internalDir, fullFileName);
+                File destinationFile = new File(internalDir, uniqueFileName);
                 
-                String fullFileName = "xhs_" + baseFileName + "." + fileExtension; // Add xhs_ prefix like the main download method
-                
-                // Create the destination file in internal app storage
-                File destinationFile = new File(context.getExternalFilesDir(null), fullFileName);
+                Log.d(TAG, "Saving file to internal storage: " + destinationFile.getAbsolutePath());
                 
                 // Write the response body to the file
                 ResponseBody body = response.body();
@@ -678,72 +678,200 @@ public class FileDownloader {
     }
     
     /**
-     * Remove file extension from filename to prevent double extensions
-     * @param fileName The filename that may contain an extension
-     * @return The filename without extension
+     * Get a unique file name in MediaStore to avoid duplicate file names
+     * If file exists, generate name like: xxx_(1).jpg, xxx_(2).jpg, etc.
+     * @param contentResolver ContentResolver instance
+     * @param collectionUri The MediaStore collection URI
+     * @param fileName The original file name
+     * @param relativePath The relative path where the file is located
+     * @return A unique file name
      */
-    private String removeFileExtension(String fileName) {
-        if (fileName == null || fileName.isEmpty()) {
+    @RequiresApi(api = Build.VERSION_CODES.Q)
+    private String getUniqueFileNameInMediaStore(ContentResolver contentResolver, Uri collectionUri, 
+                                                  String fileName, String relativePath) {
+        try {
+            // 分离文件名和扩展名
+            String baseName = fileName;
+            String extension = "";
+            int lastDotIndex = fileName.lastIndexOf('.');
+            if (lastDotIndex > 0 && lastDotIndex < fileName.length() - 1) {
+                baseName = fileName.substring(0, lastDotIndex);
+                extension = fileName.substring(lastDotIndex); // 包含点号，如 ".jpg"
+            }
+            
+            // 检查原始文件名是否存在
+            if (!fileExistsInMediaStore(contentResolver, collectionUri, fileName, relativePath)) {
+                Log.d(TAG, "File doesn't exist, using original name: " + fileName);
+                return fileName;
+            }
+            
+            // 如果存在，生成 xxx_(1).jpg, xxx_(2).jpg 等格式
+            int counter = 1;
+            String newFileName;
+            while (counter < 1000) { // 限制最多尝试1000次
+                newFileName = baseName + "_(" + counter + ")" + extension;
+                if (!fileExistsInMediaStore(contentResolver, collectionUri, newFileName, relativePath)) {
+                    Log.d(TAG, "Generated unique file name: " + newFileName);
+                    return newFileName;
+                }
+                counter++;
+            }
+            
+            // 如果尝试1000次都失败，使用时间戳
+            newFileName = baseName + "_" + System.currentTimeMillis() + extension;
+            Log.d(TAG, "Using timestamp-based file name: " + newFileName);
+            return newFileName;
+            
+        } catch (Exception e) {
+            Log.e(TAG, "Error generating unique file name: " + e.getMessage());
+            // 如果出错，返回原始文件名
             return fileName;
         }
-        
-        int lastDotIndex = fileName.lastIndexOf('.');
-        if (lastDotIndex > 0) { // Ensure dot is not at the beginning
-            return fileName.substring(0, lastDotIndex);
-        }
-        
-        return fileName; // No extension found
     }
     
     /**
-     * Delete existing file with the same name to prevent duplicates with (1), (2), etc.
-     * @param fileName The display name of the file to check for
-     * @param fileExtension The file extension to match
-     * @return true if a file was deleted, false otherwise
+     * Check if a file exists in MediaStore
+     * @param contentResolver ContentResolver instance
+     * @param collectionUri The MediaStore collection URI
+     * @param fileName The file name to check
+     * @param relativePath The relative path where the file is located
+     * @return true if file exists, false otherwise
      */
     @RequiresApi(api = Build.VERSION_CODES.Q)
-    private boolean deleteExistingFile(String fileName, String fileExtension) {
-        ContentResolver contentResolver = context.getContentResolver();
-        Uri collectionUri;
-        
-        // Determine the appropriate collection based on file type
-        if (isImageFile(fileExtension)) {
-            collectionUri = MediaStore.Images.Media.EXTERNAL_CONTENT_URI;
-        } else if (isVideoFile(fileExtension)) {
-            collectionUri = MediaStore.Video.Media.EXTERNAL_CONTENT_URI;
-        } else {
-            collectionUri = MediaStore.Downloads.EXTERNAL_CONTENT_URI;
-        }
-        
-        // Query for files with the same display name in the xhs folder
-        String selection = MediaStore.MediaColumns.DISPLAY_NAME + " = ? AND " +
-                          MediaStore.MediaColumns.RELATIVE_PATH + " LIKE ?";
-        String[] selectionArgs = {fileName, "%xhs%"};
-        
-        try (android.database.Cursor cursor = contentResolver.query(
+    private boolean fileExistsInMediaStore(ContentResolver contentResolver, Uri collectionUri, 
+                                           String fileName, String relativePath) {
+        try {
+            String selection = MediaStore.MediaColumns.DISPLAY_NAME + "=? AND " + 
+                              MediaStore.MediaColumns.RELATIVE_PATH + "=?";
+            String[] selectionArgs = new String[]{fileName, relativePath + File.separator};
+            
+            String[] projection = {MediaStore.MediaColumns._ID};
+            
+            android.database.Cursor cursor = contentResolver.query(
                 collectionUri,
-                new String[]{MediaStore.MediaColumns._ID},
+                projection,
                 selection,
                 selectionArgs,
-                null)) {
+                null
+            );
             
-            if (cursor != null && cursor.moveToFirst()) {
-                // Found existing file, delete it
-                int idColumn = cursor.getColumnIndex(MediaStore.MediaColumns._ID);
-                if (idColumn != -1) {
-                    do {
-                        long id = cursor.getLong(idColumn);
-                        Uri uriToDelete = Uri.withAppendedPath(collectionUri, String.valueOf(id));
-                        int deletedCount = contentResolver.delete(uriToDelete, null, null);
-                        Log.d(TAG, "Deleted existing file with ID: " + id + ", count: " + deletedCount);
-                    } while (cursor.moveToNext());
-                    return true;
+            if (cursor != null) {
+                try {
+                    boolean exists = cursor.getCount() > 0;
+                    return exists;
+                } finally {
+                    cursor.close();
                 }
             }
         } catch (Exception e) {
-            Log.e(TAG, "Error checking for existing file: " + e.getMessage());
+            Log.e(TAG, "Error checking file existence: " + e.getMessage());
         }
-        
         return false;
+    }
+    
+    /**
+     * Delete existing files in MediaStore with the same name
+     * @param contentResolver ContentResolver instance
+     * @param collectionUri The MediaStore collection URI
+     * @param fileName The file name to check
+     * @param relativePath The relative path where the file is located
+     * @return Number of files deleted
+     */
+    @RequiresApi(api = Build.VERSION_CODES.Q)
+    private int deleteExistingFilesInMediaStore(ContentResolver contentResolver, Uri collectionUri, 
+                                                String fileName, String relativePath) {
+        try {
+            String selection = MediaStore.MediaColumns.DISPLAY_NAME + "=? AND " + 
+                              MediaStore.MediaColumns.RELATIVE_PATH + "=?";
+            String[] selectionArgs = new String[]{fileName, relativePath + File.separator};
+            
+            // Query for existing files to get their IDs
+            String[] projection = {MediaStore.MediaColumns._ID};
+            
+            android.database.Cursor cursor = contentResolver.query(
+                collectionUri,
+                projection,
+                selection,
+                selectionArgs,
+                null
+            );
+            
+            int deletedCount = 0;
+            if (cursor != null) {
+                try {
+                    while (cursor.moveToNext()) {
+                        int idColumn = cursor.getColumnIndex(MediaStore.MediaColumns._ID);
+                        if (idColumn != -1) {
+                            long id = cursor.getLong(idColumn);
+                            Uri fileUri = Uri.withAppendedPath(collectionUri, String.valueOf(id));
+                            
+                            // Delete the existing file
+                            int deleted = contentResolver.delete(fileUri, null, null);
+                            if (deleted > 0) {
+                                deletedCount++;
+                                Log.d(TAG, "Deleted existing file with ID: " + id);
+                            }
+                        }
+                    }
+                } finally {
+                    cursor.close();
+                }
+            }
+            return deletedCount;
+        } catch (Exception e) {
+            Log.e(TAG, "Error deleting existing files: " + e.getMessage());
+            return 0;
+        }
+    }
+    
+    /**
+     * Get a unique file name in file system to avoid duplicate file names
+     * If file exists, generate name like: xxx_(1).jpg, xxx_(2).jpg, etc.
+     * @param directory The directory where the file will be saved
+     * @param fileName The original file name
+     * @return A unique file name
+     */
+    private String getUniqueFileName(File directory, String fileName) {
+        try {
+            File file = new File(directory, fileName);
+            
+            // 如果文件不存在，直接返回原始文件名
+            if (!file.exists()) {
+                Log.d(TAG, "File doesn't exist, using original name: " + fileName);
+                return fileName;
+            }
+            
+            // 分离文件名和扩展名
+            String baseName = fileName;
+            String extension = "";
+            int lastDotIndex = fileName.lastIndexOf('.');
+            if (lastDotIndex > 0 && lastDotIndex < fileName.length() - 1) {
+                baseName = fileName.substring(0, lastDotIndex);
+                extension = fileName.substring(lastDotIndex); // 包含点号，如 ".jpg"
+            }
+            
+            // 生成 xxx_(1).jpg, xxx_(2).jpg 等格式
+            int counter = 1;
+            String newFileName;
+            while (counter < 1000) { // 限制最多尝试1000次
+                newFileName = baseName + "_(" + counter + ")" + extension;
+                file = new File(directory, newFileName);
+                if (!file.exists()) {
+                    Log.d(TAG, "Generated unique file name: " + newFileName);
+                    return newFileName;
+                }
+                counter++;
+            }
+            
+            // 如果尝试1000次都失败，使用时间戳
+            newFileName = baseName + "_" + System.currentTimeMillis() + extension;
+            Log.d(TAG, "Using timestamp-based file name: " + newFileName);
+            return newFileName;
+            
+        } catch (Exception e) {
+            Log.e(TAG, "Error generating unique file name: " + e.getMessage());
+            // 如果出错，返回原始文件名
+            return fileName;
+        }
     }
 }

@@ -63,38 +63,31 @@
         style="?android:attr/progressBarStyleHorizontal" />
 
     <ScrollView
+        android:id="@+id/statusScrollView"
         android:layout_width="match_parent"
         android:layout_height="0dp"
-        android:layout_weight="1">
+        android:layout_weight="0.3"
+        android:background="#f0f0f0"
+        android:fillViewport="false">
         
-        <LinearLayout
+        <TextView
+            android:id="@+id/statusText"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:orientation="vertical">
-            
-            <TextView
-                android:id="@+id/statusText"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:background="#f0f0f0"
-                android:minHeight="100dp"
-                android:padding="8dp"
-                android:scrollbars="vertical"
-                android:text="@string/ready_to_download" />
-
-            <GridLayout
-                android:id="@+id/imageContainer"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="10dp"
-                android:columnCount="3"
-                android:alignmentMode="alignMargins"
-                android:rowOrderPreserved="false"
-                android:padding="8dp"
-                android:background="#f0f0f0">
-            </GridLayout>
-            
-        </LinearLayout>
+            android:background="#f0f0f0"
+            android:minHeight="80dp"
+            android:padding="8dp"
+            android:text="@string/ready_to_download" />
     </ScrollView>
+
+    <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/imageContainer"
+        android:layout_width="match_parent"
+        android:layout_weight="0.7"
+        android:layout_marginTop="10dp"
+        android:background="#f0f0f0"
+        android:layout_height="0dp"
+        android:padding="4dp"
+        android:clipToPadding="false" />
 
 </LinearLayout>

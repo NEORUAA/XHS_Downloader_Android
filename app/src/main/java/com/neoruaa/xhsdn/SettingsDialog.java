@@ -4,8 +4,12 @@ import android.app.Dialog;
 import android.content.Context;
 import android.content.SharedPreferences;
 import android.os.Bundle;
+import android.os.Environment;
+import android.view.LayoutInflater;
+import android.view.View;
 import android.widget.Button;
 import android.widget.CheckBox;
+import android.widget.EditText;
 
 import androidx.annotation.NonNull;
 
@@ -19,7 +23,7 @@ public class SettingsDialog extends Dialog {
     private OnSettingsAppliedListener settingsAppliedListener;
     
     public interface OnSettingsAppliedListener {
-        void onSettingsApplied();
+        void onSettingsApplied(String savePath);
     }
     
     public SettingsDialog(@NonNull Context context) {
@@ -41,7 +45,7 @@ public class SettingsDialog extends Dialog {
         cancelButton = findViewById(R.id.cancelButton);
         applyButton = findViewById(R.id.applyButton);
         
-        // Load current settings (only live photo setting remains)
+        // Load current settings
         loadCurrentSettings();
         
         // Set up button listeners
@@ -58,18 +62,22 @@ public class SettingsDialog extends Dialog {
         livePhotoCheckBox.setChecked(createLivePhotos);
     }
     
+    private String getDefaultSavePath() {
+        return Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES).getAbsolutePath() + "/xhs";
+    }
+    
     private void applySettings() {
         boolean createLivePhotos = livePhotoCheckBox.isChecked();
         
-        // Save only the live photo setting (custom path functionality removed)
+        // Save the settings
         SharedPreferences prefs = getContext().getSharedPreferences("XHSDownloaderPrefs", Context.MODE_PRIVATE);
         SharedPreferences.Editor editor = prefs.edit();
         editor.putBoolean("create_live_photos", createLivePhotos);
         editor.apply();
         
-        // Notify listener
+        // Notify listener with default save path
         if (settingsAppliedListener != null) {
-            settingsAppliedListener.onSettingsApplied();
+            settingsAppliedListener.onSettingsApplied(getDefaultSavePath());
         }
         
         dismiss();

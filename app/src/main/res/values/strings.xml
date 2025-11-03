@@ -17,7 +17,7 @@
     <string name="clear_input">Clear input</string>
     <string name="app_description"><![CDATA[origin resolution & no watermark]]></string>
     <string name="settings">Settings</string>
-
+    <string name="default_save_path_info">All files will be saved to MediaStore Downloads/Pictures/Movies + \"xhs\" subfolder</string>
     <string name="cancel">Cancel</string>
     <string name="apply">Apply</string>
     <string name="settings_saved">Settings saved successfully</string>

@@ -84,6 +84,8 @@ public class LivePhotoCreator {
         }
     }
     
+
+    
     /**
      * Generates XMP metadata for live photo following Google's Motion Photo specification
      * @param videoSize The size of the embedded video in bytes

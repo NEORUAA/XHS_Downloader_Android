@@ -20,6 +20,7 @@ import android.view.Window;
 import android.view.WindowManager;
 import android.widget.Button;
 import android.widget.EditText;
+import android.widget.GridLayout;
 import android.widget.HorizontalScrollView;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
@@ -44,7 +45,7 @@ public class MainActivity extends AppCompatActivity {
     private TextView statusText;
     private ProgressBar progressBar;
     private android.widget.ImageButton clearButton;
-    private LinearLayout imageContainer;
+    private GridLayout imageContainer;
     private static final int PERMISSION_REQUEST_CODE = 1001;
     private static final int WEBVIEW_REQUEST_CODE = 1002;
     private String currentUrl; // Store the URL being processed to pass to WebView
@@ -212,10 +213,19 @@ public class MainActivity extends AppCompatActivity {
                 if (bitmap != null) {
                     ImageView imageView = new ImageView(this);
                     imageView.setImageBitmap(bitmap);
-                    imageView.setLayoutParams(new LinearLayout.LayoutParams(300, 300)); // 设置固定大小
+                    // Use GridLayout params to create 3 columns with equal width and vertically center in row
+                    android.widget.GridLayout.LayoutParams params = new android.widget.GridLayout.LayoutParams();
+                    params.width = 0;
+                    params.height = android.widget.GridLayout.LayoutParams.WRAP_CONTENT;
+                    // Each image should take 1 column out of 3 total columns, so span 1 column
+                    params.columnSpec = android.widget.GridLayout.spec(android.widget.GridLayout.UNDEFINED, 1f); // 1 column with equal weight
+                    params.rowSpec = android.widget.GridLayout.spec(android.widget.GridLayout.UNDEFINED); // Auto assign to next row
+                    params.setGravity(android.view.Gravity.CENTER_VERTICAL); // Vertically center in row
+                    params.setMargins(5, 5, 5, 5); // Set margins to match previous padding
+                    imageView.setLayoutParams(params);
                     imageView.setAdjustViewBounds(true);
+                    // Use CENTER_CROP to maintain aspect ratio while filling available space
                     imageView.setScaleType(ImageView.ScaleType.CENTER_CROP);
-                    imageView.setPadding(5, 5, 5, 5);
                     
                     // 添加点击事件来查看大图
                     imageView.setOnClickListener(v -> openImageInExternalApp(filePath));
@@ -229,9 +239,18 @@ public class MainActivity extends AppCompatActivity {
                 if (thumbnail != null) {
                     ImageView thumbnailView = new ImageView(this);
                     thumbnailView.setImageBitmap(thumbnail);
-                    thumbnailView.setLayoutParams(new LinearLayout.LayoutParams(300, 300));
+                    // Use GridLayout params to create 3 columns with equal width and vertically center in row
+                    android.widget.GridLayout.LayoutParams params = new android.widget.GridLayout.LayoutParams();
+                    params.width = 0;
+                    params.height = android.widget.GridLayout.LayoutParams.WRAP_CONTENT;
+                    // Each image should take 1 column out of 3 total columns, so span 1 column
+                    params.columnSpec = android.widget.GridLayout.spec(android.widget.GridLayout.UNDEFINED, 1f); // 1 column with equal weight
+                    params.rowSpec = android.widget.GridLayout.spec(android.widget.GridLayout.UNDEFINED); // Auto assign to next row
+                    params.setGravity(android.view.Gravity.CENTER_VERTICAL); // Vertically center in row
+                    params.setMargins(5, 5, 5, 5); // Set margins to match previous padding
+                    thumbnailView.setLayoutParams(params);
+                    // Use CENTER_CROP to maintain aspect ratio while filling available space
                     thumbnailView.setScaleType(ImageView.ScaleType.CENTER_CROP);
-                    thumbnailView.setPadding(5, 5, 5, 5);
                     
                     // 添加播放图标覆盖
                     thumbnailView.setBackgroundResource(R.drawable.play_button_overlay); // 如果没有此资源，将显示纯缩略图
@@ -244,9 +263,18 @@ public class MainActivity extends AppCompatActivity {
                     // 如果无法生成缩略图，显示一个通用视频图标
                     ImageView placeholderView = new ImageView(this);
                     placeholderView.setImageResource(android.R.drawable.ic_media_play); // 使用播放图标
-                    placeholderView.setLayoutParams(new LinearLayout.LayoutParams(300, 300));
+                    // Use GridLayout params to create 3 columns with equal width and vertically center in row
+                    android.widget.GridLayout.LayoutParams params = new android.widget.GridLayout.LayoutParams();
+                    params.width = 0;
+                    params.height = android.widget.GridLayout.LayoutParams.WRAP_CONTENT;
+                    // Each image should take 1 column out of 3 total columns, so span 1 column
+                    params.columnSpec = android.widget.GridLayout.spec(android.widget.GridLayout.UNDEFINED, 1f); // 1 column with equal weight
+                    params.rowSpec = android.widget.GridLayout.spec(android.widget.GridLayout.UNDEFINED); // Auto assign to next row
+                    params.setGravity(android.view.Gravity.CENTER_VERTICAL); // Vertically center in row
+                    params.setMargins(5, 5, 5, 5); // Set margins to match previous padding
+                    placeholderView.setLayoutParams(params);
+                    // Use CENTER_CROP to maintain aspect ratio while filling available space
                     placeholderView.setScaleType(ImageView.ScaleType.CENTER_CROP);
-                    placeholderView.setPadding(5, 5, 5, 5);
                     
                     placeholderView.setOnClickListener(v -> openVideoInExternalApp(filePath));
                     
@@ -256,9 +284,18 @@ public class MainActivity extends AppCompatActivity {
                 // 对于其他类型的文件，显示通用图标
                 ImageView genericView = new ImageView(this);
                 genericView.setImageResource(android.R.drawable.ic_menu_gallery); // 使用系统默认附件图标
-                genericView.setLayoutParams(new LinearLayout.LayoutParams(300, 300));
+                // Use GridLayout params to create 3 columns with equal width and vertically center in row
+                android.widget.GridLayout.LayoutParams params = new android.widget.GridLayout.LayoutParams();
+                params.width = 0;
+                params.height = android.widget.GridLayout.LayoutParams.WRAP_CONTENT;
+                // Each image should take 1 column out of 3 total columns, so span 1 column
+                params.columnSpec = android.widget.GridLayout.spec(android.widget.GridLayout.UNDEFINED, 1f); // 1 column with equal weight
+                params.rowSpec = android.widget.GridLayout.spec(android.widget.GridLayout.UNDEFINED); // Auto assign to next row
+                params.setGravity(android.view.Gravity.CENTER_VERTICAL); // Vertically center in row
+                params.setMargins(5, 5, 5, 5); // Set margins to match previous padding
+                genericView.setLayoutParams(params);
+                // Use CENTER_CROP to maintain aspect ratio while filling available space
                 genericView.setScaleType(ImageView.ScaleType.CENTER_CROP);
-                genericView.setPadding(5, 5, 5, 5);
                 
                 genericView.setOnClickListener(v -> openFileInExternalApp(filePath));
                 

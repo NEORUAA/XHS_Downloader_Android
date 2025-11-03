@@ -176,13 +176,13 @@ public class FileDownloader {
                 relativePath = Environment.DIRECTORY_DOWNLOADS + File.separator + "xhs";
             }
             
-            // 检查是否已存在同名文件，如果存在则生成新的文件名（使用 xxx_(1).jpg 格式）
-            String finalFileName = getUniqueFileNameInMediaStore(contentResolver, collectionUri, fileName, relativePath);
+            // 删除已存在的同名文件，以避免重复文件
+            deleteExistingFilesInMediaStore(contentResolver, collectionUri, fileName, relativePath);
             
-            // 准备插入新文件
+            // 准备插入新文件 (we can now use the original filename since duplicates have been removed)
             ContentValues values = new ContentValues();
             String mimeType = getMimeTypeForFileExtension(fileExtension);
-            values.put(MediaStore.MediaColumns.DISPLAY_NAME, finalFileName);
+            values.put(MediaStore.MediaColumns.DISPLAY_NAME, fileName);
             values.put(MediaStore.MediaColumns.MIME_TYPE, mimeType);
             values.put(MediaStore.MediaColumns.RELATIVE_PATH, relativePath);
             
@@ -285,9 +285,14 @@ public class FileDownloader {
             Log.d(TAG, "Directory creation result: " + dirCreated + " for " + destinationDir.getAbsolutePath());
         }
         
-        // 生成唯一文件名（如果文件已存在，使用 xxx_(1).jpg 格式）
-        String uniqueFileName = getUniqueFileName(destinationDir, fileName);
-        File destinationFile = new File(destinationDir, uniqueFileName);
+        // 检查是否有同名文件，如果有则删除
+        File existingFile = new File(destinationDir, fileName);
+        if (existingFile.exists()) {
+            boolean deleted = existingFile.delete();
+            Log.d(TAG, "Deleted existing file: " + existingFile.getAbsolutePath() + ", success: " + deleted);
+        }
+        
+        File destinationFile = new File(destinationDir, fileName);
         
         Log.d(TAG, "Saving file to: " + destinationFile.getAbsolutePath());
         
@@ -766,6 +771,61 @@ public class FileDownloader {
             Log.e(TAG, "Error checking file existence: " + e.getMessage());
         }
         return false;
+    }
+    
+    /**
+     * Delete existing files in MediaStore with the same name
+     * @param contentResolver ContentResolver instance
+     * @param collectionUri The MediaStore collection URI
+     * @param fileName The file name to check
+     * @param relativePath The relative path where the file is located
+     * @return Number of files deleted
+     */
+    @RequiresApi(api = Build.VERSION_CODES.Q)
+    private int deleteExistingFilesInMediaStore(ContentResolver contentResolver, Uri collectionUri, 
+                                                String fileName, String relativePath) {
+        try {
+            String selection = MediaStore.MediaColumns.DISPLAY_NAME + "=? AND " + 
+                              MediaStore.MediaColumns.RELATIVE_PATH + "=?";
+            String[] selectionArgs = new String[]{fileName, relativePath + File.separator};
+            
+            // Query for existing files to get their IDs
+            String[] projection = {MediaStore.MediaColumns._ID};
+            
+            android.database.Cursor cursor = contentResolver.query(
+                collectionUri,
+                projection,
+                selection,
+                selectionArgs,
+                null
+            );
+            
+            int deletedCount = 0;
+            if (cursor != null) {
+                try {
+                    while (cursor.moveToNext()) {
+                        int idColumn = cursor.getColumnIndex(MediaStore.MediaColumns._ID);
+                        if (idColumn != -1) {
+                            long id = cursor.getLong(idColumn);
+                            Uri fileUri = Uri.withAppendedPath(collectionUri, String.valueOf(id));
+                            
+                            // Delete the existing file
+                            int deleted = contentResolver.delete(fileUri, null, null);
+                            if (deleted > 0) {
+                                deletedCount++;
+                                Log.d(TAG, "Deleted existing file with ID: " + id);
+                            }
+                        }
+                    }
+                } finally {
+                    cursor.close();
+                }
+            }
+            return deletedCount;
+        } catch (Exception e) {
+            Log.e(TAG, "Error deleting existing files: " + e.getMessage());
+            return 0;
+        }
     }
     
     /**

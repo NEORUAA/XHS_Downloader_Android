@@ -69,9 +69,13 @@ public class FileDownloader {
             Response response = httpClient.newCall(request).execute();
             
             if (response.isSuccessful() && response.body() != null) {
-                // Get the file extension from the URL or Content-Type header
+                // Get the file extension from the Content-Type header (prioritize this over URL)
                 String fileExtension = getFileExtension(response, url);
-                String fullFileName = "xhs_" + fileName;
+                
+                // Remove any existing extension from fileName to prevent double extensions like .jpg.webp
+                String baseFileName = removeFileExtension(fileName);
+                
+                String fullFileName = "xhs_" + baseFileName + "." + fileExtension;
                 
                 File destinationFile = null;
                 
@@ -435,9 +439,13 @@ public class FileDownloader {
             Response response = httpClient.newCall(request).execute();
             
             if (response.isSuccessful() && response.body() != null) {
-                // Get the file extension from the URL or Content-Type header
+                // Get the file extension from the Content-Type header (prioritize this over URL)
                 String fileExtension = getFileExtension(response, url);
-                String fullFileName = "xhs_" + fileName; // Add xhs_ prefix like the main download method
+                
+                // Remove any existing extension from fileName to prevent double extensions like .jpg.webp
+                String baseFileName = removeFileExtension(fileName);
+                
+                String fullFileName = "xhs_" + baseFileName + "." + fileExtension; // Add xhs_ prefix like the main download method
                 
                 // Create the destination file in internal app storage
                 File destinationFile = new File(context.getExternalFilesDir(null), fullFileName);
@@ -652,5 +660,23 @@ public class FileDownloader {
         
         // Default to Pictures
         return Environment.DIRECTORY_PICTURES;
+    }
+    
+    /**
+     * Remove file extension from filename to prevent double extensions
+     * @param fileName The filename that may contain an extension
+     * @return The filename without extension
+     */
+    private String removeFileExtension(String fileName) {
+        if (fileName == null || fileName.isEmpty()) {
+            return fileName;
+        }
+        
+        int lastDotIndex = fileName.lastIndexOf('.');
+        if (lastDotIndex > 0) { // Ensure dot is not at the beginning
+            return fileName.substring(0, lastDotIndex);
+        }
+        
+        return fileName; // No extension found
     }
 }

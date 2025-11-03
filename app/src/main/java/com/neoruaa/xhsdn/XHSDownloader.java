@@ -1033,6 +1033,23 @@ public class XHSDownloader {
                                 // Live photo file is invalid, treat as failure
                                 Log.e(TAG, "Live photo file was created but is invalid (zero size or doesn't exist)");
                                 livePhotoCreated = false;
+                                
+                                // Delete the invalid live photo file to prevent corrupted files from remaining
+                                if (livePhotoFile.exists()) {
+                                    boolean deleted = livePhotoFile.delete();
+                                    Log.d(TAG, "Deleted invalid live photo file: " + livePhotoFile.getAbsolutePath() + 
+                                           ", deletion result: " + deleted);
+                                }
+                            }
+                        } else {
+                            // LivePhotoCreator returned false, meaning creation failed
+                            Log.e(TAG, "LivePhotoCreator failed to create live photo");
+                            
+                            // Delete the failed live photo file if it exists to prevent corrupted files from remaining
+                            if (livePhotoFile.exists()) {
+                                boolean deleted = livePhotoFile.delete();
+                                Log.d(TAG, "Deleted failed live photo file: " + livePhotoFile.getAbsolutePath() + 
+                                       ", deletion result: " + deleted);
                             }
                         }
                         

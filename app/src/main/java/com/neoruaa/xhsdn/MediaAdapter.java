@@ -4,6 +4,8 @@ import android.content.Context;
 import android.content.Intent;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
+import android.graphics.Canvas;
+import android.graphics.drawable.Drawable;
 import android.net.Uri;
 import android.util.Log;
 import android.view.LayoutInflater;
@@ -82,13 +84,16 @@ public class MediaAdapter extends RecyclerView.Adapter<MediaAdapter.MediaViewHol
                 // 显示视频缩略图
                 Bitmap thumbnail = createVideoThumbnail(filePath);
                 if (thumbnail != null) {
-                    holder.imageView.setImageBitmap(thumbnail);
                     holder.imageView.setBackgroundColor(0xFFEEEEEE);
-                    // 尝试添加播放图标
+                    // Overlay the play icon on the video thumbnail
                     try {
-                        holder.imageView.setBackgroundResource(R.drawable.play_button_overlay);
+                        Bitmap playIconBitmap = getBitmapFromVectorDrawable(context, R.drawable.play_button_overlay, dpToPx(200), dpToPx(200));
+                        Bitmap combinedBitmap = combineBitmapWithPlayIcon(thumbnail, playIconBitmap, dpToPx(16)); // 16dp padding
+                        holder.imageView.setImageBitmap(combinedBitmap);
                     } catch (Exception e) {
-                        // 忽略
+                        // If overlay fails, just show the thumbnail
+                        holder.imageView.setImageBitmap(thumbnail);
+                        Log.e(TAG, "Failed to add play icon overlay: " + e.getMessage());
                     }
                     holder.imageView.setOnClickListener(v -> openVideoInExternalApp(filePath));
                 } else {
@@ -280,6 +285,36 @@ public class MediaAdapter extends RecyclerView.Adapter<MediaAdapter.MediaViewHol
     private int dpToPx(int dp) {
         float density = context.getResources().getDisplayMetrics().density;
         return Math.round(dp * density);
+    }
+    
+    /**
+     * Convert a vector drawable to bitmap
+     */
+    private Bitmap getBitmapFromVectorDrawable(Context context, int drawableId, int width, int height) {
+        Drawable drawable = context.getResources().getDrawable(drawableId);
+        Bitmap bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
+        Canvas canvas = new Canvas(bitmap);
+        drawable.setBounds(0, 0, canvas.getWidth(), canvas.getHeight());
+        drawable.draw(canvas);
+        return bitmap;
+    }
+    
+    /**
+     * Combine a thumbnail with a play icon
+     */
+    private Bitmap combineBitmapWithPlayIcon(Bitmap thumbnail, Bitmap playIcon, int padding) {
+        // Create a copy of the thumbnail to draw on
+        Bitmap result = thumbnail.copy(thumbnail.getConfig(), true);
+        Canvas canvas = new Canvas(result);
+        
+        // Calculate the position to draw the play icon (centered with padding)
+        int iconX = (canvas.getWidth() - playIcon.getWidth()) / 2;
+        int iconY = (canvas.getHeight() - playIcon.getHeight()) / 2;
+        
+        // Draw the play icon in the center of the thumbnail
+        canvas.drawBitmap(playIcon, iconX, iconY, null);
+        
+        return result;
     }
 }
 

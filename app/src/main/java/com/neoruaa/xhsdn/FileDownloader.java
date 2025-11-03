@@ -154,6 +154,12 @@ public class FileDownloader {
     private File saveToMediaStore(String fileName, ResponseBody body, String fileExtension) {
         try {
             ContentResolver contentResolver = context.getContentResolver();
+            
+            // Check if file already exists and delete it to prevent duplicate files with (1), (2), etc.
+            if (deleteExistingFile(fileName, fileExtension)) {
+                Log.d(TAG, "Deleted existing file with name: " + fileName);
+            }
+            
             ContentValues values = new ContentValues();
             
             String mimeType = getMimeTypeForFileExtension(fileExtension);
@@ -266,6 +272,15 @@ public class FileDownloader {
             destinationDir = new File(context.getExternalFilesDir(Environment.DIRECTORY_PICTURES), "xhs");
         } else {
             Log.d(TAG, "Using public Pictures directory");
+        }
+        
+        // Check for and delete existing file to prevent duplicates with (1), (2), etc.
+        if (destinationDir != null && destinationDir.exists()) {
+            File existingFile = new File(destinationDir, fileName);
+            if (existingFile.exists()) {
+                boolean deleted = existingFile.delete();
+                Log.d(TAG, "Deleted existing file: " + existingFile.getAbsolutePath() + ", success: " + deleted);
+            }
         }
         
         // Ensure the directory exists
@@ -678,5 +693,57 @@ public class FileDownloader {
         }
         
         return fileName; // No extension found
+    }
+    
+    /**
+     * Delete existing file with the same name to prevent duplicates with (1), (2), etc.
+     * @param fileName The display name of the file to check for
+     * @param fileExtension The file extension to match
+     * @return true if a file was deleted, false otherwise
+     */
+    @RequiresApi(api = Build.VERSION_CODES.Q)
+    private boolean deleteExistingFile(String fileName, String fileExtension) {
+        ContentResolver contentResolver = context.getContentResolver();
+        Uri collectionUri;
+        
+        // Determine the appropriate collection based on file type
+        if (isImageFile(fileExtension)) {
+            collectionUri = MediaStore.Images.Media.EXTERNAL_CONTENT_URI;
+        } else if (isVideoFile(fileExtension)) {
+            collectionUri = MediaStore.Video.Media.EXTERNAL_CONTENT_URI;
+        } else {
+            collectionUri = MediaStore.Downloads.EXTERNAL_CONTENT_URI;
+        }
+        
+        // Query for files with the same display name in the xhs folder
+        String selection = MediaStore.MediaColumns.DISPLAY_NAME + " = ? AND " +
+                          MediaStore.MediaColumns.RELATIVE_PATH + " LIKE ?";
+        String[] selectionArgs = {fileName, "%xhs%"};
+        
+        try (android.database.Cursor cursor = contentResolver.query(
+                collectionUri,
+                new String[]{MediaStore.MediaColumns._ID},
+                selection,
+                selectionArgs,
+                null)) {
+            
+            if (cursor != null && cursor.moveToFirst()) {
+                // Found existing file, delete it
+                int idColumn = cursor.getColumnIndex(MediaStore.MediaColumns._ID);
+                if (idColumn != -1) {
+                    do {
+                        long id = cursor.getLong(idColumn);
+                        Uri uriToDelete = Uri.withAppendedPath(collectionUri, String.valueOf(id));
+                        int deletedCount = contentResolver.delete(uriToDelete, null, null);
+                        Log.d(TAG, "Deleted existing file with ID: " + id + ", count: " + deletedCount);
+                    } while (cursor.moveToNext());
+                    return true;
+                }
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "Error checking for existing file: " + e.getMessage());
+        }
+        
+        return false;
     }
 }

@@ -17,7 +17,9 @@
     <string name="clear_input">Clear input</string>
     <string name="app_description"><![CDATA[origin resolution & no watermark]]></string>
     <string name="settings">Settings</string>
-
+    <string name="custom_save_path">Custom Save Path</string>
+    <string name="enter_save_path">Enter save path</string>
+    <string name="reset_default">Reset</string>
     <string name="cancel">Cancel</string>
     <string name="apply">Apply</string>
     <string name="settings_saved">Settings saved successfully</string>

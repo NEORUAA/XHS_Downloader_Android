@@ -44,10 +44,12 @@ public class MainActivity extends AppCompatActivity {
     private TextView statusText;
     private ProgressBar progressBar;
     private android.widget.ImageButton clearButton;
-    private LinearLayout imageContainer;
+    private androidx.recyclerview.widget.RecyclerView imageContainer;
+    private MediaAdapter mediaAdapter;
     private static final int PERMISSION_REQUEST_CODE = 1001;
     private static final int WEBVIEW_REQUEST_CODE = 1002;
     private String currentUrl; // Store the URL being processed to pass to WebView
+    private boolean hasRequestedStoragePermission = false; // 标记是否已请求过存储权限，避免重复请求
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -75,6 +77,12 @@ public class MainActivity extends AppCompatActivity {
         progressBar = findViewById(R.id.progressBar);
         clearButton = findViewById(R.id.clearButton);
         imageContainer = findViewById(R.id.imageContainer);
+
+        // 启用 statusText 的滚动功能
+        statusText.setMovementMethod(new android.text.method.ScrollingMovementMethod());
+
+        // 初始化瀑布流布局
+        setupWaterfallLayout();
 
         // 检查并请求存储权限
         checkPermissions();
@@ -154,26 +162,44 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void checkPermissions() {
+        checkPermissions(true);
+    }
+    
+    private void checkPermissions(boolean requestIfNeeded) {
         // 对于Android 11+ (API 30+)，需要特殊的存储权限处理
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
             // Android 11+ 使用MANAGE_EXTERNAL_STORAGE权限
             if (!Environment.isExternalStorageManager()) {
-                // 请求MANAGE_EXTERNAL_STORAGE权限
-                Intent intent = new Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION);
-                Uri uri = Uri.fromParts("package", getPackageName(), null);
-                intent.setData(uri);
-                startActivity(intent);
-                Toast.makeText(this, getString(R.string.grant_all_files_access), Toast.LENGTH_LONG).show();
+                // 只有在需要请求且尚未请求过时才打开设置页面
+                if (requestIfNeeded && !hasRequestedStoragePermission) {
+                    hasRequestedStoragePermission = true;
+                    // 请求MANAGE_EXTERNAL_STORAGE权限
+                    Intent intent = new Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION);
+                    Uri uri = Uri.fromParts("package", getPackageName(), null);
+                    intent.setData(uri);
+                    startActivity(intent);
+                    Toast.makeText(this, getString(R.string.grant_all_files_access), Toast.LENGTH_LONG).show();
+                }
+            } else {
+                // 权限已授予，重置标志
+                hasRequestedStoragePermission = false;
             }
         } else {
             // Android 10及以下版本，检查传统存储权限
             if (ContextCompat.checkSelfPermission(this, Manifest.permission.WRITE_EXTERNAL_STORAGE) 
                     != PackageManager.PERMISSION_GRANTED) {
-                // 请求存储权限
-                ActivityCompat.requestPermissions(this,
-                        new String[]{Manifest.permission.WRITE_EXTERNAL_STORAGE, 
-                                     Manifest.permission.READ_EXTERNAL_STORAGE},
-                        PERMISSION_REQUEST_CODE);
+                // 只有在需要请求且尚未请求过时才请求权限
+                if (requestIfNeeded && !hasRequestedStoragePermission) {
+                    hasRequestedStoragePermission = true;
+                    // 请求存储权限
+                    ActivityCompat.requestPermissions(this,
+                            new String[]{Manifest.permission.WRITE_EXTERNAL_STORAGE, 
+                                         Manifest.permission.READ_EXTERNAL_STORAGE},
+                            PERMISSION_REQUEST_CODE);
+                }
+            } else {
+                // 权限已授予，重置标志
+                hasRequestedStoragePermission = false;
             }
         }
     }
@@ -193,77 +219,51 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onResume() {
         super.onResume();
-        // 在应用恢复时再次检查权限状态
-        checkPermissions();
+        // 在应用恢复时检查权限状态，但不主动请求权限（避免重复提示）
+        // 如果用户从设置页面返回，此时权限可能已授予，重置标志以便下次可以再次请求
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            if (Environment.isExternalStorageManager()) {
+                // 权限已授予，重置标志
+                hasRequestedStoragePermission = false;
+            }
+        } else {
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.WRITE_EXTERNAL_STORAGE) 
+                    == PackageManager.PERMISSION_GRANTED) {
+                // 权限已授予，重置标志
+                hasRequestedStoragePermission = false;
+            }
+        }
+        // 只检查状态，不主动请求
+        checkPermissions(false);
     }
 
     private void clearImageViews() {
-        imageContainer.removeAllViews();
+        if (mediaAdapter != null) {
+            mediaAdapter.clearItems();
+        }
+        displayedFiles.clear(); // 清除已显示文件的记录，允许重复下载时显示缩略图
+    }
+    
+    /**
+     * 初始化瀑布流布局
+     */
+    private void setupWaterfallLayout() {
+        // 使用瀑布流布局管理器（2列）
+        androidx.recyclerview.widget.StaggeredGridLayoutManager layoutManager = 
+            new androidx.recyclerview.widget.StaggeredGridLayoutManager(2, 
+                androidx.recyclerview.widget.StaggeredGridLayoutManager.VERTICAL);
+        imageContainer.setLayoutManager(layoutManager);
+        
+        // 初始化适配器
+        mediaAdapter = new MediaAdapter(this);
+        imageContainer.setAdapter(mediaAdapter);
     }
 
     private void addMediaView(String filePath) {
         File mediaFile = new File(filePath);
-        if (mediaFile.exists()) {
-            String mimeType = getMimeType(filePath);
-            
-            if (isImageFile(mimeType)) {
-                // 显示图片 - 使用采样率避免内存溢出
-                Bitmap bitmap = decodeSampledBitmapFromFile(filePath, 600, 600); // 限制在600x600像素内
-                if (bitmap != null) {
-                    ImageView imageView = new ImageView(this);
-                    imageView.setImageBitmap(bitmap);
-                    imageView.setLayoutParams(new LinearLayout.LayoutParams(300, 300)); // 设置固定大小
-                    imageView.setAdjustViewBounds(true);
-                    imageView.setScaleType(ImageView.ScaleType.CENTER_CROP);
-                    imageView.setPadding(5, 5, 5, 5);
-                    
-                    // 添加点击事件来查看大图
-                    imageView.setOnClickListener(v -> openImageInExternalApp(filePath));
-                    
-                    imageContainer.addView(imageView);
-                }
-            } else if (isVideoFile(mimeType)) {
-                // 创建视频缩略图（包括Live Photo视频）
-                // 生成视频缩略图
-                Bitmap thumbnail = createVideoThumbnail(filePath);
-                if (thumbnail != null) {
-                    ImageView thumbnailView = new ImageView(this);
-                    thumbnailView.setImageBitmap(thumbnail);
-                    thumbnailView.setLayoutParams(new LinearLayout.LayoutParams(300, 300));
-                    thumbnailView.setScaleType(ImageView.ScaleType.CENTER_CROP);
-                    thumbnailView.setPadding(5, 5, 5, 5);
-                    
-                    // 添加播放图标覆盖
-                    thumbnailView.setBackgroundResource(R.drawable.play_button_overlay); // 如果没有此资源，将显示纯缩略图
-                    
-                    // 添加点击事件来播放视频
-                    thumbnailView.setOnClickListener(v -> openVideoInExternalApp(filePath));
-                    
-                    imageContainer.addView(thumbnailView);
-                } else {
-                    // 如果无法生成缩略图，显示一个通用视频图标
-                    ImageView placeholderView = new ImageView(this);
-                    placeholderView.setImageResource(android.R.drawable.ic_media_play); // 使用播放图标
-                    placeholderView.setLayoutParams(new LinearLayout.LayoutParams(300, 300));
-                    placeholderView.setScaleType(ImageView.ScaleType.CENTER_CROP);
-                    placeholderView.setPadding(5, 5, 5, 5);
-                    
-                    placeholderView.setOnClickListener(v -> openVideoInExternalApp(filePath));
-                    
-                    imageContainer.addView(placeholderView);
-                }
-            } else {
-                // 对于其他类型的文件，显示通用图标
-                ImageView genericView = new ImageView(this);
-                genericView.setImageResource(android.R.drawable.ic_menu_gallery); // 使用系统默认附件图标
-                genericView.setLayoutParams(new LinearLayout.LayoutParams(300, 300));
-                genericView.setScaleType(ImageView.ScaleType.CENTER_CROP);
-                genericView.setPadding(5, 5, 5, 5);
-                
-                genericView.setOnClickListener(v -> openFileInExternalApp(filePath));
-                
-                imageContainer.addView(genericView);
-            }
+        if (mediaFile.exists() && mediaAdapter != null) {
+            // 添加媒体文件到适配器
+            mediaAdapter.addItem(filePath);
         }
     }
     
@@ -493,6 +493,9 @@ public class MainActivity extends AppCompatActivity {
                 // Get the image URLs from the WebView activity
                 ArrayList<String> imageUrls = data.getStringArrayListExtra("image_urls");
                 if (imageUrls != null && !imageUrls.isEmpty()) {
+                    // 清除之前显示的图片和记录
+                    clearImageViews();
+                    
                     // Process the found image URLs
                     statusText.setText(getString(R.string.found_images_via_web_crawl, imageUrls.size()));
                     
@@ -673,10 +676,20 @@ public class MainActivity extends AppCompatActivity {
     
     private void showSettingsDialog() {
         SettingsDialog settingsDialog = new SettingsDialog(this);
-        settingsDialog.setOnSettingsAppliedListener(() -> {
+        settingsDialog.setOnSettingsAppliedListener(savePath -> {
             // Handle settings applied if needed
             Toast.makeText(this, getString(R.string.settings_saved), Toast.LENGTH_SHORT).show();
         });
         settingsDialog.show();
+    }
+    
+    /**
+     * 将 dp 转换为像素
+     * @param dp dp值
+     * @return 像素值
+     */
+    private int dpToPx(int dp) {
+        float density = getResources().getDisplayMetrics().density;
+        return Math.round(dp * density);
     }
 }

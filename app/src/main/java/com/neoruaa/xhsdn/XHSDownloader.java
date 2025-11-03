@@ -990,13 +990,20 @@ public class XHSDownloader {
                             continue;
                         }
                         
-                        // Always use MediaStore with "xhs" subfolder - ignore any custom save path
-                        File publicPicturesDir = android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_PICTURES);
+                        // Get the destination directory for final save
+                        SharedPreferences prefs = context.getSharedPreferences("XHSDownloaderPrefs", Context.MODE_PRIVATE);
+                        String customSavePath = prefs.getString("custom_save_path", null);
+                        
                         File destinationDir;
-                        if (publicPicturesDir != null) {
-                            destinationDir = new File(publicPicturesDir, "xhs");
+                        if (customSavePath != null && !customSavePath.isEmpty()) {
+                            destinationDir = new File(customSavePath);
                         } else {
-                            destinationDir = context.getExternalFilesDir(android.os.Environment.DIRECTORY_PICTURES);
+                            File publicPicturesDir = android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_PICTURES);
+                            if (publicPicturesDir != null) {
+                                destinationDir = new File(publicPicturesDir, "xhs");
+                            } else {
+                                destinationDir = context.getExternalFilesDir(android.os.Environment.DIRECTORY_PICTURES);
+                            }
                         }
                         
                         if (!destinationDir.exists()) {
@@ -1033,23 +1040,6 @@ public class XHSDownloader {
                                 // Live photo file is invalid, treat as failure
                                 Log.e(TAG, "Live photo file was created but is invalid (zero size or doesn't exist)");
                                 livePhotoCreated = false;
-                                
-                                // Delete the invalid live photo file to prevent corrupted files from remaining
-                                if (livePhotoFile.exists()) {
-                                    boolean deleted = livePhotoFile.delete();
-                                    Log.d(TAG, "Deleted invalid live photo file: " + livePhotoFile.getAbsolutePath() + 
-                                           ", deletion result: " + deleted);
-                                }
-                            }
-                        } else {
-                            // LivePhotoCreator returned false, meaning creation failed
-                            Log.e(TAG, "LivePhotoCreator failed to create live photo");
-                            
-                            // Delete the failed live photo file if it exists to prevent corrupted files from remaining
-                            if (livePhotoFile.exists()) {
-                                boolean deleted = livePhotoFile.delete();
-                                Log.d(TAG, "Deleted failed live photo file: " + livePhotoFile.getAbsolutePath() + 
-                                       ", deletion result: " + deleted);
                             }
                         }
                         

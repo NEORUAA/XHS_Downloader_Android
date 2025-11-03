@@ -30,10 +30,7 @@ public class DownloadTask extends AsyncTask<String, String, Boolean> {
     @Override
     protected void onPreExecute() {
         super.onPreExecute();
-        TextView statusText = statusTextRef.get();
-        if (statusText != null) {
-            statusText.setText(statusText.getContext().getString(R.string.initializing_download));
-        }
+        // 不显示"正在初始化下载"提示，直接开始下载
     }
 
     @Override
@@ -117,12 +114,33 @@ public class DownloadTask extends AsyncTask<String, String, Boolean> {
                         long downloaded = Long.parseLong(parts[0]);
                         long total = Long.parseLong(parts[1]);
                         
-                        if (progressBar != null) {
-                            // Set progress bar to be indeterminate initially, then set max and progress
-                            if (total > 0) {
-                                progressBar.setMax((int) Math.min(total, Integer.MAX_VALUE));
-                                progressBar.setProgress((int) Math.min(downloaded, Integer.MAX_VALUE));
-                                progressBar.setVisibility(View.VISIBLE); // Ensure it's visible during download
+                        if (progressBar != null && total > 0) {
+                            // 使用百分比显示进度（0-100）
+                            progressBar.setMax(100);
+                            int percentage = (int) ((downloaded * 100) / total);
+                            progressBar.setProgress(percentage);
+                            progressBar.setVisibility(View.VISIBLE); // Ensure it's visible during download
+                            
+                            // 在状态文本中显示百分比
+                            if (statusText != null) {
+                                // 使用 \r 来覆盖当前行（但Android TextView不支持\r，所以我们只更新最后一行）
+                                String currentText = statusText.getText().toString();
+                                String[] lines = currentText.split("\n");
+                                
+                                // 如果最后一行是进度信息，替换它；否则添加新行
+                                String progressInfo = "下载进度: " + percentage + "%";
+                                if (lines.length > 0 && lines[lines.length - 1].startsWith("下载进度:")) {
+                                    // 替换最后一行
+                                    StringBuilder newText = new StringBuilder();
+                                    for (int i = 0; i < lines.length - 1; i++) {
+                                        newText.append(lines[i]).append("\n");
+                                    }
+                                    newText.append(progressInfo);
+                                    statusText.setText(newText.toString());
+                                } else {
+                                    // 添加新的进度行
+                                    statusText.append("\n" + progressInfo);
+                                }
                             }
                         }
                     } catch (NumberFormatException e) {
@@ -213,15 +231,18 @@ public class DownloadTask extends AsyncTask<String, String, Boolean> {
         if (statusText != null) {
             if (success) {
                 statusText.append("\n" + statusText.getContext().getString(R.string.download_completed_successfully));
-                // 显示所有下载文件的路径
+                // 只显示存放目录路径，不显示每个文件的详细路径
                 if (!downloadedFiles.isEmpty()) {
-                    statusText.append("\n" + statusText.getContext().getString(R.string.downloaded_files_title));
                     synchronized (downloadedFiles) {
-                        java.util.List<String> sortedFiles = new java.util.ArrayList<>(downloadedFiles);
-                        java.util.Collections.sort(sortedFiles); // Sort for consistent display
-                        for (String filePath : sortedFiles) {
-                            statusText.append("\n" + filePath);
-                        }
+                        // 获取第一个文件的目录路径
+                        String firstFilePath = downloadedFiles.iterator().next();
+                        java.io.File firstFile = new java.io.File(firstFilePath);
+                        String directoryPath = firstFile.getParent();
+                        
+                        // 显示文件数量和存放目录
+                        int fileCount = downloadedFiles.size();
+                        statusText.append("\n成功下载 " + fileCount + " 个文件");
+                        statusText.append("\n存放路径: " + directoryPath);
                     }
                 }
             } else {

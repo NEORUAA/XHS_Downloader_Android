@@ -69,20 +69,16 @@ public class FileDownloader {
             Response response = httpClient.newCall(request).execute();
             
             if (response.isSuccessful() && response.body() != null) {
-                // 检查文件名是否已包含扩展名
-                String fileExtension = "";
-                String baseFileName = fileName;
+                // 优先从响应中获取文件扩展名 (Content-Type header)
+                String fileExtension = getFileExtension(response, url);
                 
-                // 从文件名中提取扩展名（如果已存在）
+                // 从原始文件名中提取基础名称（去掉扩展名）
+                String baseFileName = fileName;
                 int lastDotIndex = fileName.lastIndexOf('.');
                 if (lastDotIndex > 0 && lastDotIndex < fileName.length() - 1) {
-                    fileExtension = fileName.substring(lastDotIndex + 1).toLowerCase();
                     baseFileName = fileName.substring(0, lastDotIndex);
-                    Log.d(TAG, "File already has extension: " + fileExtension + ", base name: " + baseFileName);
-                } else {
-                    // 如果文件名没有扩展名，从响应中获取
-                    fileExtension = getFileExtension(response, url);
-                    Log.d(TAG, "No extension in filename, using: " + fileExtension);
+                    Log.d(TAG, "Original filename has extension: " + fileName.substring(lastDotIndex + 1).toLowerCase() + 
+                          ", but using Content-Type based extension: " + fileExtension);
                 }
                 
                 String fullFileName = "xhs_" + baseFileName + "." + fileExtension;

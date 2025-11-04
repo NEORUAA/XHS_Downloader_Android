@@ -646,25 +646,32 @@ public class XHSDownloader {
         }
         
         if (!mediaPairs.isEmpty()) {
-            mediaUrls.clear(); // Clear the existing mediaUrls to start fresh with properly paired items
+            // Create a new list to maintain the proper ordering and pairing
+            List<String> newMediaUrls = new ArrayList<>();
+            
+            // First add the properly paired live photos
             for (MediaPair pair : mediaPairs) {
                 if (pair.isLivePhoto) {
-                    // Add both image and video for live photo
-                    mediaUrls.add(pair.imageUrl);
+                    // Add both image and video for live photo (in correct order)
+                    newMediaUrls.add(pair.imageUrl);
                     if (pair.videoUrl != null) {
-                        mediaUrls.add(pair.videoUrl);
+                        newMediaUrls.add(pair.videoUrl);
                     }
                 } else {
                     // Add just the image
-                    mediaUrls.add(pair.imageUrl);
+                    newMediaUrls.add(pair.imageUrl);
                 }
             }
-            // Add back any existing media URLs that weren't part of the pairs
+            
+            // Add remaining media that weren't part of live photo pairs
             for (String existingUrl : existingMediaUrls) {
-                if (!mediaUrls.contains(existingUrl)) {
-                    mediaUrls.add(existingUrl);
+                // Only add if not already in the new list (avoiding duplication)
+                if (!newMediaUrls.contains(existingUrl)) {
+                    newMediaUrls.add(existingUrl);
                 }
             }
+            
+            mediaUrls = newMediaUrls; // Replace the list
         }
         
         // Log the final media URLs for debugging
@@ -935,92 +942,181 @@ public class XHSDownloader {
                 }
             } else {
                 // Current is an image - check if next item is a video (for live photo pair)
+                // But first we need to determine if this should be a live photo based on the original parsing
+                // We'll implement a more sophisticated check by analyzing the URL patterns and context
                 if (i + 1 < mediaUrls.size() && isVideoUrl(mediaUrls.get(i + 1))) {
-                    // This is a live photo pair (image + video)
                     String imageUrl = currentUrl;
                     String videoUrl = mediaUrls.get(i + 1);
                     
-                    livePhotoIndex++; // Increment the live photo index for this pair
+                    // More careful check: determine if this image-video pair is likely a live photo
+                    boolean shouldCreateLivePhoto = isLikelyLivePhotoPair(imageUrl, videoUrl, postId);
                     
-                    try {
-                        Log.d(TAG, "Creating live photo " + livePhotoIndex + " for post: " + postId);
-                        Log.d(TAG, "Image URL: " + imageUrl);
-                        Log.d(TAG, "Video URL: " + videoUrl);
+                    if (shouldCreateLivePhoto) {
+                        // This is a live photo pair (image + video)
+                        livePhotoIndex++; // Increment the live photo index for this pair
                         
-                        // Create a temporary downloader that downloads to the app's internal storage
-                        FileDownloader tempDownloader = new FileDownloader(context, null); // No callback to avoid premature notification
-                        
-                        // Download the image to a temporary location (app's internal storage)
-                        String imageFileName = postId + "_img_" + livePhotoIndex + "." + determineFileExtension(imageUrl);
-                        boolean imageDownloaded = tempDownloader.downloadFileToInternalStorage(imageUrl, imageFileName);
-                        if (!imageDownloaded) {
-                            Log.e(TAG, "Failed to download image for live photo: " + imageUrl);
-                            hasErrors = true;
-                            // Skip video download too
-                            i++; // Skip the paired video since image failed
-                            continue;
-                        }
-                        
-                        // Download the video to a temporary location (app's internal storage)
-                        String videoFileName = postId + "_vid_" + livePhotoIndex + "." + determineFileExtension(videoUrl);
-                        boolean videoDownloaded = tempDownloader.downloadFileToInternalStorage(videoUrl, videoFileName);
-                        if (!videoDownloaded) {
-                            Log.e(TAG, "Failed to download video for live photo: " + videoUrl);
-                            hasErrors = true;
-                            // Clean up the already downloaded image file
-                            File alreadyDownloadedImage = new File(context.getExternalFilesDir(null), "xhs_" + imageFileName);
-                            if (alreadyDownloadedImage.exists()) {
-                                alreadyDownloadedImage.delete();
+                        try {
+                            Log.d(TAG, "Creating live photo " + livePhotoIndex + " for post: " + postId);
+                            Log.d(TAG, "Image URL: " + imageUrl);
+                            Log.d(TAG, "Video URL: " + videoUrl);
+                            
+                            // Create a temporary downloader that downloads to the app's internal storage
+                            FileDownloader tempDownloader = new FileDownloader(context, null); // No callback to avoid premature notification
+                            
+                            // Download the image to a temporary location (app's internal storage)
+                            String imageFileName = postId + "_img_" + livePhotoIndex + "." + determineFileExtension(imageUrl);
+                            boolean imageDownloaded = tempDownloader.downloadFileToInternalStorage(imageUrl, imageFileName);
+                            if (!imageDownloaded) {
+                                Log.e(TAG, "Failed to download image for live photo: " + imageUrl);
+                                hasErrors = true;
+                                // Skip video download too
+                                i++; // Skip the paired video since image failed
+                                continue;
                             }
-                            i++; // Skip the paired video since it failed
-                            continue;
-                        }
-                        
-                        // The files are downloaded to internal storage with "xhs_" prefix
-                        File actualTempImageFile = new File(context.getExternalFilesDir(null), "xhs_" + imageFileName);
-                        File actualTempVideoFile = new File(context.getExternalFilesDir(null), "xhs_" + videoFileName);
-                        
-                        Log.d(TAG, "Image file downloaded to: " + actualTempImageFile.getAbsolutePath());
-                        Log.d(TAG, "Video file downloaded to: " + actualTempVideoFile.getAbsolutePath());
-                        
-                        if (!actualTempImageFile.exists() || !actualTempVideoFile.exists()) {
-                            Log.e(TAG, "Downloaded temporary files do not exist. Image: " + actualTempImageFile.exists() + ", Video: " + actualTempVideoFile.exists());
-                            hasErrors = true;
-                            i++; // Skip the paired video
-                            continue;
-                        }
-                        
-                        // Always use MediaStore directory with "xhs" subfolder for consistent location
-                        File destinationDir;
-                        File publicPicturesDir = android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_PICTURES);
-                        if (publicPicturesDir != null) {
-                            destinationDir = new File(publicPicturesDir, "xhs");
-                        } else {
-                            destinationDir = context.getExternalFilesDir(android.os.Environment.DIRECTORY_PICTURES);
-                        }
-                        
-                        if (!destinationDir.exists()) {
-                            destinationDir.mkdirs();
-                        }
-                        
-                        // Create the live photo in the final destination
-                        String livePhotoFileName = postId + "_live_" + livePhotoIndex + ".jpg";
-                        File livePhotoFile = new File(destinationDir, "xhs_" + livePhotoFileName);
-                        
-                        Log.d(TAG, "Creating live photo with image: " + actualTempImageFile.getAbsolutePath() + 
-                               " and video: " + actualTempVideoFile.getAbsolutePath() + 
-                               " -> output: " + livePhotoFile.getAbsolutePath());
-                        
-                        boolean livePhotoCreated = LivePhotoCreator.createLivePhoto(actualTempImageFile, actualTempVideoFile, livePhotoFile);
-                        
-                        if (livePhotoCreated) {
-                            // Additional check: verify if the created live photo file can be opened by checking if it was created properly
-                            if (livePhotoFile.exists() && livePhotoFile.length() > 0) {
-                                // Notify the callback that the live photo has been downloaded
-                                if (downloadCallback != null) {
-                                    downloadCallback.onFileDownloaded(livePhotoFile.getAbsolutePath());
+                            
+                            // Download the video to a temporary location (app's internal storage)
+                            String videoFileName = postId + "_vid_" + livePhotoIndex + "." + determineFileExtension(videoUrl);
+                            boolean videoDownloaded = tempDownloader.downloadFileToInternalStorage(videoUrl, videoFileName);
+                            if (!videoDownloaded) {
+                                Log.e(TAG, "Failed to download video for live photo: " + videoUrl);
+                                hasErrors = true;
+                                // Clean up the already downloaded image file
+                                File alreadyDownloadedImage = new File(context.getExternalFilesDir(null), "xhs_" + imageFileName);
+                                if (alreadyDownloadedImage.exists()) {
+                                    alreadyDownloadedImage.delete();
                                 }
-                                Log.d(TAG, "Successfully created live photo: " + livePhotoFile.getAbsolutePath());
+                                i++; // Skip the paired video since it failed
+                                continue;
+                            }
+                            
+                            // The files are downloaded to internal storage with "xhs_" prefix
+                            File actualTempImageFile = new File(context.getExternalFilesDir(null), "xhs_" + imageFileName);
+                            File actualTempVideoFile = new File(context.getExternalFilesDir(null), "xhs_" + videoFileName);
+                            
+                            Log.d(TAG, "Image file downloaded to: " + actualTempImageFile.getAbsolutePath());
+                            Log.d(TAG, "Video file downloaded to: " + actualTempVideoFile.getAbsolutePath());
+                            
+                            if (!actualTempImageFile.exists() || !actualTempVideoFile.exists()) {
+                                Log.e(TAG, "Downloaded temporary files do not exist. Image: " + actualTempImageFile.exists() + ", Video: " + actualTempVideoFile.exists());
+                                hasErrors = true;
+                                i++; // Skip the paired video
+                                continue;
+                            }
+                            
+                            // Always use MediaStore directory with "xhs" subfolder for consistent location
+                            File destinationDir;
+                            File publicPicturesDir = android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_PICTURES);
+                            if (publicPicturesDir != null) {
+                                destinationDir = new File(publicPicturesDir, "xhs");
+                            } else {
+                                destinationDir = context.getExternalFilesDir(android.os.Environment.DIRECTORY_PICTURES);
+                            }
+                            
+                            if (!destinationDir.exists()) {
+                                destinationDir.mkdirs();
+                            }
+                            
+                            // Create the live photo in the final destination
+                            String livePhotoFileName = postId + "_live_" + livePhotoIndex + ".jpg";
+                            File livePhotoFile = new File(destinationDir, "xhs_" + livePhotoFileName);
+                            
+                            Log.d(TAG, "Creating live photo with image: " + actualTempImageFile.getAbsolutePath() + 
+                                   " and video: " + actualTempVideoFile.getAbsolutePath() + 
+                                   " -> output: " + livePhotoFile.getAbsolutePath());
+                            
+                            boolean livePhotoCreated = LivePhotoCreator.createLivePhoto(actualTempImageFile, actualTempVideoFile, livePhotoFile);
+                            
+                            if (livePhotoCreated) {
+                                // Additional check: verify if the created live photo file can be opened by checking if it was created properly
+                                if (livePhotoFile.exists() && livePhotoFile.length() > 0) {
+                                    // Notify the callback that the live photo has been downloaded
+                                    if (downloadCallback != null) {
+                                        downloadCallback.onFileDownloaded(livePhotoFile.getAbsolutePath());
+                                    }
+                                    Log.d(TAG, "Successfully created live photo: " + livePhotoFile.getAbsolutePath());
+                                    
+                                    // Clean up temporary files
+                                    if (actualTempImageFile.exists()) {
+                                        actualTempImageFile.delete();
+                                    }
+                                    if (actualTempVideoFile.exists()) {
+                                        actualTempVideoFile.delete();
+                                    }
+                                } else {
+                                    // Live photo file is invalid, treat as failure
+                                    Log.e(TAG, "Live photo file was created but is invalid (zero size or doesn't exist)");
+                                    livePhotoCreated = false;
+                                    
+                                    // Delete the invalid live photo file to prevent corrupted files from remaining
+                                    if (livePhotoFile.exists()) {
+                                        boolean deleted = livePhotoFile.delete();
+                                        Log.d(TAG, "Deleted invalid live photo file: " + livePhotoFile.getAbsolutePath() + 
+                                               ", deletion result: " + deleted);
+                                    }
+                                }
+                            } else {
+                                // LivePhotoCreator returned false, meaning creation failed
+                                Log.e(TAG, "LivePhotoCreator failed to create live photo");
+                                
+                                // Delete the failed live photo file if it exists to prevent corrupted files from remaining
+                                if (livePhotoFile.exists()) {
+                                    boolean deleted = livePhotoFile.delete();
+                                    Log.d(TAG, "Deleted failed live photo file: " + livePhotoFile.getAbsolutePath() + 
+                                           ", deletion result: " + deleted);
+                                }
+                            }
+                            
+                            if (!livePhotoCreated) {
+                                Log.e(TAG, "Failed to create live photo from image: " + actualTempImageFile.getAbsolutePath() + 
+                                       " and video: " + actualTempVideoFile.getAbsolutePath() + 
+                                       " -> output: " + livePhotoFile.getAbsolutePath() + 
+                                       ". Falling back to separate files.");
+                                hasErrors = true;
+                                
+                                // Notify the callback about live photo creation failure with i18n message
+                                if (downloadCallback != null) {
+                                    String fallbackMessage = "Live photo creation failed for post " + postId + ", index " + livePhotoIndex + 
+                                        ". Falling back to downloading separate image and video files.";
+                                    downloadCallback.onDownloadError(fallbackMessage, 
+                                        "Live photo creation for " + postId + " (item " + livePhotoIndex + ")");
+                                }
+                                
+                                // Only download separately if the downloadFile calls were successful
+                                boolean imageDownloadedFallback = downloadFile(imageUrl, imageFileName.replace("xhs_", ""));
+                                boolean videoDownloadedFallback = downloadFile(videoUrl, videoFileName.replace("xhs_", ""));
+                                
+                                Log.d(TAG, "Fallback download - Image: " + (imageDownloadedFallback ? "Success" : "Failed") + 
+                                       ", Video: " + (videoDownloadedFallback ? "Success" : "Failed"));
+                                
+                                // Notify the callback if the separate downloads were successful
+                                // Only notify once per live photo pair that couldn't be merged
+                                boolean anySeparateFilesDownloaded = imageDownloadedFallback || videoDownloadedFallback;
+                                if (downloadCallback != null && anySeparateFilesDownloaded) {
+                                    if (imageDownloadedFallback) {
+                                        File separateImageFile = new File(
+                                            android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_PICTURES),
+                                            "xhs_" + imageFileName.replace("xhs_", "")
+                                        );
+                                        if (separateImageFile.exists()) {
+                                            downloadCallback.onFileDownloaded(separateImageFile.getAbsolutePath());
+                                        }
+                                    }
+                                    if (videoDownloadedFallback) {
+                                        File separateVideoFile = new File(
+                                            android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_PICTURES),
+                                            "xhs_" + videoFileName.replace("xhs_", "")
+                                        );
+                                        if (separateVideoFile.exists()) {
+                                            downloadCallback.onFileDownloaded(separateVideoFile.getAbsolutePath());
+                                        }
+                                    }
+                                } else if (downloadCallback != null && !anySeparateFilesDownloaded) {
+                                    // If neither separate file downloaded successfully, notify about the failure
+                                    downloadCallback.onDownloadError(
+                                        "Both image and video failed to download separately after live photo creation failure",
+                                        "Post " + postId + ", item " + livePhotoIndex
+                                    );
+                                }
                                 
                                 // Clean up temporary files
                                 if (actualTempImageFile.exists()) {
@@ -1029,98 +1125,40 @@ public class XHSDownloader {
                                 if (actualTempVideoFile.exists()) {
                                     actualTempVideoFile.delete();
                                 }
-                            } else {
-                                // Live photo file is invalid, treat as failure
-                                Log.e(TAG, "Live photo file was created but is invalid (zero size or doesn't exist)");
-                                livePhotoCreated = false;
-                                
-                                // Delete the invalid live photo file to prevent corrupted files from remaining
-                                if (livePhotoFile.exists()) {
-                                    boolean deleted = livePhotoFile.delete();
-                                    Log.d(TAG, "Deleted invalid live photo file: " + livePhotoFile.getAbsolutePath() + 
-                                           ", deletion result: " + deleted);
-                                }
                             }
-                        } else {
-                            // LivePhotoCreator returned false, meaning creation failed
-                            Log.e(TAG, "LivePhotoCreator failed to create live photo");
                             
-                            // Delete the failed live photo file if it exists to prevent corrupted files from remaining
-                            if (livePhotoFile.exists()) {
-                                boolean deleted = livePhotoFile.delete();
-                                Log.d(TAG, "Deleted failed live photo file: " + livePhotoFile.getAbsolutePath() + 
-                                       ", deletion result: " + deleted);
-                            }
-                        }
-                        
-                        if (!livePhotoCreated) {
-                            Log.e(TAG, "Failed to create live photo from image: " + actualTempImageFile.getAbsolutePath() + 
-                                   " and video: " + actualTempVideoFile.getAbsolutePath() + 
-                                   " -> output: " + livePhotoFile.getAbsolutePath() + 
-                                   ". Falling back to separate files.");
+                        } catch (Exception e) {
+                            Log.e(TAG, "Error creating live photo: " + e.getMessage());
+                            e.printStackTrace();
                             hasErrors = true;
-                            
-                            // Notify the callback about live photo creation failure with i18n message
-                            if (downloadCallback != null) {
-                                String fallbackMessage = "Live photo creation failed for post " + postId + ", index " + livePhotoIndex + 
-                                    ". Falling back to downloading separate image and video files.";
-                                downloadCallback.onDownloadError(fallbackMessage, 
-                                    "Live photo creation for " + postId + " (item " + livePhotoIndex + ")");
-                            }
-                            
-                            // Only download separately if the downloadFile calls were successful
-                            boolean imageDownloadedFallback = downloadFile(imageUrl, imageFileName.replace("xhs_", ""));
-                            boolean videoDownloadedFallback = downloadFile(videoUrl, videoFileName.replace("xhs_", ""));
-                            
-                            Log.d(TAG, "Fallback download - Image: " + (imageDownloadedFallback ? "Success" : "Failed") + 
-                                   ", Video: " + (videoDownloadedFallback ? "Success" : "Failed"));
-                            
-                            // Notify the callback if the separate downloads were successful
-                            // Only notify once per live photo pair that couldn't be merged
-                            boolean anySeparateFilesDownloaded = imageDownloadedFallback || videoDownloadedFallback;
-                            if (downloadCallback != null && anySeparateFilesDownloaded) {
-                                if (imageDownloadedFallback) {
-                                    File separateImageFile = new File(
-                                        android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_PICTURES),
-                                        "xhs_" + imageFileName.replace("xhs_", "")
-                                    );
-                                    if (separateImageFile.exists()) {
-                                        downloadCallback.onFileDownloaded(separateImageFile.getAbsolutePath());
-                                    }
-                                }
-                                if (videoDownloadedFallback) {
-                                    File separateVideoFile = new File(
-                                        android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_PICTURES),
-                                        "xhs_" + videoFileName.replace("xhs_", "")
-                                    );
-                                    if (separateVideoFile.exists()) {
-                                        downloadCallback.onFileDownloaded(separateVideoFile.getAbsolutePath());
-                                    }
-                                }
-                            } else if (downloadCallback != null && !anySeparateFilesDownloaded) {
-                                // If neither separate file downloaded successfully, notify about the failure
-                                downloadCallback.onDownloadError(
-                                    "Both image and video failed to download separately after live photo creation failure",
-                                    "Post " + postId + ", item " + livePhotoIndex
-                                );
-                            }
-                            
-                            // Clean up temporary files
-                            if (actualTempImageFile.exists()) {
-                                actualTempImageFile.delete();
-                            }
-                            if (actualTempVideoFile.exists()) {
-                                actualTempVideoFile.delete();
-                            }
                         }
                         
-                    } catch (Exception e) {
-                        Log.e(TAG, "Error creating live photo: " + e.getMessage());
-                        e.printStackTrace();
-                        hasErrors = true;
+                        i++; // Skip the next item since it was paired with current image
+                    } else {
+                        // Not a proper live photo pair, download separately
+                        String uniqueFileName = postId + "_image_" + ((i+1) / 2 + 1);
+                        String fileExtension = determineFileExtension(imageUrl);
+                        String fileNameWithExtension = uniqueFileName + "." + fileExtension;
+                        
+                        boolean success = downloadFile(imageUrl, fileNameWithExtension);
+                        if (!success) {
+                            Log.e(TAG, "Failed to download image separately: " + imageUrl);
+                            hasErrors = true;
+                        }
+                        
+                        // Also process the video separately
+                        String videoUniqueFileName = postId + "_video_" + ((i+2) / 2 + 1);
+                        String videoFileExtension = determineFileExtension(videoUrl);
+                        String videoFileNameWithExtension = videoUniqueFileName + "." + videoFileExtension;
+                        
+                        boolean videoSuccess = downloadFile(videoUrl, videoFileNameWithExtension);
+                        if (!videoSuccess) {
+                            Log.e(TAG, "Failed to download video separately: " + videoUrl);
+                            hasErrors = true;
+                        }
+                        
+                        i++; // Skip the next item since we're processing both separately
                     }
-                    
-                    i++; // Skip the next item since it was paired with current image
                 } else {
                     // Single image without corresponding video - download separately
                     String uniqueFileName = postId + "_image_" + ((i+1) / 2 + 1);
@@ -1149,6 +1187,47 @@ public class XHSDownloader {
                (url.contains(".mp4") || url.contains(".mov") || url.contains(".avi") || 
                 url.contains(".webm") || url.contains("video") || url.contains("masterUrl") || 
                 url.contains("stream") || url.contains("sns-video") || url.contains("/spectrum/"));
+    }
+    
+    /**
+     * Determines if an image-video pair is likely to be a proper live photo pair
+     * @param imageUrl The image URL
+     * @param videoUrl The video URL
+     * @param postId The post ID for context
+     * @return true if the pair should be treated as a live photo, false otherwise
+     */
+    private boolean isLikelyLivePhotoPair(String imageUrl, String videoUrl, String postId) {
+        // Check if the video has a specific pattern indicating it belongs to the image as a live photo
+        // Live photo videos from image.stream.h264 typically have a more specific relationship to the image
+        
+        // For XHS live photos, videos from image.stream.h264 often have some correlation with 
+        // the image ID or are from similar sources
+        boolean isFromStream = videoUrl.contains("masterUrl") || videoUrl.contains("stream");
+        
+        // Videos from the main note.video section are usually post videos, not live photo videos
+        boolean isMainPostVideo = videoUrl.contains("sns-video-bd") && videoUrl.contains("pre_post");
+        
+        // Usually live photo videos will have a more direct relationship to the image
+        // For example, they might share identifiers or come from the same CDN endpoint
+        // This is a heuristic that can be improved based on actual XHS patterns
+        if (isMainPostVideo) {
+            Log.d(TAG, "Identified video as main post video, not live photo: " + videoUrl);
+            return false;  // Main post videos are not live photos
+        }
+        
+        // If the video comes from a stream, it's more likely to be part of a live photo
+        if (isFromStream) {
+            Log.d(TAG, "Identified video as stream video, likely live photo: " + videoUrl);
+            return true;  // Stream videos are likely live photos
+        }
+        
+        // Additional check: look for common patterns that indicate a live photo relationship
+        // In the original parsing, we identified live photo pairs properly, so now we need to
+        // use heuristics to distinguish between actual live photo pairs and separate content
+        
+        // If all else fails, make an educated guess based on URL patterns
+        // This is where we could use additional logic based on URL structure
+        return true; // Default to true if we can't determine otherwise, but this should be refined
     }
     
     /**

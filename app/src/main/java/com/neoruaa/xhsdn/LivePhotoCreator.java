@@ -25,54 +25,24 @@ public class LivePhotoCreator {
                    " (size: " + imageFile.length() + " bytes) and video: " + videoFile.getAbsolutePath() + 
                    " (size: " + videoFile.length() + " bytes) -> output: " + outputFile.getAbsolutePath());
             
-            // Read the image and video files
-            byte[] imageBytes = readFileToBytes(imageFile);
-            byte[] videoBytes = readFileToBytes(videoFile);
-            
-            Log.d(TAG, "Read " + imageBytes.length + " bytes from image and " + videoBytes.length + " bytes from video");
-            
             // Calculate the video start position after XMP insertion
-            // First create the XMP to determine its size
-            int videoOffset = imageBytes.length; // initial estimate
-            String xmpData = generateXMPMetadata(videoBytes.length, videoOffset);
+            // First create the XMP to determine its size (without loading video)
+            long videoSize = videoFile.length();
+            // Use a reasonable estimate for image size in XMP (will be corrected later)
+            long initialEstimate = imageFile.length(); 
+            String xmpData = generateXMPMetadata((int)videoSize, (int)initialEstimate);
             byte[] xmpSegment = createXmpApp1Segment(xmpData);
             
-            // Now we know the actual video offset after XMP insertion
-            int actualVideoOffset = imageBytes.length + xmpSegment.length;
+            // Now calculate the actual video offset after XMP insertion
+            long actualVideoOffset = imageFile.length() + xmpSegment.length;
             
             // Recreate XMP with the correct offset
-            String correctedXmpData = generateXMPMetadata(videoBytes.length, actualVideoOffset);
-            byte[] correctedXmpSegment = createXmpApp1Segment(correctedXmpData);
+            String correctedXmpData = generateXMPMetadata((int)videoSize, (int)actualVideoOffset);
+            xmpSegment = createXmpApp1Segment(correctedXmpData);
             
-            // Insert XMP right after SOI (0xFFD8) at position 2
-            byte[] imageWithXmp = new byte[imageBytes.length + correctedXmpSegment.length];
-            System.arraycopy(imageBytes, 0, imageWithXmp, 0, 2); // Copy SOI marker
-            System.arraycopy(correctedXmpSegment, 0, imageWithXmp, 2, correctedXmpSegment.length); // Insert XMP
-            System.arraycopy(imageBytes, 2, imageWithXmp, 2 + correctedXmpSegment.length, imageBytes.length - 2); // Copy rest of image
+            // Create the live photo using streaming approach to avoid memory issues
+            return createLivePhotoStreaming(imageFile, videoFile, outputFile, xmpSegment);
             
-            // Combine image with XMP + video at the end
-            byte[] result = new byte[imageWithXmp.length + videoBytes.length];
-            System.arraycopy(imageWithXmp, 0, result, 0, imageWithXmp.length);
-            System.arraycopy(videoBytes, 0, result, imageWithXmp.length, videoBytes.length);
-            
-            // Write the live photo bytes to output file
-            try (FileOutputStream fos = new FileOutputStream(outputFile)) {
-                fos.write(result);
-            }
-            
-            Log.d(TAG, "Successfully created live photo with total size: " + outputFile.length() + " bytes");
-            
-            // Verify that the created file is valid
-            if (!isLivePhotoValid(outputFile)) {
-                Log.e(TAG, "Created live photo is not valid - failed validation check");
-                if (outputFile.exists()) {
-                    outputFile.delete(); // Clean up invalid file
-                }
-                return false;
-            }
-            
-            Log.d(TAG, "Live photo validation passed successfully");
-            return true;
         } catch (Exception e) {
             Log.e(TAG, "Error creating live photo: " + e.getMessage());
             e.printStackTrace();
@@ -241,6 +211,84 @@ public class LivePhotoCreator {
             }
             
             return buffer.toByteArray();
+        }
+    }
+    
+    /**
+     * Creates a live photo using streaming approach to avoid memory issues
+     * @param imageFile The image file to use as the primary content
+     * @param videoFile The video file to embed
+     * @param outputFile The output live photo file
+     * @param xmpSegment The XMP metadata segment to insert
+     * @return True if successful, false otherwise
+     */
+    private static boolean createLivePhotoStreaming(File imageFile, File videoFile, File outputFile, byte[] xmpSegment) {
+        try (FileInputStream imageStream = new FileInputStream(imageFile);
+             FileInputStream videoStream = new FileInputStream(videoFile);
+             FileOutputStream outputStream = new FileOutputStream(outputFile)) {
+            
+            // Write the JPEG header (first 2 bytes: SOI marker - 0xFFD8)
+            byte[] headerBuffer = new byte[2];
+            int bytesRead = imageStream.read(headerBuffer);
+            if (bytesRead != 2) {
+                Log.e(TAG, "Could not read image header");
+                return false;
+            }
+            outputStream.write(headerBuffer);
+            
+            // Write the XMP segment right after SOI
+            outputStream.write(xmpSegment);
+            
+            // Skip the first 2 bytes of the image (already written) and copy the rest
+            // Copy remaining image data
+            byte[] buffer = new byte[8192]; // 8KB buffer to reduce memory usage
+            int totalImageBytes = (int)(imageFile.length() - 2); // Subtract the 2 bytes already read
+            int copiedBytes = 0;
+            
+            while (copiedBytes < totalImageBytes) {
+                int bytesToRead = Math.min(buffer.length, totalImageBytes - copiedBytes);
+                bytesRead = imageStream.read(buffer, 0, bytesToRead);
+                if (bytesRead == -1) break;
+                
+                outputStream.write(buffer, 0, bytesRead);
+                copiedBytes += bytesRead;
+            }
+            
+            // Copy the entire video file to the end
+            long videoBytesCopied = 0;
+            while (true) {
+                bytesRead = videoStream.read(buffer);
+                if (bytesRead == -1) break;
+                
+                outputStream.write(buffer, 0, bytesRead);
+                videoBytesCopied += bytesRead;
+            }
+            
+            outputStream.flush();
+            
+            Log.d(TAG, "Successfully created live photo with streaming approach. Image bytes copied: " + 
+                  copiedBytes + ", Video bytes copied: " + videoBytesCopied + ", Total file size: " + 
+                  outputFile.length());
+            
+            // Verify that the created file is valid
+            if (!isLivePhotoValid(outputFile)) {
+                Log.e(TAG, "Created live photo is not valid - failed validation check");
+                if (outputFile.exists()) {
+                    outputFile.delete(); // Clean up invalid file
+                }
+                return false;
+            }
+            
+            Log.d(TAG, "Live photo validation passed successfully");
+            return true;
+        } catch (Exception e) {
+            Log.e(TAG, "Error in streaming live photo creation: " + e.getMessage());
+            e.printStackTrace();
+            // If the file was created but is invalid, delete it
+            if (outputFile.exists()) {
+                outputFile.delete();
+            }
+            return false;
         }
     }
 }

@@ -25,19 +25,21 @@ public class LivePhotoCreator {
                    " (size: " + imageFile.length() + " bytes) and video: " + videoFile.getAbsolutePath() + 
                    " (size: " + videoFile.length() + " bytes) -> output: " + outputFile.getAbsolutePath());
             
-            // Calculate the video start position after XMP insertion
-            // First create the XMP to determine its size (without loading video)
+            // Read the image and video file sizes without loading them completely
             long videoSize = videoFile.length();
+            
             // Use a reasonable estimate for image size in XMP (will be corrected later)
             long initialEstimate = imageFile.length(); 
-            String xmpData = generateXMPMetadata((int)videoSize, (int)initialEstimate);
+            String xmpDataStr = generateXMPMetadata((int)videoSize, (int)initialEstimate);
+            byte[] xmpData = xmpDataStr.getBytes("UTF-8");
             byte[] xmpSegment = createXmpApp1Segment(xmpData);
             
             // Now calculate the actual video offset after XMP insertion
             long actualVideoOffset = imageFile.length() + xmpSegment.length;
             
             // Recreate XMP with the correct offset
-            String correctedXmpData = generateXMPMetadata((int)videoSize, (int)actualVideoOffset);
+            String correctedXmpDataStr = generateXMPMetadata((int)videoSize, (int)actualVideoOffset);
+            byte[] correctedXmpData = correctedXmpDataStr.getBytes("UTF-8");
             xmpSegment = createXmpApp1Segment(correctedXmpData);
             
             // Create the live photo using streaming approach to avoid memory issues
@@ -64,51 +66,62 @@ public class LivePhotoCreator {
      */
     private static String generateXMPMetadata(int videoSize, int videoOffset) {
         return String.format(
-            "<x:xmpmeta xmlns:x=\"adobe:ns:meta/\" x:xmptk=\"Adobe XMP Core 5.1.0-jc003\">\n" +
-            "<rdf:RDF xmlns:rdf=\"http://www.w3.org/1999/02/22-rdf-syntax-ns#\">\n" +
-            "<rdf:Description rdf:about=\"\" xmlns:GCamera=\"http://ns.google.com/photos/1.0/camera/\" xmlns:Container=\"http://ns.google.com/photos/1.0/container/\" xmlns:Item=\"http://ns.google.com/photos/1.0/container/item/\">\n" +
-            "   <GCamera:MotionPhoto>1</GCamera:MotionPhoto>\n" +
-            "   <GCamera:MotionPhotoVersion>1</GCamera:MotionPhotoVersion>\n" +
-            "   <GCamera:MotionPhotoPresentationTimestampUs>0</GCamera:MotionPhotoPresentationTimestampUs>\n" +
-            "   <GCamera:MicroVideo>1</GCamera:MicroVideo>\n" +
-            "   <GCamera:MicroVideoVersion>1</GCamera:MicroVideoVersion>\n" +
-            "   <GCamera:MicroVideoPresentationTimestampUs>0</GCamera:MicroVideoPresentationTimestampUs>\n" +
-            "   <GCamera:MicroVideoOffset>%d</GCamera:MicroVideoOffset>\n" +
-            "   <GCamera:MicroVideoDuration>1000000</GCamera:MicroVideoDuration>\n" +
-            "   <Container:Directory>\n" +
-            "      <rdf:Seq>\n" +
-            "         <rdf:li rdf:parseType=\"Resource\">\n" +
-            "            <Item:Mime>image/jpeg</Item:Mime>\n" +
-            "            <Item:Semantic>Primary</Item:Semantic>\n" +
-            "            <Item:Length>0</Item:Length>\n" +
-            "         </rdf:li>\n" +
-            "         <rdf:li rdf:parseType=\"Resource\">\n" +
-            "            <Item:Mime>video/mp4</Item:Mime>\n" +
-            "            <Item:Semantic>MotionPhoto</Item:Semantic>\n" +
-            "            <Item:Length>%d</Item:Length>\n" +
-            "         </rdf:li>\n" +
-            "      </rdf:Seq>\n" +
-            "   </Container:Directory>\n" +
-            "</rdf:Description>\n" +
-            "</rdf:RDF>\n" +
+            "<x:xmpmeta xmlns:x=\"adobe:ns:meta/\" x:xmptk=\"Adobe XMP Core 5.1.0-jc003\">" +
+            "<rdf:RDF xmlns:rdf=\"http://www.w3.org/1999/02/22-rdf-syntax-ns#\">" +
+            "<rdf:Description rdf:about=\"\"" +
+            "    xmlns:GCamera=\"http://ns.google.com/photos/1.0/camera/\"" +
+            "    xmlns:OpCamera=\"http://ns.oplus.com/photos/1.0/camera/\"" +
+            "    xmlns:MiCamera=\"http://ns.xiaomi.com/photos/1.0/camera/\"" +
+            "    xmlns:Container=\"http://ns.google.com/photos/1.0/container/\"" +
+            "    xmlns:Item=\"http://ns.google.com/photos/1.0/container/item/\"" +
+            "  GCamera:MotionPhoto=\"1\"" +
+            "  GCamera:MotionPhotoVersion=\"1\"" +
+            "  GCamera:MotionPhotoPresentationTimestampUs=\"0\"" +
+            "  OpCamera:MotionPhotoPrimaryPresentationTimestampUs=\"0\"" +
+            "  OpCamera:MotionPhotoOwner=\"xhs\"" +
+            "  OpCamera:OLivePhotoVersion=\"2\"" +
+            "  OpCamera:VideoLength=\"%d\"" +
+            "  GCamera:MicroVideoVersion=\"1\"" +
+            "  GCamera:MicroVideo=\"1\"" +
+            "  GCamera:MicroVideoOffset=\"%d\"" +
+            "  GCamera:MicroVideoPresentationTimestampUs=\"0\"" +
+            "  MiCamera:XMPMeta=\"&lt;?xml version='1.0' encoding='UTF-8' standalone='yes' ?&gt;\">" +
+            "  <Container:Directory>" +
+            "    <rdf:Seq>" +
+            "      <rdf:li rdf:parseType=\"Resource\">" +
+            "        <Container:Item" +
+            "          Item:Mime=\"image/jpeg\"" +
+            "          Item:Semantic=\"Primary\"" +
+            "          Item:Length=\"0\"" +
+            "          Item:Padding=\"0\"/>" +
+            "      </rdf:li>" +
+            "      <rdf:li rdf:parseType=\"Resource\">" +
+            "        <Container:Item" +
+            "          Item:Mime=\"video/mp4\"" +
+            "          Item:Semantic=\"MotionPhoto\"" +
+            "          Item:Length=\"%d\"/>" +
+            "      </rdf:li>" +
+            "    </rdf:Seq>" +
+            "  </Container:Directory>" +
+            "</rdf:Description>" +
+            "</rdf:RDF>" +
             "</x:xmpmeta>",
-            videoOffset, videoSize
+            videoSize, videoOffset, videoSize
         );
     }
     
     /**
      * Creates an APP1 XMP segment with proper JPEG header
-     * @param xmpData The XMP data as string
+     * @param xmpData The XMP data as bytes
      * @return Byte array representing the APP1 XMP segment
      */
-    private static byte[] createXmpApp1Segment(String xmpData) throws IOException {
-        byte[] xmpPayload = xmpData.getBytes("UTF-8");
+    private static byte[] createXmpApp1Segment(byte[] xmpData) throws IOException {
+        // XMP header: "http://ns.adobe.com/xap/1.0/\0"
         byte[] xmpHeader = "http://ns.adobe.com/xap/1.0/\0".getBytes("UTF-8");
         
-        // The APP1 segment format is: [0xFFE1] [Length: 2 bytes] [Header] [Payload]
-        // The Length field should contain the size of everything after the length field
-        // So Length = size of (header + payload)
-        int lengthField = xmpHeader.length + xmpPayload.length;
+        // Calculate total segment length: xmp header + xmp data + 2 bytes for length field
+        int segmentLengthWithoutLengthField = xmpHeader.length + xmpData.length;
+        int totalSegmentLength = segmentLengthWithoutLengthField + 2; // +2 for the length field itself
         
         // Create the segment
         ByteArrayOutputStream segment = new ByteArrayOutputStream();
@@ -117,15 +130,15 @@ public class LivePhotoCreator {
         segment.write(0xFF);
         segment.write(0xE1);
         
-        // Write length field (2 bytes, big-endian) - value is size of header + payload
-        segment.write((lengthField >> 8) & 0xFF);
-        segment.write(lengthField & 0xFF);
+        // Write length field (2 bytes, big-endian)
+        segment.write((totalSegmentLength >> 8) & 0xFF);
+        segment.write(totalSegmentLength & 0xFF);
         
         // Write XMP header
         segment.write(xmpHeader);
         
         // Write XMP data
-        segment.write(xmpPayload);
+        segment.write(xmpData);
         
         return segment.toByteArray();
     }

@@ -6,54 +6,6 @@
     android:background="#ffffff"
     android:padding="16dp">
 
-    <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="horizontal"
-        android:layout_marginBottom="10dp">
-
-        <EditText
-            android:id="@+id/urlInput"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:hint="@string/enter_xhs_url"
-            android:inputType="textUri" />
-
-        <ImageButton
-            android:visibility="gone"
-            android:id="@+id/clearButton"
-            android:layout_width="48dp"
-            android:layout_height="48dp"
-            android:layout_gravity="center_vertical"
-            android:background="?android:attr/selectableItemBackgroundBorderless"
-            android:src="@android:drawable/ic_menu_close_clear_cancel"
-            android:contentDescription="@string/clear_input" />
-
-    </LinearLayout>
-
-    <ProgressBar
-        android:id="@+id/progressBar2"
-        style="?android:attr/progressBarStyleHorizontal"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:visibility="gone" />
-
-    <Button
-        android:id="@+id/downloadButton"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="@string/download_button"
-        android:layout_marginBottom="10dp" />
-
-    <Button
-        android:id="@+id/webCrawlButton"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="@string/webview_title"
-        android:layout_marginBottom="10dp"
-        android:visibility="gone" />
-
     <ProgressBar
         android:id="@+id/progressBar"
         android:layout_width="match_parent"
@@ -88,6 +40,60 @@
         android:background="#f0f0f0"
         android:layout_height="0dp"
         android:padding="4dp"
+        android:layout_marginBottom="10dp"
         android:clipToPadding="false" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal">
+
+        <EditText
+            android:id="@+id/urlInput"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:hint="@string/enter_xhs_url"
+            android:inputType="textUri" />
+
+        <ImageButton
+            android:visibility="gone"
+            android:id="@+id/clearButton"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:layout_gravity="center_vertical"
+            android:background="?android:attr/selectableItemBackgroundBorderless"
+            android:src="@android:drawable/ic_menu_close_clear_cancel"
+            android:contentDescription="@string/clear_input" />
+
+    </LinearLayout>
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal">
+
+        <Button
+            android:id="@+id/copyTextButton"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="@string/copy_text_button" />
+
+        <Button
+            android:id="@+id/downloadButton"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="@string/download_button" />
+
+    </LinearLayout>
+
+    <Button
+        android:id="@+id/webCrawlButton"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="@string/webview_title"
+        android:visibility="gone" />
 
 </LinearLayout>

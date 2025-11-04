@@ -2,7 +2,7 @@
 <resources>
     <string name="app_name">XHS Downloader</string>
     <string name="enter_xhs_url">Enter XHS post share URL...</string>
-    <string name="download_button">Download</string>
+    <string name="download_button">Download Media</string>
     <string name="ready_to_download">Ready to download</string>
     <string name="please_enter_url">Please enter a URL</string>
     <string name="grant_all_files_access">Please grant \'All files access\' permission for better functionality</string>
@@ -17,7 +17,7 @@
     <string name="clear_input">Clear input</string>
     <string name="app_description"><![CDATA[origin resolution & no watermark]]></string>
     <string name="settings">Settings</string>
-    <string name="default_save_path_info">All files will be saved to MediaStore Downloads/Pictures/Movies + \"xhs\" subfolder</string>
+    <string name="default_save_path_info">All files will be saved to MediaStore\'s Pictures or Movies + \"xhs\" subfolder</string>
     <string name="cancel">Cancel</string>
     <string name="apply">Apply</string>
     <string name="settings_saved">Settings saved successfully</string>
@@ -41,4 +41,8 @@
     <string name="all_downloads_completed">All downloads completed.</string>
     <string name="error_processing_image_urls">Error processing image URLs: %1$s</string>
     <string name="crawl_medias">Crawl Medias On Page</string>
+    <string name="copy_text_button">Copy Text</string>
+    <string name="fetching_desc">Fetching description...</string>
+    <string name="desc_copied">Description copied to clipboard!</string>
+    <string name="desc_not_found">Description not found!</string>
 </resources>

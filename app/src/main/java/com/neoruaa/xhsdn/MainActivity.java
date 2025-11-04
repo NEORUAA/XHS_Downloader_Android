@@ -41,6 +41,7 @@ import java.util.List;
 public class MainActivity extends AppCompatActivity {
     private EditText urlInput;
     private Button downloadButton;
+    private Button copyTextButton;
     private Button webCrawlButton;
     private TextView statusText;
     private ProgressBar progressBar;
@@ -74,6 +75,7 @@ public class MainActivity extends AppCompatActivity {
 
         urlInput = findViewById(R.id.urlInput);
         downloadButton = findViewById(R.id.downloadButton);
+        copyTextButton = findViewById(R.id.copyTextButton);  // New copy text button
         webCrawlButton = findViewById(R.id.webCrawlButton);
         statusText = findViewById(R.id.statusText);
         statusScrollView = findViewById(R.id.statusScrollView);
@@ -144,6 +146,46 @@ public class MainActivity extends AppCompatActivity {
             } else {
                 Toast.makeText(this, getString(R.string.no_url_to_process), Toast.LENGTH_SHORT).show();
             }
+        });
+        
+        // Set up copy text button
+        copyTextButton.setOnClickListener(v -> {
+            String url = urlInput.getText().toString().trim();
+            if (url.isEmpty()) {
+                Toast.makeText(this, getString(R.string.please_enter_url), Toast.LENGTH_SHORT).show();
+                return;
+            }
+
+            statusText.setText(getString(R.string.processing_url, url));
+            
+            // Show loading message
+            statusText.append("\n" + getString(R.string.fetching_desc));
+            autoScrollToBottom();
+            
+            // Create XHSDownloader instance to get description
+            XHSDownloader downloader = new XHSDownloader(this, null);
+            
+            // Run in background thread to avoid blocking UI
+            new Thread(() -> {
+                String description = downloader.getNoteDescription(url);
+                
+                runOnUiThread(() -> {
+                    if (description != null && !description.isEmpty()) {
+                        // Copy to clipboard
+                        android.content.ClipboardManager clipboard = (android.content.ClipboardManager) 
+                            getSystemService(android.content.Context.CLIPBOARD_SERVICE);
+                        android.content.ClipData clip = android.content.ClipData.newPlainText("Note Description", description);
+                        clipboard.setPrimaryClip(clip);
+                        
+                        statusText.append("\n" + getString(R.string.desc_copied) + "\n" + description);
+                        autoScrollToBottom();
+                        Log.d("MainActivity", "Description copied to clipboard: " + description);
+                    } else {
+                        statusText.append("\n" + getString(R.string.desc_not_found));
+                        autoScrollToBottom();
+                    }
+                });
+            }).start();
         });
 
     }

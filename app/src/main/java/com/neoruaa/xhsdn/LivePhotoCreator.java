@@ -13,7 +13,6 @@ public class LivePhotoCreator {
 
     /**
      * Creates a live photo by embedding video into image with XMP metadata
-     * Based on the Motion Photo format specification
      * @param imageFile The image file to use as the primary content
      * @param videoFile The video file to embed
      * @param outputFile The output live photo file
@@ -25,22 +24,14 @@ public class LivePhotoCreator {
                    " (size: " + imageFile.length() + " bytes) and video: " + videoFile.getAbsolutePath() + 
                    " (size: " + videoFile.length() + " bytes) -> output: " + outputFile.getAbsolutePath());
             
-            // Read the image and video file sizes without loading them completely
+            // Read the video file size
             long videoSize = videoFile.length();
             
-            // Use a reasonable estimate for image size in XMP (will be corrected later)
-            long initialEstimate = imageFile.length(); 
-            String xmpDataStr = generateXMPMetadata((int)videoSize, (int)initialEstimate);
+            // For compatibility with working implementation, use video size for GCamera:MicroVideoOffset
+            // Some parsers use fileLength - videoSize to locate video data
+            String xmpDataStr = generateXMPMetadata((int)videoSize, (int)videoSize);
             byte[] xmpData = xmpDataStr.getBytes("UTF-8");
             byte[] xmpSegment = createXmpApp1Segment(xmpData);
-            
-            // Now calculate the actual video offset after XMP insertion
-            long actualVideoOffset = imageFile.length() + xmpSegment.length;
-            
-            // Recreate XMP with the correct offset
-            String correctedXmpDataStr = generateXMPMetadata((int)videoSize, (int)actualVideoOffset);
-            byte[] correctedXmpData = correctedXmpDataStr.getBytes("UTF-8");
-            xmpSegment = createXmpApp1Segment(correctedXmpData);
             
             // Create the live photo using streaming approach to avoid memory issues
             return createLivePhotoStreaming(imageFile, videoFile, outputFile, xmpSegment);
@@ -59,12 +50,12 @@ public class LivePhotoCreator {
 
     
     /**
-     * Generates XMP metadata for live photo following Google's Motion Photo specification
+     * Generates XMP metadata for live photo
      * @param videoSize The size of the embedded video in bytes
-     * @param videoOffset The offset where the video starts in the file
+     * @param videoLengthForOffset This parameter is actually the video size to be used for GCamera:MicroVideoOffset (some parsers use fileLength - videoSize to locate video)
      * @return XMP metadata string
      */
-    private static String generateXMPMetadata(int videoSize, int videoOffset) {
+    private static String generateXMPMetadata(int videoSize, int videoLengthForOffset) {
         return String.format(
             "<x:xmpmeta xmlns:x=\"adobe:ns:meta/\" x:xmptk=\"Adobe XMP Core 5.1.0-jc003\">" +
             "<rdf:RDF xmlns:rdf=\"http://www.w3.org/1999/02/22-rdf-syntax-ns#\">" +
@@ -106,7 +97,7 @@ public class LivePhotoCreator {
             "</rdf:Description>" +
             "</rdf:RDF>" +
             "</x:xmpmeta>",
-            videoSize, videoOffset, videoSize
+            videoSize, videoSize, videoSize  // All three use videoSize to match working implementation
         );
     }
     

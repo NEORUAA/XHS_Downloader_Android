@@ -73,12 +73,32 @@ public class MediaAdapter extends RecyclerView.Adapter<MediaAdapter.MediaViewHol
             String mimeType = getMimeType(filePath);
             
             if (isImageFile(mimeType)) {
-                // 显示图片
-                Bitmap bitmap = decodeSampledBitmapFromFile(filePath, 800, 800);
-                if (bitmap != null) {
-                    holder.imageView.setImageBitmap(bitmap);
-                    holder.imageView.setBackgroundColor(0xFFEEEEEE);
-                    holder.imageView.setOnClickListener(v -> openImageInExternalApp(filePath));
+                // 检查是否为Live Photo（通过文件名中是否包含"_live"来判断）
+                if (isLivePhotoFile(filePath)) {
+                    // 显示Live Photo图片并添加overlay图标
+                    Bitmap bitmap = decodeSampledBitmapFromFile(filePath, 800, 800);
+                    if (bitmap != null) {
+                        holder.imageView.setBackgroundColor(0xFFEEEEEE);
+                        // Overlay the live photo icon on the image
+                        try {
+                            Bitmap livePhotoIconBitmap = getBitmapFromVectorDrawable(context, R.drawable.live_photo_overlay, dpToPx(200), dpToPx(200));
+                            Bitmap combinedBitmap = combineBitmapWithPlayIcon(bitmap, livePhotoIconBitmap, dpToPx(16)); // 16dp padding
+                            holder.imageView.setImageBitmap(combinedBitmap);
+                        } catch (Exception e) {
+                            // If overlay fails, just show the image
+                            holder.imageView.setImageBitmap(bitmap);
+                            Log.e(TAG, "Failed to add live photo icon overlay: " + e.getMessage());
+                        }
+                        holder.imageView.setOnClickListener(v -> openImageInExternalApp(filePath));
+                    }
+                } else {
+                    // 显示普通图片
+                    Bitmap bitmap = decodeSampledBitmapFromFile(filePath, 800, 800);
+                    if (bitmap != null) {
+                        holder.imageView.setImageBitmap(bitmap);
+                        holder.imageView.setBackgroundColor(0xFFEEEEEE);
+                        holder.imageView.setOnClickListener(v -> openImageInExternalApp(filePath));
+                    }
                 }
             } else if (isVideoFile(mimeType)) {
                 // 显示视频缩略图
@@ -132,6 +152,10 @@ public class MediaAdapter extends RecyclerView.Adapter<MediaAdapter.MediaViewHol
 
     private boolean isVideoFile(String mimeType) {
         return mimeType != null && mimeType.startsWith("video/");
+    }
+
+    private boolean isLivePhotoFile(String filePath) {
+        return filePath != null && filePath.contains("_live_");
     }
 
     private String getMimeType(String filePath) {

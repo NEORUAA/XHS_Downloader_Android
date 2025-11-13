@@ -86,6 +86,12 @@ public class XHSDownloader {
         FileDownloader downloader = new FileDownloader(this.context, this.downloadCallback);
         return downloader.downloadFile(url, filename);
     }
+
+    public boolean downloadFile(String url, String filename, String timestamp) {
+        // Use the FileDownloader class to handle the actual download with timestamp
+        FileDownloader downloader = new FileDownloader(this.context, this.downloadCallback);
+        return downloader.downloadFile(url, filename, timestamp);
+    }
     
     public boolean downloadContent(String inputUrl) {
         // Reset successful downloads counter for this download session
@@ -95,18 +101,21 @@ public class XHSDownloader {
         try {
             // Extract all valid XHS URLs from the input
             List<String> urls = extractLinks(inputUrl);
-            
+
             if (urls.isEmpty()) {
                 Log.e(TAG, "No valid XHS URLs found");
                 return false;
             }
-            
+
             Log.d(TAG, "Found " + urls.size() + " XHS URLs to process");
-            
+
+            // Generate a single date-based timestamp for the entire download session (YYMMDD format)
+            String sessionTimestamp = new java.text.SimpleDateFormat("yyMMdd", java.util.Locale.getDefault()).format(new java.util.Date());
+
             for (String url : urls) {
                 // Get the post ID from the URL
                 String postId = extractPostId(url);
-                
+
                 if (postId != null) {
                     // Fetch the post details
                     String postDetails = fetchPostDetails(url);
@@ -171,7 +180,7 @@ public class XHSDownloader {
                                 // Create live photos for image-video pairs using the original mediaUrls list
                                 // which has the correct order from parsePostDetails
                                 Log.d(TAG, "Creating live photos for post: " + postId);
-                                postHasErrors = createLivePhotos(postId, mediaUrls);
+                                postHasErrors = createLivePhotos(postId, mediaUrls, sessionTimestamp);
                                 if (postHasErrors) {
                                     hasErrors = true;
                                 }
@@ -194,12 +203,13 @@ public class XHSDownloader {
                                         final String mediaUrl = allMediaUrls.get(i);
                                         Future<Boolean> future = executor.submit(() -> {
                                             String uniqueFileName = postId + "_" + (index + 1); // Use index to create unique name
-                                            
+
                                             // Determine file extension based on URL content
                                             String fileExtension = determineFileExtension(mediaUrl);
                                             String fileNameWithExtension = uniqueFileName + "." + fileExtension;
-                                            
-                                            return downloadFile(mediaUrl, fileNameWithExtension);
+
+                                            // Use the session timestamp to maintain consistency across the download session
+                                            return downloadFile(mediaUrl, fileNameWithExtension, sessionTimestamp);
                                         });
                                         futures.add(future);
                                     }
@@ -254,7 +264,7 @@ public class XHSDownloader {
                                         String fileExtension = determineFileExtension(mediaUrl);
                                         String fileNameWithExtension = uniqueFileName + "." + fileExtension;
                                         
-                                        boolean success = downloadFile(mediaUrl, fileNameWithExtension);
+                                        boolean success = downloadFile(mediaUrl, fileNameWithExtension, sessionTimestamp);
                                         if (!success) {
                                             Log.e(TAG, "Failed to download: " + mediaUrl);
                                             // Notify the callback about the download error with the original URL
@@ -1024,9 +1034,10 @@ public class XHSDownloader {
      * Creates live photos by combining images and videos
      * @param postId The post ID for naming
      * @param mediaUrls List of media URLs where live photos are properly paired as [image, video, image, video, ...]
+     * @param timestamp The timestamp to use in file names for this download session
      * @return true if there were errors, false otherwise
      */
-    private boolean createLivePhotos(String postId, List<String> mediaUrls) {
+    private boolean createLivePhotos(String postId, List<String> mediaUrls, String timestamp) {
         boolean hasErrors = false;
 
         // Process media URLs in pairs: [image, video, image, video, ...] for live photos
@@ -1050,7 +1061,7 @@ public class XHSDownloader {
 
                 // Download the image to a temporary location (app's internal storage)
                 String imageFileName = postId + "_img_" + livePhotoIndex + "." + determineFileExtension(imageUrl);
-                boolean imageDownloaded = tempDownloader.downloadFileToInternalStorage(imageUrl, imageFileName);
+                boolean imageDownloaded = tempDownloader.downloadFileToInternalStorage(imageUrl, imageFileName, timestamp);
                 if (!imageDownloaded) {
                     Log.e(TAG, "Failed to download image for live photo: " + imageUrl);
                     hasErrors = true;
@@ -1059,12 +1070,12 @@ public class XHSDownloader {
 
                 // Download the video to a temporary location (app's internal storage)
                 String videoFileName = postId + "_vid_" + livePhotoIndex + "." + determineFileExtension(videoUrl);
-                boolean videoDownloaded = tempDownloader.downloadFileToInternalStorage(videoUrl, videoFileName);
+                boolean videoDownloaded = tempDownloader.downloadFileToInternalStorage(videoUrl, videoFileName, timestamp);
                 if (!videoDownloaded) {
                     Log.e(TAG, "Failed to download video for live photo: " + videoUrl);
                     hasErrors = true;
                     // Clean up the already downloaded image file
-                    File alreadyDownloadedImage = new File(context.getExternalFilesDir(null), "xhs_" + imageFileName);
+                    File alreadyDownloadedImage = new File(context.getExternalFilesDir(null), "xhs_" + timestamp + "_" + imageFileName);
                     if (alreadyDownloadedImage.exists()) {
                         alreadyDownloadedImage.delete();
                     }
@@ -1072,8 +1083,8 @@ public class XHSDownloader {
                 }
 
                 // The files are downloaded to internal storage with "xhs_" prefix
-                File actualTempImageFile = new File(context.getExternalFilesDir(null), "xhs_" + imageFileName);
-                File actualTempVideoFile = new File(context.getExternalFilesDir(null), "xhs_" + videoFileName);
+                File actualTempImageFile = new File(context.getExternalFilesDir(null), "xhs_" + timestamp + "_" + imageFileName);
+                File actualTempVideoFile = new File(context.getExternalFilesDir(null), "xhs_" + timestamp + "_" + videoFileName);
 
                 Log.d(TAG, "Image file downloaded to: " + actualTempImageFile.getAbsolutePath());
                 Log.d(TAG, "Video file downloaded to: " + actualTempVideoFile.getAbsolutePath());
@@ -1099,7 +1110,7 @@ public class XHSDownloader {
 
                 // Create the live photo in the final destination
                 String livePhotoFileName = postId + "_live_" + livePhotoIndex + ".jpg";
-                File livePhotoFile = new File(destinationDir, "xhs_" + livePhotoFileName);
+                File livePhotoFile = new File(destinationDir, "xhs_" + timestamp + "_" + livePhotoFileName);
 
                 Log.d(TAG, "Creating live photo with image: " + actualTempImageFile.getAbsolutePath() +
                        " and video: " + actualTempVideoFile.getAbsolutePath() +
@@ -1163,8 +1174,8 @@ public class XHSDownloader {
                     }
 
                     // Only download separately if the downloadFile calls were successful
-                    boolean imageDownloadedFallback = downloadFile(imageUrl, imageFileName.replace("xhs_", ""));
-                    boolean videoDownloadedFallback = downloadFile(videoUrl, videoFileName.replace("xhs_", ""));
+                    boolean imageDownloadedFallback = downloadFile(imageUrl, imageFileName.replace("xhs_", ""), timestamp);
+                    boolean videoDownloadedFallback = downloadFile(videoUrl, videoFileName.replace("xhs_", ""), timestamp);
 
                     Log.d(TAG, "Fallback download - Image: " + (imageDownloadedFallback ? "Success" : "Failed") +
                            ", Video: " + (videoDownloadedFallback ? "Success" : "Failed"));
@@ -1176,7 +1187,7 @@ public class XHSDownloader {
                         if (imageDownloadedFallback) {
                             File separateImageFile = new File(
                                 android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_PICTURES),
-                                "xhs_" + imageFileName.replace("xhs_", "")
+                                "xhs_" + timestamp + "_" + imageFileName.replace("xhs_", "")
                             );
                             if (separateImageFile.exists()) {
                                 downloadCallback.onFileDownloaded(separateImageFile.getAbsolutePath());
@@ -1185,7 +1196,7 @@ public class XHSDownloader {
                         if (videoDownloadedFallback) {
                             File separateVideoFile = new File(
                                 android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_PICTURES),
-                                "xhs_" + videoFileName.replace("xhs_", "")
+                                "xhs_" + timestamp + "_" + videoFileName.replace("xhs_", "")
                             );
                             if (separateVideoFile.exists()) {
                                 downloadCallback.onFileDownloaded(separateVideoFile.getAbsolutePath());
@@ -1234,7 +1245,7 @@ public class XHSDownloader {
                 String fileExtension = determineFileExtension(mediaUrl);
                 String fileNameWithExtension = uniqueFileName + "." + fileExtension;
 
-                boolean success = downloadFile(mediaUrl, fileNameWithExtension);
+                boolean success = downloadFile(mediaUrl, fileNameWithExtension, timestamp);
                 if (!success) {
                     Log.e(TAG, "Failed to download media separately: " + mediaUrl);
                     hasErrors = true;

@@ -56,6 +56,12 @@ public class FileDownloader {
     }
     
     public boolean downloadFile(String url, String fileName) {
+        // Use current date timestamp when no timestamp is provided
+        String timestamp = getTimestampForFilename(); // 日期格式时间戳，如 251114
+        return downloadFile(url, fileName, timestamp);
+    }
+
+    public boolean downloadFile(String url, String fileName, String timestamp) {
         try {
             // Create the request
             Request request = new Request.Builder()
@@ -64,14 +70,14 @@ public class FileDownloader {
                     .addHeader("Accept", "text/html,application/xhtml+xml,application/xml;q=1.0,image/avif,image/webp,image/apng,*/*;q=1.0")
                     .addHeader("Referer", "https://www.xiaohongshu.com/")
                     .build();
-            
+
             // Execute the request
             Response response = httpClient.newCall(request).execute();
-            
+
             if (response.isSuccessful() && response.body() != null) {
                 // 优先从响应中获取文件扩展名 (Content-Type header)
                 String fileExtension = getFileExtension(response, url);
-                
+
                 // 从原始文件名中提取基础名称（去掉扩展名）
                 String baseFileName = fileName;
                 int lastDotIndex = fileName.lastIndexOf('.');
@@ -80,42 +86,42 @@ public class FileDownloader {
                     Log.d(TAG, "Original filename has extension: " + fileName.substring(lastDotIndex + 1).toLowerCase() + 
                           ", but using Content-Type based extension: " + fileExtension);
                 }
-                
-                String fullFileName = "xhs_" + baseFileName + "." + fileExtension;
-                
+
+                String fullFileName = "xhs_" + timestamp + "_" + baseFileName + "." + fileExtension;
+
                 File destinationFile = null;
-                
+
                 // For Android 10+ use MediaStore to ensure gallery visibility
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                     destinationFile = saveToMediaStore(fullFileName, response.body(), fileExtension);
                 }
-                
+
                 // If MediaStore save failed or we're on older Android, fall back to file-based save
                 if (destinationFile == null) {
                     destinationFile = saveToFileSystem(url, fullFileName, response.body());
                 }
-                
+
                 if (destinationFile != null && destinationFile.exists()) {
                     Log.d(TAG, "Downloaded file: " + destinationFile.getAbsolutePath());
                     Log.d(TAG, "Total bytes: " + (response.body() != null ? response.body().contentLength() : 0));
                     Log.d(TAG, "File exists: " + destinationFile.exists());
                     Log.d(TAG, "File size: " + destinationFile.length());
-                    
+
                     // For files that aren't already in MediaStore (like those saved to app's private directory),
                     // we still need to notify MediaStore
                     if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q || isFileInPrivateDirectory(destinationFile)) {
                         notifyMediaStore(destinationFile);
                     }
-                    
+
                     // 通知回调下载完成
                     if (callback != null) {
                         callback.onFileDownloaded(destinationFile.getAbsolutePath());
                     }
-                    
+
                     if (response.body() != null) {
                         response.body().close();
                     }
-                    
+
                     return true;
                 }
             } else {
@@ -123,7 +129,7 @@ public class FileDownloader {
                 if (response.body() != null) {
                     response.body().close();
                 }
-                
+
                 // Notify the callback about the download error with the original URL
                 if (callback != null) {
                     callback.onDownloadError("Download failed. Response code: " + response.code(), url);
@@ -132,7 +138,7 @@ public class FileDownloader {
         } catch (IOException e) {
             Log.e(TAG, "Error downloading file: " + e.getMessage());
             e.printStackTrace();
-            
+
             // Notify the callback about the download error with the original URL
             if (callback != null) {
                 callback.onDownloadError("IO Error downloading file: " + e.getMessage(), url);
@@ -140,13 +146,13 @@ public class FileDownloader {
         } catch (SecurityException e) {
             Log.e(TAG, "Security exception while downloading file: " + e.getMessage());
             e.printStackTrace();
-            
+
             // Notify the callback about the download error with the original URL
             if (callback != null) {
                 callback.onDownloadError("Security exception while downloading file: " + e.getMessage(), url);
             }
         }
-        
+
         return false;
     }
     
@@ -433,14 +439,15 @@ public class FileDownloader {
         }
         return null;
     }
-    
+
     /**
-     * Downloads a file directly to internal app storage (for temporary processing)
+     * Downloads a file directly to internal app storage (for temporary processing) with timestamp
      * @param url The URL to download from
      * @param fileName The name of the file to save
+     * @param timestamp The timestamp to use in the file name
      * @return true if download was successful, false otherwise
      */
-    public boolean downloadFileToInternalStorage(String url, String fileName) {
+    public boolean downloadFileToInternalStorage(String url, String fileName, String timestamp) {
         try {
             // Create the request
             Request request = new Request.Builder()
@@ -449,47 +456,47 @@ public class FileDownloader {
                     .addHeader("Accept", "text/html,application/xhtml+xml,application/xml;q=1.0,image/avif,image/webp,image/apng,*/*;q=1.0")
                     .addHeader("Referer", "https://www.xiaohongshu.com/")
                     .build();
-            
+
             // Execute the request
             Response response = httpClient.newCall(request).execute();
-            
+
             if (response.isSuccessful() && response.body() != null) {
                 // Get the file extension from the URL or Content-Type header
                 String fileExtension = getFileExtension(response, url);
-                String fullFileName = "xhs_" + fileName; // Add xhs_ prefix like the main download method
-                
+                String fullFileName = "xhs_" + timestamp + "_" + fileName;
+
                 // 生成唯一文件名（如果文件已存在，使用 xxx_(1).jpg 格式）
                 File internalDir = context.getExternalFilesDir(null);
                 String uniqueFileName = getUniqueFileName(internalDir, fullFileName);
                 File destinationFile = new File(internalDir, uniqueFileName);
-                
+
                 Log.d(TAG, "Saving file to internal storage: " + destinationFile.getAbsolutePath());
-                
+
                 // Write the response body to the file
                 ResponseBody body = response.body();
                 if (body != null) {
                     InputStream inputStream = body.byteStream();
                     OutputStream outputStream = new FileOutputStream(destinationFile);
-                    
+
                     // Increased buffer size for better throughput (64KB instead of 4KB)
                     byte[] buffer = new byte[65536]; // 64KB buffer
                     int bytesRead;
                     long totalBytesRead = 0;
                     long contentLength = body.contentLength();
-                    
+
                     while ((bytesRead = inputStream.read(buffer)) != -1) {
                         outputStream.write(buffer, 0, bytesRead);
                         totalBytesRead += bytesRead;
                     }
-                    
+
                     inputStream.close();
                     outputStream.close();
-                    
+
                     Log.d(TAG, "Downloaded file to internal storage: " + destinationFile.getAbsolutePath());
                     Log.d(TAG, "Total bytes: " + totalBytesRead);
                     Log.d(TAG, "File exists: " + destinationFile.exists());
                     Log.d(TAG, "File size: " + destinationFile.length());
-                    
+
                     return true;
                 }
             } else {
@@ -505,7 +512,7 @@ public class FileDownloader {
             Log.e(TAG, "Security exception while downloading file: " + e.getMessage());
             e.printStackTrace();
         }
-        
+
         return false;
     }
     
@@ -873,5 +880,14 @@ public class FileDownloader {
             // 如果出错，返回原始文件名
             return fileName;
         }
+    }
+
+    /**
+     * Get a timestamp in YYMMDD format for filename
+     * @return Timestamp string in format YYMMDD (e.g., 251114 for Nov 14, 2025)
+     */
+    private String getTimestampForFilename() {
+        java.text.SimpleDateFormat sdf = new java.text.SimpleDateFormat("yyMMdd", java.util.Locale.getDefault());
+        return sdf.format(new java.util.Date());
     }
 }

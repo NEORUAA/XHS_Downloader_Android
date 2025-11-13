@@ -8,7 +8,7 @@
     <string name="grant_all_files_access">Please grant \'All files access\' permission for better functionality</string>
     <string name="storage_permission_granted">Storage permission granted</string>
     <string name="storage_permission_denied">Storage permission denied. Download functionality may be limited.</string>
-    <string name="processing_url">Processing %1$s</string>
+    <string name="processing_url">Processing ‘%1$s’</string>
     <string name="initializing_download">Initializing download...</string>
     <string name="error_occurred">Error: %1$s</string>
     <string name="download_completed_successfully">Download completed successfully!</string>
@@ -45,4 +45,8 @@
     <string name="fetching_desc">Fetching description...</string>
     <string name="desc_copied">Description copied to clipboard!</string>
     <string name="desc_not_found">Description not found!</string>
+    <string name="individual_file_download_progress">Current file download progress: %1$d%%</string>
+    <string name="overall_download_progress">Overall download progress: %1$d%%</string>
+    <string name="items_completed">items completed</string>
+    <string name="items_remaining">items remaining</string>
 </resources>

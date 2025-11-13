@@ -8,7 +8,7 @@
     <string name="grant_all_files_access">请授予\"所有文件访问权限\"以获得更好的功能体验</string>
     <string name="storage_permission_granted">存储权限已授予</string>
     <string name="storage_permission_denied">存储权限被拒绝。下载功能可能受限。</string>
-    <string name="processing_url">正在处理 %1$s</string>
+    <string name="processing_url">正在处理 “%1$s”</string>
     <string name="initializing_download">正在初始化下载...</string>
     <string name="error_occurred">错误: %1$s</string>
     <string name="download_completed_successfully">下载成功完成！</string>
@@ -42,7 +42,11 @@
     <string name="error_processing_image_urls">处理图片URL时出错：%1$s</string>
     <string name="crawl_medias">爬取网页上的媒体</string>
     <string name="copy_text_button">复制文案</string>
-    <string name="fetching_desc">正在获取描述...</string>
-    <string name="desc_copied">描述已复制到剪贴板！</string>
-    <string name="desc_not_found">未找到描述！</string>
+    <string name="fetching_desc">正在获取文案...</string>
+    <string name="desc_copied">文案已复制到剪贴板！</string>
+    <string name="desc_not_found">未找到文案！</string>
+    <string name="individual_file_download_progress">当前文件下载进度：%1$d%%</string>
+    <string name="overall_download_progress">总体下载进度：%1$d%%</string>
+    <string name="items_completed">个项目已完成</string>
+    <string name="items_remaining">个项目剩余</string>
 </resources>

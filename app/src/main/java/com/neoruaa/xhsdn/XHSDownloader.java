@@ -1339,6 +1339,48 @@ public class XHSDownloader {
     }
 
     /**
+     * Gets the media count from a XHS URL
+     * @param inputUrl The URL to get media count for
+     * @return The number of media items or 0 if not found
+     */
+    public int getMediaCount(String inputUrl) {
+        try {
+            // Extract all valid XHS URLs from the input
+            List<String> urls = extractLinks(inputUrl);
+
+            if (urls.isEmpty()) {
+                Log.e(TAG, "No valid XHS URLs found for media count");
+                return 0;
+            }
+
+            for (String url : urls) {
+                // Get the post ID from the URL
+                String postId = extractPostId(url);
+
+                if (postId != null) {
+                    // Fetch the post details
+                    String postDetails = fetchPostDetails(url);
+
+                    if (postDetails != null) {
+                        // Parse the post details to extract media URLs
+                        List<String> mediaUrls = parsePostDetails(postDetails);
+                        return mediaUrls.size(); // Return number of media items found
+                    } else {
+                        Log.e(TAG, "Failed to fetch post details for media count: " + url);
+                    }
+                } else {
+                    Log.e(TAG, "Could not extract post ID from URL for media count: " + url);
+                }
+            }
+            return 0;
+        } catch (Exception e) {
+            Log.e(TAG, "Error in getMediaCount: " + e.getMessage());
+            e.printStackTrace();
+            return 0;
+        }
+    }
+
+    /**
      * Gets the description of a note from its URL
      * @param inputUrl The URL of the note to get description for
      * @return The description text or null if not found

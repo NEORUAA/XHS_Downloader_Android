@@ -45,6 +45,8 @@ public class MainActivity extends AppCompatActivity {
     private Button webCrawlButton;
     private TextView statusText;
     private ProgressBar progressBar;
+    private TextView progressText;
+    private LinearLayout progressContainer;
     private android.widget.ImageButton clearButton;
     private androidx.recyclerview.widget.RecyclerView imageContainer;
     private ScrollView statusScrollView;
@@ -80,6 +82,8 @@ public class MainActivity extends AppCompatActivity {
         statusText = findViewById(R.id.statusText);
         statusScrollView = findViewById(R.id.statusScrollView);
         progressBar = findViewById(R.id.progressBar);
+        progressText = findViewById(R.id.progressText);
+        progressContainer = findViewById(R.id.progressContainer);
         clearButton = findViewById(R.id.clearButton);
         imageContainer = findViewById(R.id.imageContainer);
 
@@ -535,12 +539,12 @@ public class MainActivity extends AppCompatActivity {
         // Disable button and show progress
         downloadButton.setEnabled(false);
         webCrawlButton.setVisibility(View.GONE); // Hide the web crawl button during processing
-        progressBar.setVisibility(View.VISIBLE);
+        progressContainer.setVisibility(View.VISIBLE);
         statusText.setText(getString(R.string.processing_url, url));
         autoScrollToBottom();
 
         // Create download task
-        DownloadTask task = new DownloadTask(this, statusText, progressBar, downloadButton);
+        DownloadTask task = new DownloadTask(this, statusText, progressBar, progressText, progressContainer, downloadButton);
         task.execute(url);
         autoScrollToBottom(); // Scroll to bottom initially when starting download
     }

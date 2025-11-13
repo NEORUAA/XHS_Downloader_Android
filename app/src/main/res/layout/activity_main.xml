@@ -6,13 +6,32 @@
     android:background="#ffffff"
     android:padding="16dp">
 
-    <ProgressBar
-        android:id="@+id/progressBar"
+    <LinearLayout
+        android:id="@+id/progressContainer"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
+        android:orientation="horizontal"
         android:visibility="gone"
-        android:layout_marginBottom="10dp"
-        style="?android:attr/progressBarStyleHorizontal" />
+        android:layout_marginBottom="10dp">
+
+        <ProgressBar
+            android:id="@+id/progressBar"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:layout_gravity="center_vertical"
+            style="?android:attr/progressBarStyleHorizontal" />
+
+        <TextView
+            android:id="@+id/progressText"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center_vertical"
+            android:layout_marginStart="8dp"
+            android:text="0/0"
+            android:textColor="@android:color/black" />
+
+    </LinearLayout>
 
     <ScrollView
         android:id="@+id/statusScrollView"

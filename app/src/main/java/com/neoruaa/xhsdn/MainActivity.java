@@ -563,19 +563,33 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
-        
+
         if (requestCode == WEBVIEW_REQUEST_CODE) {
             if (resultCode == RESULT_OK && data != null) {
                 // Get the image URLs from the WebView activity
                 ArrayList<String> imageUrls = data.getStringArrayListExtra("image_urls");
+                String contentText = data.getStringExtra("content_text");
+
+                // Copy content to clipboard if available
+                if (contentText != null && !contentText.isEmpty()) {
+                    android.content.ClipboardManager clipboard = (android.content.ClipboardManager)
+                        getSystemService(android.content.Context.CLIPBOARD_SERVICE);
+                    android.content.ClipData clip = android.content.ClipData.newPlainText("Content", contentText);
+                    clipboard.setPrimaryClip(clip);
+                    statusText.append("\n" + getString(R.string.desc_copied) + "\n" + contentText);
+                } else {
+                    statusText.append("\n" + getString(R.string.desc_not_found));
+                }
+                autoScrollToBottom();
+
                 if (imageUrls != null && !imageUrls.isEmpty()) {
                     // 清除之前显示的图片和记录
                     clearImageViews();
-                    
+
                     // Process the found image URLs
-                    statusText.setText(getString(R.string.found_images_via_web_crawl, imageUrls.size()));
+                    statusText.append("\n" + getString(R.string.found_images_via_web_crawl, imageUrls.size()));
                     autoScrollToBottom();
-                    
+
                     // Transform the URLs using the XHSDownloader's transformXhsCdnUrl method to get better quality images
                     List<String> transformedUrls = new ArrayList<>();
                     XHSDownloader xhsDownloader = new XHSDownloader(this); // Create temporary instance for URL transformation
@@ -596,7 +610,7 @@ public class MainActivity extends AppCompatActivity {
                         statusText.append("\n" + url);
                         autoScrollToBottom();
                     }
-                    
+
                     // Start downloading the transformed images
                     processImageUrls(new ArrayList<>(transformedUrls)); // Convert to ArrayList for compatibility
                 } else {

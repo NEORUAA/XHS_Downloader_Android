@@ -332,6 +332,120 @@
         return livePhotoVideos;
     }
     
-    // Return the array of URLs
-    return urls;
+    // Function to extract content (title, desc, tagList) from page state
+    function getContent() {
+        try {
+            // Try to get from window.__INITIAL_STATE__ first
+            if (window.__INITIAL_STATE__) {
+                var contentJson = window.__INITIAL_STATE__;
+                var pathParts = window.location.pathname.split('/');
+                var noteId = null;
+
+                if (pathParts.length >= 3 && pathParts[1] === 'explore') {
+                    noteId = pathParts[2].split('?')[0];
+                }
+
+                // First try to get from note.noteDetailMap[postId].note
+                var note = contentJson?.['note']?.['noteDetailMap']?.[noteId]?.['note'];
+
+                // If not found, try alternative structures
+                if (!note && contentJson?.['note']?.['note']) {
+                    // Direct access to note object
+                    note = contentJson['note']['note'];
+                }
+
+                // If still not found, look for feed items
+                if (!note && contentJson?.['note']?.['feed']?.['items']?.[0]) {
+                    note = contentJson['note']['feed']['items'][0];
+                }
+
+                if (note) {
+                    var title = note['title'] || '';
+                    var desc = note['desc'] || '';
+                    var tagList = (note['tagList'] || []).map(function(item) {
+                        return item.name;
+                    });
+
+                    console.log('提取的内容: ', title, desc, tagList);
+
+                    // Format content as title + \n + desc + \n + tagList (joined with spaces or commas)
+                    var tagsStr = tagList.join(' ');
+                    var content = title + (title ? '\n' : '') + desc + (desc && tagsStr ? '\n' : '') + tagsStr;
+
+                    return {
+                        title: title,
+                        desc: desc,
+                        tagList: tagList,
+                        content: content.trim()  // Remove leading/trailing whitespace
+                    };
+                }
+            }
+
+            // Alternative: Extract from embedded script tags
+            var scripts = document.querySelectorAll('script');
+            for (var i = 0; i < scripts.length; i++) {
+                var script = scripts[i];
+                if (script.textContent && script.textContent.includes('__INITIAL_STATE__')) {
+                    var contentRegex = /<script>window\.__INITIAL_STATE__=(.*?)<\/script>/;
+                    var match = script.textContent.match(contentRegex);
+                    if (match && match[1]) {
+                        // Replace undefined with "NO VALUE" as in the reference code
+                        var initialStateText = match[1].replace(/undefined/g, '"NO VALUE"');
+                        try {
+                            var contentJson = JSON.parse(initialStateText);
+                            var pathParts = window.location.pathname.split('/');
+                            var noteId = null;
+
+                            if (pathParts.length >= 3 && pathParts[1] === 'explore') {
+                                noteId = pathParts[2].split('?')[0];
+                            }
+
+                            var note = contentJson?.['note']?.['noteDetailMap']?.[noteId]?.['note'];
+
+                            if (note) {
+                                var title = note['title'] || '';
+                                var desc = note['desc'] || '';
+                                var tagList = (note['tagList'] || []).map(function(item) {
+                                    return item.name;
+                                });
+
+                                console.log('从script标签提取的内容: ', title, desc, tagList);
+
+                                var tagsStr = tagList.join(' ');
+                                var content = title + (title ? '\n' : '') + desc + (desc && tagsStr ? '\n' : '') + tagsStr;
+
+                                return {
+                                    title: title,
+                                    desc: desc,
+                                    tagList: tagList,
+                                    content: content.trim()
+                                };
+                            }
+                        } catch (e) {
+                            console.log('从script标签解析内容时出错: ' + e.message);
+                        }
+                    }
+                }
+            }
+        } catch (error) {
+            console.error('提取内容时出错: ', error);
+        }
+
+        // Return empty content if extraction failed
+        return {
+            title: '',
+            desc: '',
+            tagList: [],
+            content: ''
+        };
+    }
+
+    // Extract content
+    var content = getContent();
+
+    // Return both URLs and content
+    return {
+        urls: urls,
+        content: content
+    };
 })()

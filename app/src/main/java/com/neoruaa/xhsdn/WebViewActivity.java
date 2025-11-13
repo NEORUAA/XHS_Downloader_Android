@@ -129,8 +129,33 @@ public class WebViewActivity extends AppCompatActivity {
                                 return;
                             }
 
-                            // Parse the JSON result directly (it's an array)
-                            JSONArray urlsArray = new JSONArray(result);
+                            // Remove JavaScript quotes around the JSON result string
+                            String cleanResult = result;
+                            if (cleanResult.startsWith("\"") && cleanResult.endsWith("\"")) {
+                                cleanResult = cleanResult.substring(1, cleanResult.length() - 1);
+                                // Handle escaped characters
+                                cleanResult = cleanResult.replace("\\\"", "\"")
+                                    .replace("\\\\", "\\")
+                                    .replace("\\n", "\n")
+                                    .replace("\\r", "\r")
+                                    .replace("\\t", "\t");
+                            }
+
+                            Log.d(TAG, "Clean JavaScript result: " + cleanResult);
+
+                            // The JavaScript now returns an object with both urls and content
+                            org.json.JSONObject resultObject = new org.json.JSONObject(cleanResult);
+
+                            // Extract the urls array from the result object
+                            JSONArray urlsArray = resultObject.getJSONArray("urls");
+
+                            // Extract content if available
+                            org.json.JSONObject contentObj = resultObject.optJSONObject("content");
+                            String contentText = "";
+                            if (contentObj != null) {
+                                contentText = contentObj.optString("content", "");
+                            }
+
                             List<String> allUrls = new ArrayList<>();
 
                             for (int i = 0; i < urlsArray.length(); i++) {
@@ -147,11 +172,24 @@ public class WebViewActivity extends AppCompatActivity {
                             }
 
                             Log.d(TAG, "Found " + allUrls.size() + " accessible URLs: " + allUrls);
+                            Log.d(TAG, "Content text: " + contentText);
+
+                            // Copy content to clipboard if available
+                            if (!contentText.isEmpty()) {
+                                android.content.ClipboardManager clipboard = (android.content.ClipboardManager) getSystemService(android.content.Context.CLIPBOARD_SERVICE);
+                                android.content.ClipData clip = android.content.ClipData.newPlainText("Content", contentText);
+                                clipboard.setPrimaryClip(clip);
+                                Toast.makeText(WebViewActivity.this, getString(R.string.desc_copied), Toast.LENGTH_SHORT).show();
+                            }
 
                             if (!allUrls.isEmpty()) {
-                                // Return to MainActivity with the found URLs
+                                // Return to MainActivity with the found URLs and content
                                 Intent resultIntent = new Intent();
                                 resultIntent.putStringArrayListExtra("image_urls", new ArrayList<>(allUrls));
+                                // Pass content as well
+                                if (!contentText.isEmpty()) {
+                                    resultIntent.putExtra("content_text", contentText);
+                                }
                                 setResult(RESULT_OK, resultIntent);
                                 finish();
                             } else {

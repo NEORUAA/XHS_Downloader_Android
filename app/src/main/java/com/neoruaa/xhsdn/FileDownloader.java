@@ -87,7 +87,7 @@ public class FileDownloader {
                           ", but using Content-Type based extension: " + fileExtension);
                 }
 
-                String fullFileName = "xhs_" + timestamp + "_" + baseFileName + "." + fileExtension;
+                String fullFileName = "xhs_" + baseFileName + "." + fileExtension;
 
                 File destinationFile = null;
 

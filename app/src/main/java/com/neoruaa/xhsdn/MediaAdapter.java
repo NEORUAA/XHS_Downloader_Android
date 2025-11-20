@@ -19,6 +19,7 @@ import androidx.recyclerview.widget.RecyclerView;
 import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 
 /**
  * 瀑布流媒体适配器
@@ -159,9 +160,20 @@ public class MediaAdapter extends RecyclerView.Adapter<MediaAdapter.MediaViewHol
     }
 
     private String getMimeType(String filePath) {
-        String extension = android.webkit.MimeTypeMap.getFileExtensionFromUrl(filePath);
+        if (filePath == null) {
+            return null;
+        }
+        String encoded = Uri.fromFile(new File(filePath)).toString();
+        String extension = android.webkit.MimeTypeMap.getFileExtensionFromUrl(encoded);
+        if (extension == null) {
+            int dotIndex = filePath.lastIndexOf('.');
+            if (dotIndex != -1 && dotIndex < filePath.length() - 1) {
+                extension = filePath.substring(dotIndex + 1);
+            }
+        }
         if (extension != null) {
-            return android.webkit.MimeTypeMap.getSingleton().getMimeTypeFromExtension(extension.toLowerCase());
+            return android.webkit.MimeTypeMap.getSingleton()
+                    .getMimeTypeFromExtension(extension.toLowerCase(Locale.ROOT));
         }
         return null;
     }
@@ -341,4 +353,3 @@ public class MediaAdapter extends RecyclerView.Adapter<MediaAdapter.MediaViewHol
         return result;
     }
 }
-

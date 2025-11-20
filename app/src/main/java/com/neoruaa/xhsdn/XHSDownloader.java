@@ -2,6 +2,7 @@ package com.neoruaa.xhsdn;
 
 import android.content.Context;
 import android.content.SharedPreferences;
+import android.text.TextUtils;
 import android.util.Log;
 
 import org.json.JSONArray;
@@ -12,6 +13,7 @@ import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
@@ -43,6 +45,13 @@ public class XHSDownloader {
 
     // Store live photo pairs to distinguish them from regular videos
     private List<LivePhotoPair> livePhotoPairs = new ArrayList<>();
+    private NoteMetadata currentNoteMetadata;
+    private boolean customNamingEnabled = false;
+    private String customFormatTemplate;
+    private String sessionTimestamp;
+    private long sessionDownloadEpochSeconds;
+    private static final java.util.regex.Pattern NAMING_PLACEHOLDER_PATTERN = java.util.regex.Pattern.compile("\\{([^}]+)\\}");
+    private static final long MIN_VALID_EPOCH_MS = 946684800000L; // 2000-01-01
 
     public XHSDownloader(Context context) {
         this(context, null);
@@ -109,14 +118,19 @@ public class XHSDownloader {
 
             Log.d(TAG, "Found " + urls.size() + " XHS URLs to process");
 
-            // Generate a single date-based timestamp for the entire download session (YYMMDD format)
-            String sessionTimestamp = new java.text.SimpleDateFormat("yyMMdd", java.util.Locale.getDefault()).format(new java.util.Date());
+            java.util.Date currentDate = new java.util.Date();
+            String sessionTimestamp = new java.text.SimpleDateFormat("yyMMdd", java.util.Locale.getDefault()).format(currentDate);
+            this.sessionTimestamp = sessionTimestamp;
+            this.sessionDownloadEpochSeconds = currentDate.getTime() / 1000L;
+            this.customNamingEnabled = shouldUseCustomNamingFormat();
+            this.customFormatTemplate = getCustomNamingTemplate();
 
             for (String url : urls) {
                 // Get the post ID from the URL
                 String postId = extractPostId(url);
 
                 if (postId != null) {
+                    this.currentNoteMetadata = null;
                     // Fetch the post details
                     String postDetails = fetchPostDetails(url);
 
@@ -202,11 +216,11 @@ public class XHSDownloader {
                                         final int index = i;
                                         final String mediaUrl = allMediaUrls.get(i);
                                         Future<Boolean> future = executor.submit(() -> {
-                                            String uniqueFileName = postId + "_" + (index + 1); // Use index to create unique name
+                                            String baseFileName = buildFileBaseName(postId, index + 1);
 
                                             // Determine file extension based on URL content
                                             String fileExtension = determineFileExtension(mediaUrl);
-                                            String fileNameWithExtension = uniqueFileName + "." + fileExtension;
+                                            String fileNameWithExtension = baseFileName + "." + fileExtension;
 
                                             // Use the session timestamp to maintain consistency across the download session
                                             return downloadFile(mediaUrl, fileNameWithExtension, sessionTimestamp);
@@ -258,11 +272,11 @@ public class XHSDownloader {
                                     // Single file download - keep existing behavior
                                     for (int i = 0; i < allMediaUrls.size(); i++) {
                                         String mediaUrl = allMediaUrls.get(i);
-                                        String uniqueFileName = postId + "_" + (i + 1); // Use index to create unique name
+                                        String baseFileName = buildFileBaseName(postId, i + 1);
                                         
                                         // Determine file extension based on URL content
                                         String fileExtension = determineFileExtension(mediaUrl);
-                                        String fileNameWithExtension = uniqueFileName + "." + fileExtension;
+                                        String fileNameWithExtension = baseFileName + "." + fileExtension;
                                         
                                         boolean success = downloadFile(mediaUrl, fileNameWithExtension, sessionTimestamp);
                                         if (!success) {
@@ -708,6 +722,7 @@ public class XHSDownloader {
         List<String> mediaUrls = new ArrayList<>();
         
         try {
+            captureNoteMetadata(note);
             // Debug logging to trace execution path
             Log.d(TAG, "Processing note object");
             Log.d(TAG, "Note object keys: " + note.names());
@@ -987,6 +1002,24 @@ public class XHSDownloader {
                    java.util.Objects.equals(videoUrl, that.videoUrl);
         }
     }
+
+    private static class NoteMetadata {
+        final String userName;
+        final String userId;
+        final String title;
+        final String publishTime;
+
+        NoteMetadata(String userName, String userId, String title, String publishTime) {
+            this.userName = userName;
+            this.userId = userId;
+            this.title = title;
+            this.publishTime = publishTime;
+        }
+
+        boolean hasRequiredFields() {
+            return !TextUtils.isEmpty(userName) && !TextUtils.isEmpty(userId);
+        }
+    }
     
     private List<String> extractUrlsFromHtml(String html) {
         List<String> urls = new ArrayList<>();
@@ -1029,6 +1062,306 @@ public class XHSDownloader {
         SharedPreferences prefs = context.getSharedPreferences("XHSDownloaderPrefs", Context.MODE_PRIVATE);
         return prefs.getBoolean("create_live_photos", true); // Default to true - live photos enabled by default
     }
+
+    private boolean shouldUseCustomNamingFormat() {
+        SharedPreferences prefs = context.getSharedPreferences("XHSDownloaderPrefs", Context.MODE_PRIVATE);
+        if (prefs.contains("use_custom_naming_format")) {
+            return prefs.getBoolean("use_custom_naming_format", false);
+        }
+        return prefs.getBoolean("use_metadata_file_names", false);
+    }
+
+    private String getCustomNamingTemplate() {
+        SharedPreferences prefs = context.getSharedPreferences("XHSDownloaderPrefs", Context.MODE_PRIVATE);
+        String template = prefs.getString("custom_naming_template", NamingFormat.DEFAULT_TEMPLATE);
+        if (template != null) {
+            template = template.trim();
+        }
+        if (TextUtils.isEmpty(template)) {
+            return NamingFormat.DEFAULT_TEMPLATE;
+        }
+        return template;
+    }
+
+    private void captureNoteMetadata(JSONObject note) {
+        if (!customNamingEnabled || note == null) {
+            return;
+        }
+        if (currentNoteMetadata != null && currentNoteMetadata.hasRequiredFields()) {
+            return;
+        }
+        NoteMetadata metadata = buildNoteMetadata(note);
+        if (metadata != null && metadata.hasRequiredFields()) {
+            currentNoteMetadata = metadata;
+        }
+    }
+
+    private NoteMetadata buildNoteMetadata(JSONObject note) {
+        try {
+            if (note == null) {
+                return null;
+            }
+
+            JSONObject user = note.has("user") ? note.optJSONObject("user") : null;
+            String nickname = null;
+            String redId = null;
+            if (user != null) {
+                nickname = firstNonEmpty(
+                        user.optString("nickname", null),
+                        user.optString("name", null),
+                        user.optString("userName", null));
+                redId = firstNonEmpty(
+                        user.optString("redId", null),
+                        user.optString("red_id", null),
+                        user.optString("userId", null),
+                        user.optString("userid", null),
+                        user.optString("user_id", null));
+            }
+
+            if (TextUtils.isEmpty(redId)) {
+                redId = firstNonEmpty(
+                        note.optString("userId", null),
+                        note.optString("uid", null));
+            }
+
+            String title = firstNonEmpty(
+                    note.optString("title", null),
+                    note.optString("desc", null),
+                    note.optString("description", null));
+            if (TextUtils.isEmpty(title)) {
+                title = note.optString("noteId", null);
+            }
+
+            String publishTime = extractPublishTime(note);
+
+            String sanitizedUser = sanitizeForFilename(nickname, 40);
+            String sanitizedRedId = sanitizeForFilename(redId, 40);
+            String sanitizedTitle = sanitizeForFilename(title, 80);
+            String sanitizedPublishTime = sanitizeForFilename(publishTime, 60);
+
+            if (TextUtils.isEmpty(sanitizedUser) || TextUtils.isEmpty(sanitizedRedId)) {
+                return null;
+            }
+
+            return new NoteMetadata(sanitizedUser, sanitizedRedId, sanitizedTitle, sanitizedPublishTime);
+        } catch (Exception e) {
+            Log.e(TAG, "Error extracting note metadata: " + e.getMessage());
+            return null;
+        }
+    }
+
+    private String extractPublishTime(JSONObject note) {
+        if (note == null) {
+            return null;
+        }
+        String textual = firstNonEmpty(
+                note.optString("time", null),
+                note.optString("timeText", null),
+                note.optString("displayTime", null),
+                note.optString("publishTime", null),
+                note.optString("publish_time", null),
+                note.optString("createTime", null));
+
+        String normalized = normalizeExplicitDate(textual);
+        if (!TextUtils.isEmpty(normalized)) {
+            return normalized;
+        }
+
+        long epoch = extractEpochFromNote(note,
+                "time", "publishTime", "publish_time", "createTime", "timestamp", "timeStamp");
+        if (epoch > 0) {
+            return formatEpochAsDate(epoch);
+        }
+
+        return textual;
+    }
+
+    private String normalizeExplicitDate(String raw) {
+        if (TextUtils.isEmpty(raw)) {
+            return null;
+        }
+        String value = raw.trim();
+        if (value.matches("\\d{4}-\\d{2}-\\d{2}.*")) {
+            try {
+                java.util.Date parsed = new java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault())
+                        .parse(value.substring(0, 10));
+                if (parsed != null) {
+                    return formatEpochAsDate(parsed.getTime());
+                }
+            } catch (java.text.ParseException ignore) {
+            }
+        }
+        if (value.matches("\\d{2}-\\d{2}-\\d{2}.*")) {
+            return value.substring(0, Math.min(value.length(), 8));
+        }
+        String digitsOnly = value.replaceAll("[^0-9]", "");
+        if (digitsOnly.length() >= 8) {
+            String firstEight = digitsOnly.substring(0, 8);
+            try {
+                java.util.Date parsed = new java.text.SimpleDateFormat("yyyyMMdd", java.util.Locale.getDefault())
+                        .parse(firstEight);
+                if (parsed != null) {
+                    return formatEpochAsDate(parsed.getTime());
+                }
+            } catch (java.text.ParseException ignore) {
+            }
+        }
+        return null;
+    }
+
+    private long extractEpochFromNote(JSONObject note, String... keys) {
+        if (note == null || keys == null) {
+            return -1;
+        }
+        for (String key : keys) {
+            if (note.has(key)) {
+                try {
+                    Object raw = note.get(key);
+                    long value = -1;
+                    if (raw instanceof Number) {
+                        value = ((Number) raw).longValue();
+                    } else {
+                        String rawString = note.optString(key, null);
+                        if (!TextUtils.isEmpty(rawString)) {
+                            value = Long.parseLong(rawString.replaceAll("[^0-9]", ""));
+                        }
+                    }
+                    if (value > 0) {
+                        if (value < 1_000_000_000L) {
+                            continue;
+                        }
+                        if (value < 1_000_000_000_000L) {
+                            value *= 1000L;
+                        }
+                        if (value < MIN_VALID_EPOCH_MS) {
+                            continue;
+                        }
+                        return value;
+                    }
+                } catch (Exception ignore) {
+                    // Ignore parse errors for fallback fields
+                }
+            }
+        }
+        return -1;
+    }
+
+    private String formatEpochAsDate(long epochMs) {
+        if (epochMs < MIN_VALID_EPOCH_MS) {
+            return null;
+        }
+        return new java.text.SimpleDateFormat("yy-MM-dd", java.util.Locale.getDefault())
+                .format(new java.util.Date(epochMs));
+    }
+
+    private String sanitizeForFilename(String value, int maxLength) {
+        if (TextUtils.isEmpty(value)) {
+            return null;
+        }
+        String sanitized = value.replaceAll("[\\/:*?\"<>|]", "_");
+        sanitized = sanitized.replaceAll("[\\p{Cntrl}]", "");
+        sanitized = sanitized.trim();
+        sanitized = sanitized.replaceAll("\\s+", "_");
+        sanitized = sanitized.replaceAll("_+", "_");
+        sanitized = sanitized.replaceAll("^_+", "");
+        sanitized = sanitized.replaceAll("_+$", "");
+        if (maxLength > 0 && sanitized.length() > maxLength) {
+            sanitized = sanitized.substring(0, maxLength);
+        }
+        return sanitized.isEmpty() ? null : sanitized;
+    }
+
+    private String firstNonEmpty(String... values) {
+        if (values == null) {
+            return null;
+        }
+        for (String value : values) {
+            if (value != null) {
+                String trimmed = value.trim();
+                if (!trimmed.isEmpty()) {
+                    return trimmed;
+                }
+            }
+        }
+        return null;
+    }
+
+    private String buildFileBaseName(String fallbackPostId, int mediaIndex) {
+        String indexPart = String.format(Locale.getDefault(), "%02d", Math.max(mediaIndex, 1));
+        if (customNamingEnabled && !TextUtils.isEmpty(customFormatTemplate)) {
+            String customName = applyCustomTemplate(customFormatTemplate, fallbackPostId, mediaIndex, indexPart);
+            if (!TextUtils.isEmpty(customName)) {
+                return customName;
+            }
+        }
+        return fallbackPostId + "_" + indexPart;
+    }
+
+    private String applyCustomTemplate(String template, String fallbackPostId, int mediaIndex, String indexPart) {
+        if (TextUtils.isEmpty(template)) {
+            return null;
+        }
+        java.util.regex.Matcher matcher = NAMING_PLACEHOLDER_PATTERN.matcher(template);
+        StringBuffer buffer = new StringBuffer();
+        while (matcher.find()) {
+            String key = matcher.group(1);
+            String replacement = resolveTemplateValue(key, fallbackPostId, mediaIndex, indexPart);
+            if (replacement == null) {
+                replacement = "";
+            }
+            matcher.appendReplacement(buffer, java.util.regex.Matcher.quoteReplacement(replacement));
+        }
+        matcher.appendTail(buffer);
+        String sanitized = sanitizeForFilename(buffer.toString(), 120);
+        if (TextUtils.isEmpty(sanitized)) {
+            return null;
+        }
+        if (!containsIndexToken(template)) {
+            sanitized = sanitized + "_" + indexPart;
+        }
+        return sanitized;
+    }
+
+    private boolean containsIndexToken(String template) {
+        if (TextUtils.isEmpty(template)) {
+            return false;
+        }
+        return template.contains(NamingFormat.buildPlaceholder(NamingFormat.TOKEN_INDEX)) ||
+               template.contains(NamingFormat.buildPlaceholder(NamingFormat.TOKEN_INDEX_PADDED));
+    }
+
+    private String resolveTemplateValue(String key, String fallbackPostId, int mediaIndex, String indexPart) {
+        if (TextUtils.isEmpty(key)) {
+            return "";
+        }
+        switch (key) {
+            case NamingFormat.TOKEN_USERNAME:
+                return safeTokenValue(currentNoteMetadata != null ? currentNoteMetadata.userName : null, 60);
+            case NamingFormat.TOKEN_USER_ID:
+                return safeTokenValue(currentNoteMetadata != null ? currentNoteMetadata.userId : null, 60);
+            case NamingFormat.TOKEN_TITLE:
+                return safeTokenValue(currentNoteMetadata != null ? currentNoteMetadata.title : null, 80);
+            case NamingFormat.TOKEN_POST_ID:
+                return safeTokenValue(fallbackPostId, 60);
+            case NamingFormat.TOKEN_PUBLISH_TIME:
+                return safeTokenValue(currentNoteMetadata != null ? currentNoteMetadata.publishTime : null, 60);
+            case NamingFormat.TOKEN_INDEX:
+                return String.valueOf(Math.max(mediaIndex, 1));
+            case NamingFormat.TOKEN_INDEX_PADDED:
+                return indexPart;
+            case NamingFormat.TOKEN_DOWNLOAD_TIMESTAMP:
+                long epochSeconds = sessionDownloadEpochSeconds > 0
+                        ? sessionDownloadEpochSeconds
+                        : System.currentTimeMillis() / 1000L;
+                return String.valueOf(epochSeconds);
+            default:
+                return "";
+        }
+    }
+
+    private String safeTokenValue(String value, int maxLength) {
+        return sanitizeForFilename(value, maxLength);
+    }
     
     /**
      * Creates live photos by combining images and videos
@@ -1060,7 +1393,8 @@ public class XHSDownloader {
                 FileDownloader tempDownloader = new FileDownloader(context, null); // No callback to avoid premature notification
 
                 // Download the image to a temporary location (app's internal storage)
-                String imageFileName = postId + "_img_" + livePhotoIndex + "." + determineFileExtension(imageUrl);
+                String baseName = buildFileBaseName(postId, livePhotoIndex);
+                String imageFileName = baseName + "_img." + determineFileExtension(imageUrl);
                 boolean imageDownloaded = tempDownloader.downloadFileToInternalStorage(imageUrl, imageFileName, timestamp);
                 if (!imageDownloaded) {
                     Log.e(TAG, "Failed to download image for live photo: " + imageUrl);
@@ -1069,7 +1403,7 @@ public class XHSDownloader {
                 }
 
                 // Download the video to a temporary location (app's internal storage)
-                String videoFileName = postId + "_vid_" + livePhotoIndex + "." + determineFileExtension(videoUrl);
+                String videoFileName = baseName + "_vid." + determineFileExtension(videoUrl);
                 boolean videoDownloaded = tempDownloader.downloadFileToInternalStorage(videoUrl, videoFileName, timestamp);
                 if (!videoDownloaded) {
                     Log.e(TAG, "Failed to download video for live photo: " + videoUrl);
@@ -1109,8 +1443,8 @@ public class XHSDownloader {
                 }
 
                 // Create the live photo in the final destination
-                String livePhotoFileName = postId + "_live_" + livePhotoIndex + ".jpg";
-                File livePhotoFile = new File(destinationDir, "xhs_" + timestamp + "_" + livePhotoFileName);
+                String livePhotoFileName = baseName + "_live.jpg";
+                File livePhotoFile = new File(destinationDir, "xhs_" + livePhotoFileName);
 
                 Log.d(TAG, "Creating live photo with image: " + actualTempImageFile.getAbsolutePath() +
                        " and video: " + actualTempVideoFile.getAbsolutePath() +
@@ -1174,8 +1508,8 @@ public class XHSDownloader {
                     }
 
                     // Only download separately if the downloadFile calls were successful
-                    boolean imageDownloadedFallback = downloadFile(imageUrl, imageFileName.replace("xhs_", ""), timestamp);
-                    boolean videoDownloadedFallback = downloadFile(videoUrl, videoFileName.replace("xhs_", ""), timestamp);
+                    boolean imageDownloadedFallback = downloadFile(imageUrl, imageFileName, timestamp);
+                    boolean videoDownloadedFallback = downloadFile(videoUrl, videoFileName, timestamp);
 
                     Log.d(TAG, "Fallback download - Image: " + (imageDownloadedFallback ? "Success" : "Failed") +
                            ", Video: " + (videoDownloadedFallback ? "Success" : "Failed"));
@@ -1187,7 +1521,7 @@ public class XHSDownloader {
                         if (imageDownloadedFallback) {
                             File separateImageFile = new File(
                                 android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_PICTURES),
-                                "xhs_" + timestamp + "_" + imageFileName.replace("xhs_", "")
+                                "xhs_" + imageFileName
                             );
                             if (separateImageFile.exists()) {
                                 downloadCallback.onFileDownloaded(separateImageFile.getAbsolutePath());
@@ -1196,7 +1530,7 @@ public class XHSDownloader {
                         if (videoDownloadedFallback) {
                             File separateVideoFile = new File(
                                 android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_PICTURES),
-                                "xhs_" + timestamp + "_" + videoFileName.replace("xhs_", "")
+                                "xhs_" + videoFileName
                             );
                             if (separateVideoFile.exists()) {
                                 downloadCallback.onFileDownloaded(separateVideoFile.getAbsolutePath());
@@ -1240,8 +1574,8 @@ public class XHSDownloader {
 
             if (!isPartOfLivePhoto) {
                 // This media is not part of a live photo pair, download separately
-                String uniqueFileName = postId + "_" + (isVideoUrl(mediaUrl) ? "video" : "image") + "_" +
-                    (livePhotoIndex + 1); // Use an index that accounts for already processed live photos
+                String baseFileName = buildFileBaseName(postId, livePhotoIndex + 1);
+                String uniqueFileName = baseFileName + "_" + (isVideoUrl(mediaUrl) ? "video" : "image");
                 String fileExtension = determineFileExtension(mediaUrl);
                 String fileNameWithExtension = uniqueFileName + "." + fileExtension;
 

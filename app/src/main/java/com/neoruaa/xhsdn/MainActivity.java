@@ -37,6 +37,7 @@ import androidx.core.content.FileProvider;
 import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 
 public class MainActivity extends AppCompatActivity {
     private EditText urlInput;
@@ -53,6 +54,7 @@ public class MainActivity extends AppCompatActivity {
     private MediaAdapter mediaAdapter;
     private static final int PERMISSION_REQUEST_CODE = 1001;
     private static final int WEBVIEW_REQUEST_CODE = 1002;
+    private static final int SETTINGS_REQUEST_CODE = 1003;
     private String currentUrl; // Store the URL being processed to pass to WebView
     private boolean hasRequestedStoragePermission = false; // 标记是否已请求过存储权限，避免重复请求
 
@@ -328,9 +330,20 @@ public class MainActivity extends AppCompatActivity {
     }
     
     private String getMimeType(String filePath) {
-        String extension = android.webkit.MimeTypeMap.getFileExtensionFromUrl(filePath);
+        if (filePath == null) {
+            return null;
+        }
+        String encoded = Uri.fromFile(new File(filePath)).toString();
+        String extension = android.webkit.MimeTypeMap.getFileExtensionFromUrl(encoded);
+        if (extension == null) {
+            int dotIndex = filePath.lastIndexOf('.');
+            if (dotIndex != -1 && dotIndex < filePath.length() - 1) {
+                extension = filePath.substring(dotIndex + 1);
+            }
+        }
         if (extension != null) {
-            return android.webkit.MimeTypeMap.getSingleton().getMimeTypeFromExtension(extension.toLowerCase());
+            return android.webkit.MimeTypeMap.getSingleton()
+                    .getMimeTypeFromExtension(extension.toLowerCase(Locale.ROOT));
         }
         return null;
     }
@@ -618,6 +631,10 @@ public class MainActivity extends AppCompatActivity {
                     autoScrollToBottom();
                 }
             }
+        } else if (requestCode == SETTINGS_REQUEST_CODE) {
+            if (resultCode == RESULT_OK) {
+                Toast.makeText(this, getString(R.string.settings_saved), Toast.LENGTH_SHORT).show();
+            }
         }
     }
     
@@ -774,19 +791,15 @@ public class MainActivity extends AppCompatActivity {
     public boolean onOptionsItemSelected(MenuItem item) {
         int itemId = item.getItemId();
         if (itemId == R.id.action_settings) {
-            showSettingsDialog();
+            openSettingsScreen();
             return true;
         }
         return super.onOptionsItemSelected(item);
     }
     
-    private void showSettingsDialog() {
-        SettingsDialog settingsDialog = new SettingsDialog(this);
-        settingsDialog.setOnSettingsAppliedListener(savePath -> {
-            // Handle settings applied if needed - savePath now represents the default path
-            Toast.makeText(this, getString(R.string.settings_saved), Toast.LENGTH_SHORT).show();
-        });
-        settingsDialog.show();
+    private void openSettingsScreen() {
+        Intent intent = new Intent(this, SettingsActivity.class);
+        startActivityForResult(intent, SETTINGS_REQUEST_CODE);
     }
     
     /**

@@ -29,6 +29,9 @@
         <activity
             android:name=".WebViewActivity"
             android:exported="false" />
+        <activity
+            android:name=".SettingsActivity"
+            android:exported="false" />
         
         <provider
             android:name="androidx.core.content.FileProvider"

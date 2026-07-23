@@ -22,15 +22,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.unit.dp
-import com.kyant.capsule.ContinuousRoundedRectangle
 import com.neoruaa.xhsdn.R
 import com.neoruaa.xhsdn.utils.createVideoThumbnail
 import com.neoruaa.xhsdn.utils.decodeSampledBitmap
@@ -48,16 +45,17 @@ import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Delete
 import top.yukonga.miuix.kmp.icon.extended.Info
 import top.yukonga.miuix.kmp.icon.extended.Play
+import top.yukonga.miuix.kmp.squircle.squircleSurface
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.window.WindowDialog
 import java.io.File
 
 @Composable
 fun DetailMediaWaterfall(
+    modifier: Modifier = Modifier,
     mediaItems: List<MediaItem>,
     onMediaClick: (MediaItem) -> Unit,
-    onDeleteMedia: (MediaItem) -> Unit,
-    modifier: Modifier = Modifier
+    onDeleteMedia: (MediaItem) -> Unit
 ) {
     val items = remember(mediaItems) {
         mediaItems.map { CachedMediaItem(it.path, File(it.path).name, it.type) }
@@ -85,10 +83,10 @@ fun DetailMediaWaterfall(
 
 @Composable
 fun SelectableMediaWaterfall(
+    modifier: Modifier = Modifier,
     items: List<CachedMediaItem>,
     selectedPaths: Set<String>,
-    onToggle: (String) -> Unit,
-    modifier: Modifier = Modifier
+    onToggle: (String) -> Unit
 ) {
     val columns = rememberSelectableColumns(items)
 
@@ -163,7 +161,8 @@ private fun SelectableMediaColumn(
 }
 
 @Composable
-private fun DetailMediaPreview(
+fun DetailMediaPreview(
+    modifier: Modifier = Modifier,
     item: CachedMediaItem,
     onClick: () -> Unit,
     onDelete: () -> Unit
@@ -176,9 +175,11 @@ private fun DetailMediaPreview(
     val fileSize = remember(item.path) { selectableFileSize(item.path) }
 
     Column(
-        modifier = Modifier
-            .clip(ContinuousRoundedRectangle(18.dp))
-            .background(MiuixTheme.colorScheme.surfaceVariant)
+        modifier = modifier
+            .squircleSurface(
+                color = MiuixTheme.colorScheme.surfaceVariant,
+                cornerRadius = 18.dp
+            )
     ) {
         Box(
             modifier = Modifier
@@ -236,7 +237,7 @@ private fun DetailMediaPreview(
                 modifier = Modifier
                     .size(24.dp)
                     .clickable { showDeleteDialog = true },
-                tint = Color.Gray
+                tint = MiuixTheme.colorScheme.onSurfaceVariantActions
             )
         }
     }
@@ -277,7 +278,8 @@ private fun DetailMediaPreview(
 }
 
 @Composable
-private fun SelectableMediaPreview(
+fun SelectableMediaPreview(
+    modifier: Modifier = Modifier,
     item: CachedMediaItem,
     selected: Boolean,
     onToggle: () -> Unit
@@ -288,9 +290,11 @@ private fun SelectableMediaPreview(
     val fileSize = remember(item.path) { selectableFileSize(item.path) }
 
     Column(
-        modifier = Modifier
-            .clip(ContinuousRoundedRectangle(18.dp))
-            .background(MiuixTheme.colorScheme.surfaceVariant)
+        modifier = modifier
+            .squircleSurface(
+                color = MiuixTheme.colorScheme.surfaceVariant,
+                cornerRadius = 18.dp
+            )
             .clickable { onToggle() }
     ) {
         Box(
@@ -379,7 +383,7 @@ private fun SelectablePlaceholderMedia(type: MediaType) {
             imageVector = if (type == MediaType.VIDEO) MiuixIcons.Play else MiuixIcons.Info,
             contentDescription = null,
             modifier = Modifier.size(36.dp),
-            tint = Color.Gray
+            tint = MiuixTheme.colorScheme.onSurfaceVariantSummary
         )
     }
 }

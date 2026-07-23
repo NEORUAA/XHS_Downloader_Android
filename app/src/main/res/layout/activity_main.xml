@@ -28,7 +28,7 @@
             android:layout_height="wrap_content"
             android:layout_gravity="center_vertical"
             android:layout_marginStart="8dp"
-            android:text="0/0"
+            android:text="@string/common_zero_progress"
             android:textColor="@android:color/black" />
 
     </LinearLayout>

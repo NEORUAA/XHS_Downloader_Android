@@ -21,8 +21,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
@@ -35,7 +33,6 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.Role
@@ -49,7 +46,9 @@ import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.unit.times
-import com.kyant.capsule.ContinuousRoundedRectangle
+import top.yukonga.miuix.kmp.basic.Text
+import top.yukonga.miuix.kmp.squircle.squircleBackground
+import top.yukonga.miuix.kmp.squircle.squircleSurface
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import kotlin.math.roundToInt
 
@@ -127,8 +126,10 @@ fun TabRow(
                     .offset { IntOffset((indicatorOffset.value - scrollOffset).roundToInt(), 0) }
                     .width(config.tabWidth)
                     .fillMaxHeight()
-                    .clip(config.shape)
-                    .background(colors.backgroundColor(true)),
+                    .squircleBackground(
+                        color = colors.backgroundColor(true),
+                        cornerRadius = config.cornerRadius
+                    ),
             )
             LazyRow(
                 state = config.listState,
@@ -143,7 +144,7 @@ fun TabRow(
                         text = tabText,
                         isSelected = selectedTabIndex == index,
                         onClick = { currentOnTabSelected.invoke(index) },
-                        shape = config.shape,
+                        cornerRadius = config.cornerRadius,
                         width = config.tabWidth,
                         color = colors.contentColor(selectedTabIndex == index),
                         contentAlignment = contentAlignment,
@@ -226,8 +227,10 @@ fun TabRowWithContour(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .clip(ContinuousRoundedRectangle(cornerRadius + contourPadding))
-                .background(color = colors.backgroundColor(false))
+                .squircleSurface(
+                    color = colors.backgroundColor(false),
+                    cornerRadius = cornerRadius + contourPadding
+                )
                 .padding(contourPadding),
         ) {
             Box(
@@ -235,8 +238,10 @@ fun TabRowWithContour(
                     .offset { IntOffset((indicatorOffset.value - scrollOffset).roundToInt(), 0) }
                     .width(config.tabWidth)
                     .fillMaxHeight()
-                    .clip(config.shape)
-                    .background(colors.backgroundColor(true)),
+                    .squircleBackground(
+                        color = colors.backgroundColor(true),
+                        cornerRadius = config.cornerRadius
+                    ),
             )
             LazyRow(
                 state = config.listState,
@@ -251,7 +256,7 @@ fun TabRowWithContour(
                         text = tabText,
                         isSelected = selectedTabIndex == index,
                         onClick = { currentOnTabSelected.invoke(index) },
-                        shape = config.shape,
+                        cornerRadius = config.cornerRadius,
                         width = config.tabWidth,
                         color = colors.contentColor(selectedTabIndex == index),
                         contentAlignment = contentAlignment,
@@ -268,69 +273,7 @@ private fun TabItem(
     text: String,
     isSelected: Boolean,
     onClick: () -> Unit,
-    shape: ContinuousRoundedRectangle,
-    width: Dp,
-    color: Color = Color.Unspecified,
-    contentAlignment: Alignment = Alignment.Center,
-    fontSize: TextUnit = 14.sp,
-) {
-    val currentOnClick by rememberUpdatedState(onClick)
-    val interactionSource = remember { MutableInteractionSource() }
-    val isPressed by interactionSource.collectIsPressedAsState()
-
-    // 计算按压状态下的颜色
-    val textColor by remember(color, isSelected, isPressed) {
-        derivedStateOf {
-            if (isPressed) {
-                // 按压时降低透明度
-                if (color == Color.Unspecified) {
-                    color
-                } else {
-                    color.copy(alpha = 0.6f)
-                }
-            } else {
-                color
-            }
-        }
-    }
-
-    Surface(
-        shape = shape,
-        color = Color.Transparent,
-        modifier = Modifier
-            .fillMaxHeight()
-            .width(width)
-            .clickable(
-                onClick = {
-                    currentOnClick()
-                },
-                indication = null, // 移除点击波纹效果
-                interactionSource = interactionSource
-            )
-            .semantics { role = Role.Tab },
-    ) {
-        Box(
-            modifier = Modifier.fillMaxSize().padding(horizontal = 12.dp),
-            contentAlignment = contentAlignment,
-        ) {
-            Text(
-                text = text,
-                color = textColor,
-                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                fontSize = fontSize,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-        }
-    }
-}
-
-@Composable
-private fun TabItemWithContour(
-    text: String,
-    isSelected: Boolean,
-    onClick: () -> Unit,
-    shape: ContinuousRoundedRectangle,
+    cornerRadius: Dp,
     width: Dp,
     color: Color = Color.Unspecified,
     contentAlignment: Alignment = Alignment.Center,
@@ -360,7 +303,75 @@ private fun TabItemWithContour(
         modifier = Modifier
             .fillMaxHeight()
             .width(width)
-            .clip(shape)
+            .squircleSurface(
+                color = Color.Transparent,
+                cornerRadius = cornerRadius
+            )
+            .clickable(
+                onClick = {
+                    currentOnClick()
+                },
+                indication = null, // 移除点击波纹效果
+                interactionSource = interactionSource
+            )
+            .semantics { role = Role.Tab },
+        contentAlignment = contentAlignment
+    ) {
+        Box(
+            modifier = Modifier.fillMaxSize().padding(horizontal = 12.dp),
+            contentAlignment = contentAlignment,
+        ) {
+            Text(
+                text = text,
+                color = textColor,
+                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                fontSize = fontSize,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+    }
+}
+
+@Composable
+private fun TabItemWithContour(
+    text: String,
+    isSelected: Boolean,
+    onClick: () -> Unit,
+    cornerRadius: Dp,
+    width: Dp,
+    color: Color = Color.Unspecified,
+    contentAlignment: Alignment = Alignment.Center,
+    fontSize: TextUnit = 14.sp,
+) {
+    val currentOnClick by rememberUpdatedState(onClick)
+    val interactionSource = remember { MutableInteractionSource() }
+    val isPressed by interactionSource.collectIsPressedAsState()
+
+    // 计算按压状态下的颜色
+    val textColor by remember(color, isSelected, isPressed) {
+        derivedStateOf {
+            if (isPressed) {
+                // 按压时降低透明度
+                if (color == Color.Unspecified) {
+                    color
+                } else {
+                    color.copy(alpha = 0.6f)
+                }
+            } else {
+                color
+            }
+        }
+    }
+
+    Box(
+        modifier = Modifier
+            .fillMaxHeight()
+            .width(width)
+            .squircleSurface(
+                color = Color.Transparent,
+                cornerRadius = cornerRadius
+            )
             .clickable(
                 onClick = { currentOnClick() },
                 indication = null, // 移除点击波纹效果
@@ -385,7 +396,7 @@ private fun TabItemWithContour(
  */
 private data class TabRowConfig(
     val tabWidth: Dp,
-    val shape: ContinuousRoundedRectangle,
+    val cornerRadius: Dp,
     val listState: androidx.compose.foundation.lazy.LazyListState,
 )
 
@@ -406,9 +417,7 @@ private fun rememberTabRowConfig(
     val tabWidth = remember(tabs.size, minWidth, maxWidth, lazyRowAvailableWidth, spacing) {
         calculateTabWidth(tabs.size, minWidth, maxWidth, spacing, lazyRowAvailableWidth)
     }
-    val shape = remember(cornerRadius) { ContinuousRoundedRectangle(cornerRadius) }
-
-    return TabRowConfig(tabWidth, shape, listState)
+    return TabRowConfig(tabWidth, cornerRadius, listState)
 }
 
 private fun calculateTabWidth(

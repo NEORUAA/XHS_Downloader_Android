@@ -29,10 +29,10 @@ import androidx.compose.foundation.layout.displayCutout
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.union
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
@@ -42,21 +42,23 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
+import com.neoruaa.xhsdn.ui.AdaptiveTopAppBar
+import com.neoruaa.xhsdn.ui.TopAppBarIconButton
+import com.neoruaa.xhsdn.ui.rememberWindowLayoutInfo
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import top.yukonga.miuix.kmp.basic.Button
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Icon
+import top.yukonga.miuix.kmp.basic.LinearProgressIndicator
 import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextField
-import top.yukonga.miuix.kmp.basic.TopAppBar
 import top.yukonga.miuix.kmp.basic.rememberTopAppBarState
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Back
@@ -64,8 +66,8 @@ import top.yukonga.miuix.kmp.theme.ColorSchemeMode
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.theme.ThemeController
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.unit.max
 import com.kyant.capsule.ContinuousRoundedRectangle
+import top.yukonga.miuix.kmp.squircle.squircleSurface
 
 class WebViewActivity : ComponentActivity() {
     @SuppressLint("SetJavaScriptEnabled")
@@ -136,6 +138,7 @@ private fun WebViewScreen(
 
     val topBarState = rememberTopAppBarState()
     val scrollBehavior = top.yukonga.miuix.kmp.basic.MiuixScrollBehavior(state = topBarState)
+    val windowLayoutInfo = rememberWindowLayoutInfo()
 
     val webView = remember {
         WebView(context).apply {
@@ -169,15 +172,16 @@ private fun WebViewScreen(
     Scaffold(
         contentWindowInsets = WindowInsets.statusBars.union(WindowInsets.displayCutout),
         topBar = {
-            TopAppBar(
+            AdaptiveTopAppBar(
                 title = stringResource(R.string.webview_title),
+                isWideScreen = windowLayoutInfo.isWideScreen,
                 navigationIcon = {
-                    Icon(
+                    TopAppBarIconButton(
                         imageVector = MiuixIcons.Back,
-                        contentDescription = "返回",
+                        contentDescription = stringResource(R.string.back_content_description),
+                        onClick = onBack,
                         modifier = Modifier
-                            .padding(start = 12.dp)
-                            .clickable { onBack() }
+                            .padding(start = 4.dp)
                     )
                 },
                 scrollBehavior = scrollBehavior
@@ -189,21 +193,24 @@ private fun WebViewScreen(
                 .fillMaxSize()
                 .nestedScroll(scrollBehavior.nestedScrollConnection)
                 .background(MiuixTheme.colorScheme.surface)
-                .padding(padding)
-                .padding(bottom = max(WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding(), 16.dp)),
+                .padding(top = padding.calculateTopPadding())
+                .navigationBarsPadding(),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 16.dp)
-                    .padding(top = 10.dp),
+                    .padding(
+                        start = windowLayoutInfo.contentStartPadding + 12.dp,
+                        top = 12.dp,
+                        end = windowLayoutInfo.contentEndPadding + 12.dp
+                    ),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 TextField(
                     value = urlText,
                     onValueChange = { urlText = it },
-                    modifier = Modifier.fillMaxWidth().clip(ContinuousRoundedRectangle(16.dp)),
+                    modifier = Modifier.fillMaxWidth(),
                     label = stringResource(R.string.webview_enter_url),
                     singleLine = true,
                     keyboardOptions = androidx.compose.foundation.text.KeyboardOptions.Default.copy(imeAction = ImeAction.Go),
@@ -232,7 +239,7 @@ private fun WebViewScreen(
                     ) {
                         Text(
                             text = stringResource(R.string.webview_crawl),
-                            color = Color.White
+                            color = MiuixTheme.colorScheme.onPrimary
                         )
                     }
                 }
@@ -242,8 +249,15 @@ private fun WebViewScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .weight(1f)
-                    .padding(horizontal = 16.dp)
-                    .background(MiuixTheme.colorScheme.background, ContinuousRoundedRectangle(18.dp))
+                    .padding(
+                        start = windowLayoutInfo.contentStartPadding + 12.dp,
+                        end = windowLayoutInfo.contentEndPadding + 12.dp,
+                        bottom = 12.dp
+                    )
+                    .squircleSurface(
+                        color = MiuixTheme.colorScheme.background,
+                        cornerRadius = 18.dp
+                    )
             ) {
 
 
@@ -252,8 +266,7 @@ private fun WebViewScreen(
                         progress = progress / 100f,
                         modifier = Modifier
                             .fillMaxWidth()
-                            .align(Alignment.TopCenter),
-                        color = MiuixTheme.colorScheme.primary
+                            .align(Alignment.TopCenter)
                     )
                 } else {
                     androidx.compose.ui.viewinterop.AndroidView(

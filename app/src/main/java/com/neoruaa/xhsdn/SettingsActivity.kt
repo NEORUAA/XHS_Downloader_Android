@@ -13,7 +13,6 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -26,7 +25,9 @@ import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.displayCutout
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
@@ -37,7 +38,6 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
@@ -51,7 +51,11 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
-import com.kyant.capsule.ContinuousRoundedRectangle
+import com.neoruaa.xhsdn.ui.ActionIconButton
+import com.neoruaa.xhsdn.ui.AdaptiveTopAppBar
+import com.neoruaa.xhsdn.ui.TopAppBarIconButton
+import com.neoruaa.xhsdn.ui.groupedCardItems
+import com.neoruaa.xhsdn.ui.rememberWindowLayoutInfo
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
@@ -64,7 +68,6 @@ import top.yukonga.miuix.kmp.basic.SmallTitle
 import top.yukonga.miuix.kmp.basic.Switch
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextField
-import top.yukonga.miuix.kmp.basic.TopAppBar
 import top.yukonga.miuix.kmp.basic.TopAppBarState
 import top.yukonga.miuix.kmp.basic.rememberTopAppBarState
 import top.yukonga.miuix.kmp.icon.MiuixIcons
@@ -73,6 +76,7 @@ import top.yukonga.miuix.kmp.icon.extended.Refresh
 import top.yukonga.miuix.kmp.theme.ColorSchemeMode
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.theme.ThemeController
+import top.yukonga.miuix.kmp.squircle.squircleBorder
 import android.graphics.Color as AndroidColor
 
 private const val PREFS_NAME = "XHSDownloaderPrefs"
@@ -309,20 +313,35 @@ private fun SettingsScreen(
 ) {
     val context = LocalContext.current
     val scrollBehavior = top.yukonga.miuix.kmp.basic.MiuixScrollBehavior(state = topBarState)
+    val windowLayoutInfo = rememberWindowLayoutInfo()
+    val downloadRows = listOf(
+        "create_live_photos",
+        "selective_download",
+        "debug_notifications",
+        "keep_screen_on"
+    )
+    val clipboardRows = buildList {
+        add("manual_input_links")
+        if (!uiState.manualInputLinks) {
+            add("show_clipboard_bubble")
+            add("auto_read_clipboard")
+        }
+    }
 
     top.yukonga.miuix.kmp.basic.Scaffold(
         contentWindowInsets = androidx.compose.foundation.layout.WindowInsets.statusBars
             .union(androidx.compose.foundation.layout.WindowInsets.displayCutout),
         topBar = {
-            TopAppBar(
+            AdaptiveTopAppBar(
                 title = stringResource(R.string.settings),
+                isWideScreen = windowLayoutInfo.isWideScreen,
                 navigationIcon = {
-                    Icon(
+                    TopAppBarIconButton(
                         imageVector = MiuixIcons.Back,
                         contentDescription = stringResource(R.string.back),
+                        onClick = onBack,
                         modifier = Modifier
-                            .padding(start = 12.dp)
-                            .clickable { onBack() }
+                            .padding(start = 4.dp)
                     )
                 },
                 scrollBehavior = scrollBehavior
@@ -333,47 +352,41 @@ private fun SettingsScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .nestedScroll(scrollBehavior.nestedScrollConnection)
-                .background(MiuixTheme.colorScheme.surface)
-                .padding(padding),
-            contentPadding = PaddingValues(bottom = 20.dp + WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()),
-//            verticalArrangement = Arrangement.spacedBy(12.dp)
+                .background(MiuixTheme.colorScheme.surface),
+            contentPadding = PaddingValues(
+                start = windowLayoutInfo.contentStartPadding,
+                top = padding.calculateTopPadding(),
+                end = windowLayoutInfo.contentEndPadding
+            )
         ) {
-            item {
-                Spacer(modifier = Modifier.size(12.dp))
-            }
-
-            item {
+            item(key = "download_options_title") {
                 SmallTitle(stringResource(R.string.download_options))
             }
 
-            item {
-                Card(
-                    modifier = Modifier
-                        .padding(horizontal = 12.dp)
-                        .padding(bottom = 12.dp)
-                ) {
-                    MiuixSwitchWidget(
+            groupedCardItems(
+                items = downloadRows,
+                key = { "download_option_$it" }
+            ) { row ->
+                when (row) {
+                    "create_live_photos" -> MiuixSwitchWidget(
                         title = stringResource(R.string.create_live_photos),
                         description = stringResource(R.string.create_live_photos_desc),
                         checked = uiState.createLivePhotos,
                         onCheckedChange = onCreateLivePhotosChange
                     )
-
-                    MiuixSwitchWidget(
+                    "selective_download" -> MiuixSwitchWidget(
                         title = stringResource(R.string.selective_download),
                         description = stringResource(R.string.selective_download_desc),
                         checked = uiState.selectiveDownload,
                         onCheckedChange = onSelectiveDownloadChange
                     )
-
-                    MiuixSwitchWidget(
+                    "debug_notifications" -> MiuixSwitchWidget(
                         title = stringResource(R.string.debug_notifications),
                         description = stringResource(R.string.debug_notifications_desc),
                         checked = uiState.debugNotificationEnabled,
                         onCheckedChange = onDebugNotificationChange
                     )
-
-                    MiuixSwitchWidget(
+                    "keep_screen_on" -> MiuixSwitchWidget(
                         title = stringResource(R.string.keep_screen_on),
                         description = stringResource(R.string.keep_screen_on_desc),
                         checked = uiState.keepScreenOn,
@@ -382,144 +395,157 @@ private fun SettingsScreen(
                 }
             }
 
-            item {
+            item(key = "clipboard_title") {
                 SmallTitle(stringResource(R.string.clipboard))
             }
 
-            item {
-                Card(
-                    modifier = Modifier
-                        .padding(horizontal = 12.dp)
-                        .padding(bottom = 12.dp)
-                ) {
-                    MiuixSwitchWidget(
+            groupedCardItems(
+                items = clipboardRows,
+                key = { "clipboard_option_$it" }
+            ) { row ->
+                when (row) {
+                    "manual_input_links" -> MiuixSwitchWidget(
                         title = stringResource(R.string.manual_input_links),
                         description = stringResource(R.string.manual_input_links_desc),
                         checked = uiState.manualInputLinks,
                         onCheckedChange = onManualInputLinksChange
                     )
-
-                    if (!uiState.manualInputLinks) {
-                        MiuixSwitchWidget(
-                            title = stringResource(R.string.show_clipboard_bubble),
-                            description = stringResource(R.string.show_clipboard_bubble_desc),
-                            checked = uiState.showClipboardBubble,
-                            onCheckedChange = onShowClipboardBubbleChange
-                        )
-
-                        MiuixSwitchWidget(
-                            title = stringResource(R.string.auto_read_clipboard),
-                            description = stringResource(R.string.auto_read_clipboard_desc),
-                            checked = uiState.autoReadClipboard,
-                            onCheckedChange = onAutoReadClipboardChange
-                        )
-                    }
+                    "show_clipboard_bubble" -> MiuixSwitchWidget(
+                        title = stringResource(R.string.show_clipboard_bubble),
+                        description = stringResource(R.string.show_clipboard_bubble_desc),
+                        checked = uiState.showClipboardBubble,
+                        onCheckedChange = onShowClipboardBubbleChange
+                    )
+                    "auto_read_clipboard" -> MiuixSwitchWidget(
+                        title = stringResource(R.string.auto_read_clipboard),
+                        description = stringResource(R.string.auto_read_clipboard_desc),
+                        checked = uiState.autoReadClipboard,
+                        onCheckedChange = onAutoReadClipboardChange
+                    )
                 }
             }
 
-            item {
+            item(key = "file_naming_title") {
                 SmallTitle(stringResource(R.string.file_naming))
             }
 
-            item {
-                Card(
-                    modifier = Modifier
-                        .padding(horizontal = 12.dp)
-                        .padding(bottom = 12.dp)
-                ) {
-                    MiuixSwitchWidget(
-                        title = stringResource(R.string.enable_custom_naming),
-                        description = stringResource(R.string.enable_custom_naming_desc),
-                        checked = uiState.useCustomNaming,
-                        onCheckedChange = onUseCustomNamingChange
+            groupedCardItems(
+                items = listOf("custom_naming"),
+                key = { "file_naming_$it" }
+            ) {
+                MiuixSwitchWidget(
+                    title = stringResource(R.string.enable_custom_naming),
+                    description = stringResource(R.string.enable_custom_naming_desc),
+                    checked = uiState.useCustomNaming,
+                    onCheckedChange = onUseCustomNamingChange
+                )
+            }
+
+            if (uiState.useCustomNaming) {
+                item(key = "naming_template_field") {
+                    TextField(
+                        value = uiState.template,
+                        onValueChange = onTemplateChange,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 12.dp)
+                            .padding(bottom = 12.dp),
+                        label = stringResource(R.string.naming_template),
+                        enabled = true,
+                        singleLine = false,
+                        maxLines = 3,
+                        keyboardOptions = KeyboardOptions.Default.copy(imeAction = ImeAction.Done),
+                        keyboardActions = KeyboardActions(onDone = { }),
+                        trailingIcon = {
+                            ActionIconButton(
+                                imageVector = MiuixIcons.Refresh,
+                                contentDescription = stringResource(R.string.reset_template),
+                                onClick = onResetTemplate,
+                                modifier = Modifier.padding(end = 8.dp)
+                            )
+                        }
                     )
+                }
 
-                    if (uiState.useCustomNaming) {
-                        TextField(
-                            value = uiState.template,
-                            onValueChange = onTemplateChange,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 16.dp, vertical = 8.dp),
-                            label = stringResource(R.string.naming_template),
-                            enabled = uiState.useCustomNaming,
-                            singleLine = false,
-                            maxLines = 3,
-                            keyboardOptions = KeyboardOptions.Default.copy(imeAction = ImeAction.Done),
-                            keyboardActions = KeyboardActions(onDone = { }),
-                            trailingIcon = {
-                                if (uiState.useCustomNaming) {
-                                    Icon(
-                                        imageVector = MiuixIcons.Refresh,
-                                        contentDescription = stringResource(R.string.reset_template),
-                                        modifier = Modifier
-                                            .padding(end = 16.dp)
-                                            .size(20.dp)
-                                            .clickable { onResetTemplate() }
-                                    )
-                                }
+                item(key = "naming_placeholder_hint") {
+                    Text(
+                        text = stringResource(R.string.insert_placeholder_hint),
+                        modifier = Modifier.padding(
+                            start = 16.dp,
+                            end = 12.dp,
+                            bottom = 8.dp
+                        ),
+                        fontSize = 14.sp,
+                        color = MiuixTheme.colorScheme.onSurfaceVariantSummary
+                    )
+                }
+
+                item(key = "naming_token_grid") {
+                    TokenGrid(
+                        tokens = uiState.tokens,
+                        enabled = true,
+                        onInsert = { placeholder ->
+                            val current = uiState.template
+                            val selectionStart = current.selection.start.coerceAtLeast(0)
+                            val selectionEnd = current.selection.end.coerceAtLeast(0)
+                            val min = minOf(selectionStart, selectionEnd)
+                            val max = maxOf(selectionStart, selectionEnd)
+                            val newText = buildString {
+                                append(current.text.substring(0, min))
+                                append(placeholder)
+                                append(current.text.substring(max))
                             }
-                        )
-
-                        Text(
-                            text = stringResource(R.string.insert_placeholder_hint),
-                            modifier = Modifier
-                                .padding(horizontal = 16.dp, vertical = 8.dp),
-                            fontSize = 14.sp,
-                            color = MiuixTheme.colorScheme.onSurfaceVariantSummary
-                        )
-
-                        TokenGrid(
-                            tokens = uiState.tokens,
-                            enabled = uiState.useCustomNaming,
-                            onInsert = { placeholder ->
-                                val current = uiState.template
-                                val selectionStart = current.selection.start.coerceAtLeast(0)
-                                val selectionEnd = current.selection.end.coerceAtLeast(0)
-                                val min = minOf(selectionStart, selectionEnd)
-                                val max = maxOf(selectionStart, selectionEnd)
-                                val newText = buildString {
-                                    append(current.text.substring(0, min))
-                                    append(placeholder)
-                                    append(current.text.substring(max))
-                                }
-                                val newSelection = min + placeholder.length
-                                onTemplateChange(
-                                    TextFieldValue(
-                                        text = newText,
-                                        selection = androidx.compose.ui.text.TextRange(newSelection)
-                                    )
+                            val newSelection = min + placeholder.length
+                            onTemplateChange(
+                                TextFieldValue(
+                                    text = newText,
+                                    selection = androidx.compose.ui.text.TextRange(newSelection)
                                 )
-                            }
-                        )
-                    }
+                            )
+                        }
+                    )
                 }
             }
 
-            item {
+            item(key = "about_title") {
                 SmallTitle(stringResource(R.string.about))
             }
 
-            item {
-                Card(
-                    modifier = Modifier
-                        .padding(horizontal = 12.dp)
-                        .padding(bottom = 12.dp)
-                ) {
-                    BasicComponent(
+            groupedCardItems(
+                items = listOf("version", "github"),
+                key = { "about_$it" }
+            ) { row ->
+                when (row) {
+                    "version" -> BasicComponent(
                         title = stringResource(R.string.version),
-                        summary = stringResource(R.string.version_with_prefix, BuildConfig.VERSION_NAME),
-                        onClick = { /* No action */ }
+                        summary = stringResource(
+                            R.string.version_with_prefix,
+                            BuildConfig.VERSION_NAME
+                        ),
+                        onClick = { }
                     )
-                    BasicComponent(
+                    "github" -> BasicComponent(
                         title = stringResource(R.string.visit_github),
-                        titleColor = BasicComponentDefaults.titleColor(color = MiuixTheme.colorScheme.primary),
+                        titleColor = BasicComponentDefaults.titleColor(
+                            color = MiuixTheme.colorScheme.primary
+                        ),
                         onClick = {
-                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/NEORUAA/XHS_Downloader_Android"))
+                            val intent = Intent(
+                                Intent.ACTION_VIEW,
+                                Uri.parse("https://github.com/NEORUAA/XHS_Downloader_Android")
+                            )
                             context.startActivity(intent)
-                        },
+                        }
                     )
                 }
+            }
+
+            item(key = "settings_bottom_spacer") {
+                Spacer(
+                    modifier = Modifier
+                        .height(24.dp)
+                        .navigationBarsPadding()
+                )
             }
         }
     }
@@ -558,7 +584,7 @@ private fun TokenGrid(
     FlowRow(
         horizontalArrangement = Arrangement.spacedBy(10.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
-        modifier = Modifier.padding(top = 0.dp, start = 16.dp, end = 12.dp, bottom = 16.dp)
+        modifier = Modifier.padding(top = 0.dp, start = 12.dp, end = 12.dp, bottom = 16.dp)
     ) {
         tokens.forEach { token ->
             TokenChip(
@@ -581,13 +607,16 @@ private fun TokenChip(
 ) {
     val borderColor = MiuixTheme.colorScheme.surface
     Card(
-        modifier = modifier
-            .border(width = 1.dp, color = borderColor, shape = ContinuousRoundedRectangle(16.dp))
-            .then(if (enabled) Modifier.clickable { onInsert(token.placeholder) } else Modifier),
-        cornerRadius = 14.dp,
+        modifier = modifier,
+        cornerRadius = 16.dp,
         colors = CardDefaults.defaultColors(
             color = if (enabled) MiuixTheme.colorScheme.surfaceVariant else MiuixTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
-        )
+        ),
+        onClick = if (enabled) {
+            { onInsert(token.placeholder) }
+        } else {
+            null
+        }
     ) {
         Column(
             modifier = Modifier

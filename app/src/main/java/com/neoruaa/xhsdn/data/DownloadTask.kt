@@ -2,6 +2,7 @@ package com.neoruaa.xhsdn.data
 
 import android.content.Context
 import android.content.SharedPreferences
+import com.neoruaa.xhsdn.R
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.map
@@ -112,6 +113,7 @@ object TaskManager {
     private const val KEY_NEXT_ID = "next_id"
     
     private var prefs: SharedPreferences? = null
+    private var appContext: Context? = null
     private var nextId = 1L
     private val _tasks = MutableStateFlow<List<DownloadTask>>(emptyList())
     
@@ -119,6 +121,7 @@ object TaskManager {
      * 初始化 TaskManager（在 Application 或 Activity 的 onCreate 中调用）
      */
     fun init(context: Context) {
+        appContext = context.applicationContext
         if (prefs == null) {
             prefs = context.applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             loadTasks()
@@ -257,7 +260,14 @@ object TaskManager {
                     completedAt = if (newStatus in listOf(TaskStatus.COMPLETED, TaskStatus.FAILED))
                         System.currentTimeMillis()
                     else null,
-                    errorMessage = if (failedFiles > 0) "部分文件下载失败" else null
+                    errorMessage = if (failedFiles > 0) {
+                        appContext?.getString(
+                            R.string.main_download_partial_count,
+                            failedFiles
+                        )
+                    } else {
+                        null
+                    }
                 )
             } else {
                 // Return the task unchanged to prevent progress regression

@@ -181,14 +181,25 @@ object BackgroundDownloadManager {
                     } else if (completed > 0) {
                         val partialMessage = appContext.getString(R.string.download_completed_files_count, completed) + " " +
                             appContext.getString(R.string.failed_files_format, failed)
-                        TaskManager.completeTask(taskId, false, "部分文件下载失败")
+                        TaskManager.completeTask(
+                            taskId,
+                            false,
+                            appContext.getString(R.string.main_download_partial_count, failed)
+                        )
                         NotificationHelper.showDownloadNotification(appContext, taskId.toInt(), appContext.getString(R.string.download_failed_notification_title), partialMessage, false)
                     } else {
                         TaskManager.completeTask(taskId, false, appContext.getString(R.string.download_failed_no_files))
                         NotificationHelper.showDownloadNotification(appContext, taskId.toInt(), appContext.getString(R.string.download_failed_notification_title), appContext.getString(R.string.download_failed_no_files), false)
                     }
                 } else {
-                    TaskManager.completeTask(taskId, false, appContext.getString(R.string.download_error_message, "下载过程出错"))
+                    TaskManager.completeTask(
+                        taskId,
+                        false,
+                        appContext.getString(
+                            R.string.download_error_message,
+                            appContext.getString(R.string.main_download_process_error)
+                        )
+                    )
                     NotificationHelper.showDownloadNotification(appContext, taskId.toInt(), appContext.getString(R.string.download_error_notification_title), appContext.getString(R.string.download_failed_check_network), false)
                 }
 
@@ -204,9 +215,25 @@ object BackgroundDownloadManager {
                     Log.e(TAG, "Download error for task $taskId", e)
                     // If task was created, fail it
                     if (taskId != -1L) {
-                        TaskManager.completeTask(taskId, false, e.message ?: appContext.getString(R.string.download_error_message, "未知错误"))
+                        TaskManager.completeTask(
+                            taskId,
+                            false,
+                            e.message ?: appContext.getString(
+                                R.string.download_error_message,
+                                appContext.getString(R.string.common_unknown_error)
+                            )
+                        )
                     }
-                    NotificationHelper.showDownloadNotification(appContext, if (taskId != -1L) taskId.toInt() else prepId, appContext.getString(R.string.download_error_notification_title), e.message ?: appContext.getString(R.string.download_error_message, "未知错误"), false)
+                    NotificationHelper.showDownloadNotification(
+                        appContext,
+                        if (taskId != -1L) taskId.toInt() else prepId,
+                        appContext.getString(R.string.download_error_notification_title),
+                        e.message ?: appContext.getString(
+                            R.string.download_error_message,
+                            appContext.getString(R.string.common_unknown_error)
+                        ),
+                        false
+                    )
                 }
             } finally {
                // Remove job from activeJobs map regardless of success or failure
@@ -221,11 +248,15 @@ object BackgroundDownloadManager {
     }
 
 
-    fun stopTask(taskId: Long) {
+    fun stopTask(context: Context, taskId: Long) {
         val job = activeJobs.remove(taskId)
         if (job != null) {
             job.cancel()
-            TaskManager.completeTask(taskId, false, "用户手动停止")
+            TaskManager.completeTask(
+                taskId,
+                false,
+                context.applicationContext.getString(R.string.user_manually_stopped)
+            )
             // Clean up current file progress tracking
             taskCurrentFileProgress.remove(taskId)
             Log.d(TAG, "Task $taskId stopped by user")

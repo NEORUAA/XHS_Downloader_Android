@@ -95,6 +95,9 @@ data class MainUiState(
 )
 
 class MainViewModel(application: Application) : AndroidViewModel(application) {
+    private val appContext: Context
+        get() = getApplication<Application>().applicationContext
+
     private val _uiState = MutableStateFlow(MainUiState())
     val uiState: StateFlow<MainUiState> = _uiState
 
@@ -140,27 +143,37 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     // Throttling for task progress updates to reduce database writes
     private var lastTaskProgressUpdateTime = 0L
     private val TASK_PROGRESS_UPDATE_INTERVAL = 100L // 100ms interval between updates
-    private val debugNotificationImportantKeywords = listOf(
-        "开始",
-        "完成",
-        "失败",
-        "错误",
-        "出错",
-        "取消",
-        "停止",
-        "检测到视频",
-        "网页转存",
-        "提示"
-    )
+    private val debugNotificationImportantKeywords by lazy {
+        listOf(
+            appContext.getString(R.string.debug_keyword_start),
+            appContext.getString(R.string.debug_keyword_complete),
+            appContext.getString(R.string.debug_keyword_failed),
+            appContext.getString(R.string.debug_keyword_error),
+            appContext.getString(R.string.debug_keyword_cancel),
+            appContext.getString(R.string.debug_keyword_stop),
+            appContext.getString(R.string.debug_keyword_video),
+            appContext.getString(R.string.debug_keyword_web_crawl),
+            appContext.getString(R.string.debug_keyword_hint)
+        )
+    }
 
     fun cancelCurrentDownload() {
         if (downloadJob?.isActive == true) {
             // Signal the downloader to stop at the next checkpoint
             currentDownloader?.stopDownload()
             downloadJob?.cancel()
-            _uiState.update { it.copy(isDownloading = false, progressLabel = "已取消") }
+            _uiState.update {
+                it.copy(
+                    isDownloading = false,
+                    progressLabel = appContext.getString(R.string.download_cancelled_by_user)
+                )
+            }
             if (currentTaskId > 0) {
-                TaskManager.completeTask(currentTaskId, false, "用户取消")
+                TaskManager.completeTask(
+                    currentTaskId,
+                    false,
+                    appContext.getString(R.string.download_cancelled_by_user)
+                )
             }
         }
     }
@@ -220,15 +233,20 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     val clipboardText = clipData.getItemAt(0).text?.toString() ?: ""
                     if (clipboardText.isNotEmpty()) {
                         _uiState.update { it.copy(urlInput = clipboardText) }
-                        appendStatus("已从剪贴板粘贴链接")
+                        appendStatus(appContext.getString(R.string.main_clipboard_pasted))
                     } else {
-                        appendStatus("剪贴板内容为空")
+                        appendStatus(appContext.getString(R.string.main_clipboard_empty))
                     }
                 } else {
-                    appendStatus("剪贴板无内容")
+                    appendStatus(appContext.getString(R.string.main_clipboard_unavailable))
                 }
             } catch (e: Exception) {
-                appendStatus("读取剪贴板失败: ${e.message}")
+                appendStatus(
+                    appContext.getString(
+                        R.string.main_clipboard_read_failed,
+                        e.message ?: appContext.getString(R.string.common_unknown_error)
+                    )
+                )
             }
         }
     }
@@ -349,7 +367,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun startSelectiveDownload(onError: (String) -> Unit) {
         val targetUrl = _uiState.value.urlInput.trim()
         if (targetUrl.isEmpty()) {
-            onError("请输入链接")
+            onError(appContext.getString(R.string.please_enter_url))
             return
         }
 
@@ -367,7 +385,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         _uiState.update {
             it.copy(
                 isDownloading = true,
-                status = listOf("缓存中：$targetUrl"),
+                status = listOf(
+                    appContext.getString(R.string.selective_download_caching_url, targetUrl)
+                ),
                 mediaItems = emptyList(),
                 progressLabel = "",
                 progress = 0f,
@@ -376,7 +396,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 selectiveDownload = SelectiveDownloadUiState(
                     show = true,
                     phase = SelectiveDownloadPhase.Caching,
-                    status = "正在缓存媒体",
+                    status = appContext.getString(R.string.selective_download_caching),
                     noteUrl = targetUrl,
                     cacheDir = sessionDir.absolutePath
                 )
@@ -420,7 +440,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                                     progress = 1f,
                                     progressLabel = "${mergedItems.size}/${mergedItems.size}",
                                     progressText = "100.0%｜0KB/s",
-                                    status = "缓存完成",
+                                    status = appContext.getString(
+                                        R.string.selective_download_cache_complete
+                                    ),
                                     items = mergedItems,
                                     selectedPaths = mergedItems.map { it.path }.toSet(),
                                     noteContent = noteContent
@@ -432,8 +454,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                             state.copy(
                                 selectiveDownload = state.selectiveDownload.copy(
                                     phase = SelectiveDownloadPhase.Error,
-                                    status = "缓存失败",
-                                    errorMessage = "未缓存到可选择的媒体"
+                                    status = appContext.getString(
+                                        R.string.selective_download_cache_failed
+                                    ),
+                                    errorMessage = appContext.getString(
+                                        R.string.selective_download_no_media
+                                    )
                                 )
                             )
                         }
@@ -451,8 +477,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                             isDownloading = true,
                             selectiveDownload = state.selectiveDownload.copy(
                                 phase = SelectiveDownloadPhase.Error,
-                                status = "缓存出错",
-                                errorMessage = e.message ?: "未知错误"
+                                status = appContext.getString(
+                                    R.string.selective_download_cache_failed
+                                ),
+                                errorMessage = e.message
+                                    ?: appContext.getString(R.string.common_unknown_error)
                             )
                         )
                     }
@@ -496,7 +525,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val selectiveState = _uiState.value.selectiveDownload
         val selectedItems = selectiveState.items.filter { selectiveState.selectedPaths.contains(it.path) }
         if (selectiveState.phase != SelectiveDownloadPhase.Ready || selectedItems.isEmpty()) {
-            onError("请选择要下载的内容")
+            onError(appContext.getString(R.string.selective_download_choose_media))
             return
         }
 
@@ -507,7 +536,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     progress = 0f,
                     progressLabel = "0/${selectedItems.size}",
                     progressText = "0.0%｜0KB/s",
-                    status = "正在保存选中内容"
+                    status = appContext.getString(R.string.selective_download_saving)
                 )
             )
         }
@@ -559,15 +588,26 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 success,
                 when {
                     success -> null
-                    savedPaths.isNotEmpty() -> "部分文件保存失败 ($failedCount)"
-                    else -> "保存失败"
+                    savedPaths.isNotEmpty() -> appContext.getString(
+                        R.string.selective_download_save_partial_count,
+                        failedCount
+                    )
+                    else -> appContext.getString(R.string.selective_download_save_failed)
                 }
             )
 
             cleanupSelectiveCache(selectiveState.cacheDir)
             withContext(Dispatchers.Main) {
                 resetSelectiveDownloadState()
-                appendStatus(if (success) "✅ 已保存选中内容" else "⚠️ 部分内容保存失败")
+                appendStatus(
+                    appContext.getString(
+                        if (success) {
+                            R.string.selective_download_saved
+                        } else {
+                            R.string.selective_download_saved_partial
+                        }
+                    )
+                )
             }
         }
     }
@@ -575,7 +615,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun startDownload(onError: (String) -> Unit) {
         val targetUrl = _uiState.value.urlInput.trim()
         if (targetUrl.isEmpty()) {
-            onError("请输入链接")
+            onError(appContext.getString(R.string.please_enter_url))
             return
         }
         // Do NOT cancel any existing download job — let the old task complete in the background
@@ -590,7 +630,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         _uiState.update {
             it.copy(
                 isDownloading = true,
-                status = listOf("处理中：$targetUrl"),
+                status = listOf(appContext.getString(R.string.processing_url, targetUrl)),
                 mediaItems = emptyList(),
                 progressLabel = "",
                 progress = 0f,
@@ -659,14 +699,24 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                          // Do NOT complete task as failed. Leave it as WAITING_FOR_USER.
                      } else {
                         withContext(NonCancellable + Dispatchers.Main) {
-                            appendStatus("⏹️ 下载已取消")
-                            TaskManager.completeTask(myTaskId, false, "下载已取消")
+                            appendStatus(
+                                appContext.getString(R.string.download_cancelled_by_user)
+                            )
+                            TaskManager.completeTask(
+                                myTaskId,
+                                false,
+                                appContext.getString(R.string.download_cancelled_by_user)
+                            )
                         }
                      }
                 } else {
                     withContext(NonCancellable + Dispatchers.Main) {
-                        appendStatus("❌ 下载出错: ${e.message}")
-                        TaskManager.completeTask(myTaskId, false, e.message ?: "未知错误")
+                        val errorMessage = e.message
+                            ?: appContext.getString(R.string.common_unknown_error)
+                        appendStatus(
+                            appContext.getString(R.string.download_error_message, errorMessage)
+                        )
+                        TaskManager.completeTask(myTaskId, false, errorMessage)
                     }
                 }
             } finally {
@@ -743,12 +793,20 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             } catch (e: CancellationException) {
                 withContext(NonCancellable + Dispatchers.Main) {
                     if (localCompletedFiles.get() == 0) {
-                        TaskManager.completeTask(myTaskId, false, "下载已取消")
+                        TaskManager.completeTask(
+                            myTaskId,
+                            false,
+                            appContext.getString(R.string.download_cancelled_by_user)
+                        )
                     }
                 }
             } catch (e: Exception) {
                 withContext(NonCancellable + Dispatchers.Main) {
-                    TaskManager.completeTask(myTaskId, false, e.message ?: "未知错误")
+                    TaskManager.completeTask(
+                        myTaskId,
+                        false,
+                        e.message ?: appContext.getString(R.string.common_unknown_error)
+                    )
                 }
             } finally {
                 withContext(NonCancellable + Dispatchers.Main) {
@@ -768,16 +826,18 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun copyDescription(onResult: (String) -> Unit, onError: (String) -> Unit) {
         val targetUrl = _uiState.value.urlInput.trim()
         if (targetUrl.isEmpty()) {
-            onError("请输入链接")
+            onError(appContext.getString(R.string.please_enter_url))
             return
         }
-        appendStatus("获取笔记文案中…")
+        appendStatus(appContext.getString(R.string.fetching_desc))
         viewModelScope.launch(Dispatchers.IO) {
             val desc = XHSDownloader(getApplication(), null).getNoteDescription(targetUrl)
             withContext(Dispatchers.Main) {
                 if (!desc.isNullOrEmpty()) {
 //                    copyToClipboard(desc)
-                    appendStatus("已提取文案：\n$desc")
+                    appendStatus(
+                        appContext.getString(R.string.copy_description_extracted, desc)
+                    )
 
                     // 如果当前有任务ID，则更新任务的笔记内容
                     if (currentTaskId > 0) {
@@ -793,22 +853,23 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
                     onResult(desc)
                 } else {
-                    appendStatus("未获取到文案")
-                    onError("未获取到文案")
+                    val message = appContext.getString(R.string.copy_description_failed)
+                    appendStatus(message)
+                    onError(message)
                 }
             }
         }
     }
 
     fun onWebCrawlResult(urls: List<String>, content: String?, taskId: Long? = null) {
-        appendStatus("onWebCrawlResult 被调用，URL数量: ${urls.size}")
+        appendStatus(appContext.getString(R.string.web_crawl_invoked, urls.size))
 
         if (urls.isEmpty()) {
-            appendStatus("网页未发现可下载的资源")
+            appendStatus(appContext.getString(R.string.web_crawl_no_resources))
             return
         }
 
-        appendStatus("接收到 ${urls.size} 个原始URL")
+        appendStatus(appContext.getString(R.string.web_crawl_received_urls, urls.size))
 
         // Filter duplicate videos logic
         // 1. Separate videos and images
@@ -821,7 +882,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
         val (videoUrls, imageUrls) = urls.partition { isVideo(it) }
 
-        appendStatus("分离后: 视频 ${videoUrls.size} 个, 图片 ${imageUrls.size} 个")
+        appendStatus(
+            appContext.getString(
+                R.string.web_crawl_partitioned_urls,
+                videoUrls.size,
+                imageUrls.size
+            )
+        )
 
         // 2. Deduplicate videos (Prioritize HD from sns-video-bd.xhscdn.com)
         // Since xhs_extractor.js pushes the main video (originVideoKey) first,
@@ -846,10 +913,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         // 3. Combine and deduplicate everything
         val finalUrls = (imageUrls + finalVideoUrls).distinct()
 
-        appendStatus("去重后最终URL数量: ${finalUrls.size}")
+        appendStatus(
+            appContext.getString(R.string.web_crawl_deduplicated_urls, finalUrls.size)
+        )
 
         if (finalUrls.isEmpty()) {
-             appendStatus("过滤后未发现有效资源")
+             appendStatus(appContext.getString(R.string.web_crawl_no_filtered_resources))
              return
         }
 
@@ -877,7 +946,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         )
         }
         updateProgress()
-        appendStatus("开始爬取，请等待任务完成")
+        appendStatus(appContext.getString(R.string.web_crawl_started))
         
         downloadJob = viewModelScope.launch(Dispatchers.IO) {
             val localCompletedFiles = java.util.concurrent.atomic.AtomicInteger(0)
@@ -906,17 +975,35 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             val postId = "webview_$postIdTemp"
 
             try {
-                appendStatus("开始下载 ${finalUrls.size} 个文件")
+                appendStatus(
+                    appContext.getString(
+                        R.string.web_crawl_start_download_count,
+                        finalUrls.size
+                    )
+                )
 
                 finalUrls.forEachIndexed { index, rawUrl ->
                     // Check for cancellation BEFORE starting each file download
                     coroutineContext[Job]?.ensureActive()
                     
-                    appendStatus("正在下载第 ${index + 1}/${finalUrls.size} 个文件: $rawUrl")
+                    appendStatus(
+                        appContext.getString(
+                            R.string.web_crawl_downloading_file,
+                            index + 1,
+                            finalUrls.size,
+                            rawUrl
+                        )
+                    )
                     val transformed = downloader.transformXhsCdnUrl(rawUrl).takeUnless { it.isNullOrEmpty() } ?: rawUrl
                     val extension = determineFileExtension(transformed)
                     val fileName = "${postId}_${index + 1}.$extension"
-                    appendStatus("准备下载文件: $fileName, URL: $transformed")
+                    appendStatus(
+                        appContext.getString(
+                            R.string.web_crawl_preparing_file,
+                            fileName,
+                            transformed
+                        )
+                    )
                     
                     val success = downloader.downloadFile(rawUrl, fileName)
                     
@@ -928,8 +1015,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     coroutineContext[Job]?.ensureActive()
                     
                     appendStatus(
-                        if (success) "完成下载第 ${index + 1} 个文件"
-                        else "第 ${index + 1} 个文件下载失败"
+                        appContext.getString(
+                            if (success) {
+                                R.string.web_crawl_file_completed
+                            } else {
+                                R.string.web_crawl_file_failed
+                            },
+                            index + 1
+                        )
                     )
                 }
 
@@ -939,16 +1032,28 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             } catch (e: Exception) {
                 withContext(NonCancellable + Dispatchers.Main) {
                     if (e is CancellationException) {
-                        appendStatus("⏹️ 网页爬取已取消")
+                        appendStatus(appContext.getString(R.string.web_crawl_cancelled))
                         if (myTaskId > 0) {
-                            TaskManager.completeTask(myTaskId, false, "下载已取消")
+                            TaskManager.completeTask(
+                                myTaskId,
+                                false,
+                                appContext.getString(R.string.download_cancelled_by_user)
+                            )
                         }
                     } else {
-                        appendStatus("网页爬取出错: ${e.message}")
+                        val errorMessage = e.message
+                            ?: appContext.getString(R.string.common_unknown_error)
+                        appendStatus(
+                            appContext.getString(R.string.web_crawl_error, errorMessage)
+                        )
                         e.printStackTrace() // Print stack trace for debugging
                         // Mark task as failed if myTaskId was provided
                         if (myTaskId > 0) {
-                            TaskManager.completeTask(myTaskId, false, "网页爬取出错: ${e.message}")
+                            TaskManager.completeTask(
+                                myTaskId,
+                                false,
+                                appContext.getString(R.string.web_crawl_error, errorMessage)
+                            )
                         }
                     }
                 }
@@ -983,7 +1088,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         _uiState.update { it.copy(showVideoWarning = false) }
         // Restart the download with the same URL to continue after video warning
         currentUrl?.let { url ->
-            startDownload { msg -> appendStatus("错误: $msg") }
+            startDownload { message ->
+                appendStatus(appContext.getString(R.string.main_status_error, message))
+            }
         }
     }
 
@@ -1067,7 +1174,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
             override fun onDownloadError(status: String, originalUrl: String) {
                 scope.launch(Dispatchers.Main) {
-                    appendStatus("错误：$status ($originalUrl)")
+                    appendStatus(
+                        appContext.getString(
+                            R.string.main_status_error_with_url,
+                            status,
+                            originalUrl
+                        )
+                    )
                     _uiState.update { state ->
                         state.copy(
                             selectiveDownload = state.selectiveDownload.copy(
@@ -1081,7 +1194,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
             override fun onVideoDetected() {
                 scope.launch(Dispatchers.Main) {
-                    appendStatus("检测到视频文件，继续缓存...")
+                    appendStatus(
+                        appContext.getString(R.string.selective_download_video_caching)
+                    )
                 }
             }
 
@@ -1290,7 +1405,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun clearHistory() {
         viewModelScope.launch {
             TaskManager.clearAllTasks()
-            appendStatus("历史记录已清除")
+            appendStatus(appContext.getString(R.string.main_history_cleared))
         }
     }
 
@@ -1381,7 +1496,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 
                 if (taskId == currentTaskId) {
                     scope.launch(Dispatchers.Main) {
-                        appendStatus("错误：$status ($originalUrl)")
+                        appendStatus(
+                            appContext.getString(
+                                R.string.main_status_error_with_url,
+                                status,
+                                originalUrl
+                            )
+                        )
                         if (!isWebCrawl && (status.contains("No media URLs found", true) || 
                             status.contains("Failed to fetch post details", true) ||
                             status.contains("Could not extract post ID", true))) {
@@ -1396,7 +1517,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 if (taskId == currentTaskId) {
                     val shouldPauseForVideoChoice = !isWebCrawl && !hasUserContinuedAfterVideoWarning
                     if (shouldPauseForVideoChoice) {
-                        TaskManager.updateTaskStatus(taskId, TaskStatus.WAITING_FOR_USER, "检测到视频，请选择下载方式")
+                        TaskManager.updateTaskStatus(
+                            taskId,
+                            TaskStatus.WAITING_FOR_USER,
+                            appContext.getString(R.string.main_video_waiting)
+                        )
                     }
 
                     viewModelScope.launch(Dispatchers.Main) {
@@ -1404,10 +1529,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                             _uiState.update { it.copy(showVideoWarning = true) }
                         } else if (shouldPauseForVideoChoice) {
                             _uiState.update { it.copy(showVideoWarning = true, isDownloading = false) }
-                            appendStatus("下载因检测到视频而停止")
-                            appendStatus("提示：检测到视频，请选择坚持下载(720P)或网页爬取")
+                            appendStatus(
+                                appContext.getString(R.string.main_video_download_paused)
+                            )
+                            appendStatus(
+                                appContext.getString(R.string.main_video_choice_hint)
+                            )
                         } else {
-                            appendStatus("检测到视频文件，继续下载...")
+                            appendStatus(appContext.getString(R.string.main_video_continue))
                         }
                     }
 
@@ -1434,10 +1563,21 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val isStrictSuccess = success && failedCount == 0 && completedCount > 0
         val errorMsg = when {
             isStrictSuccess -> null
-            !success -> if (isWebCrawl) "网页爬取中断" else "解析或下载中断"
-            completedCount == 0 -> "未发现可下载资源"
-            failedCount > 0 -> "部分下载失败 ($failedCount)"
-            else -> "下载过程异常"
+            !success -> appContext.getString(
+                if (isWebCrawl) {
+                    R.string.web_crawl_interrupted
+                } else {
+                    R.string.main_download_interrupted
+                }
+            )
+            completedCount == 0 -> appContext.getString(
+                R.string.main_no_downloadable_resources
+            )
+            failedCount > 0 -> appContext.getString(
+                R.string.main_download_partial_count,
+                failedCount
+            )
+            else -> appContext.getString(R.string.main_download_process_error)
         }
         
         TaskManager.completeTask(taskId, isStrictSuccess, errorMsg)
@@ -1446,9 +1586,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             withContext(Dispatchers.Main) {
                 _uiState.update { it.copy(isDownloading = false) }
                 val uiStatus = when {
-                    isStrictSuccess -> "✅ 下载完成"
-                    failedCount > 0 && completedCount > 0 -> "⚠️ 部分下载失败 ($failedCount)"
-                    else -> "❌ 下载失败"
+                    isStrictSuccess -> appContext.getString(
+                        R.string.main_download_completed_status
+                    )
+                    failedCount > 0 && completedCount > 0 -> appContext.getString(
+                        R.string.main_download_partial_status,
+                        failedCount
+                    )
+                    else -> appContext.getString(R.string.main_download_failed_status)
                 }
                 appendStatus(uiStatus)
             }

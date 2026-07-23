@@ -121,7 +121,7 @@ object NotificationHelper {
 
     private fun createDownloadChannel(context: Context) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val name = "下载状态"
+            val name = context.getString(R.string.notification_channel_download)
             val importance = NotificationManager.IMPORTANCE_HIGH
             val channel = NotificationChannel(CHANNEL_ID, name, importance)
             val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
@@ -131,7 +131,7 @@ object NotificationHelper {
 
     private fun createDiagnosticChannel(context: Context) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val name = "诊断调试"
+            val name = context.getString(R.string.notification_channel_diagnostic)
             val importance = NotificationManager.IMPORTANCE_HIGH
             val channel = NotificationChannel(DIAGNOSTIC_CHANNEL_ID, name, importance)
             val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager

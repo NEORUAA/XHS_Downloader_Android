@@ -30,10 +30,12 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.lazy.staggeredgrid.LazyVerticalStaggeredGrid
 import androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridCells
+import androidx.compose.foundation.lazy.staggeredgrid.items
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -53,8 +55,11 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.neoruaa.xhsdn.ui.AdaptiveTopAppBar
+import com.neoruaa.xhsdn.ui.TopAppBarIconButton
+import com.neoruaa.xhsdn.ui.DetailMediaPreview
+import com.neoruaa.xhsdn.ui.rememberWindowLayoutInfo
 import com.neoruaa.xhsdn.viewmodels.DetailViewModel
-import com.kyant.capsule.ContinuousRoundedRectangle
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
@@ -82,6 +87,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridItemSpan
 import androidx.compose.foundation.text.selection.SelectionContainer
 import com.neoruaa.xhsdn.viewmodels.MediaItem
+import com.neoruaa.xhsdn.viewmodels.CachedMediaItem
 import com.neoruaa.xhsdn.viewmodels.MediaType
 import com.neoruaa.xhsdn.utils.detectMediaType
 import com.neoruaa.xhsdn.utils.decodeSampledBitmap
@@ -93,11 +99,12 @@ import top.yukonga.miuix.kmp.icon.extended.MoreCircle
 import top.yukonga.miuix.kmp.icon.extended.Play
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
-import com.neoruaa.xhsdn.ui.DetailMediaWaterfall
 import com.neoruaa.xhsdn.ui.rememberOffsetPopupPositionProvider
 import top.yukonga.miuix.kmp.basic.DropdownImpl
 import top.yukonga.miuix.kmp.basic.ListPopupColumn
 import top.yukonga.miuix.kmp.basic.PopupPositionProvider
+import top.yukonga.miuix.kmp.squircle.squircleBackground
+import top.yukonga.miuix.kmp.squircle.squircleSurface
 
 data class DetailUiState(
     val mediaItems: List<MediaItem> = emptyList(),
@@ -158,8 +165,6 @@ class DetailActivity : ComponentActivity() {
         WindowInsetsControllerCompat(window, window.decorView).isAppearanceLightNavigationBars = !isNightMode
 
         // 获取传递的数据
-        val taskId = intent.getStringExtra(EXTRA_TASK_ID) ?: "0" // 默认值
-        val taskTitle = intent.getStringExtra(EXTRA_TASK_TITLE) ?: "详情"
         val filePaths = intent.getStringArrayListExtra(EXTRA_FILE_PATHS) ?: arrayListOf()
         val noteContent = intent.getStringExtra(EXTRA_NOTE_CONTENT)
         val noteUrl = intent.getStringExtra(EXTRA_NOTE_URL) // Get the note URL
@@ -263,6 +268,7 @@ private fun DetailScreen(
     topBarState: TopAppBarState
 ) {
     val scrollBehavior = MiuixScrollBehavior(state = topBarState)
+    val windowLayoutInfo = rememberWindowLayoutInfo()
 
     // Actions menu state
     var menuExpanded by remember { mutableStateOf(false) }
@@ -270,28 +276,27 @@ private fun DetailScreen(
     Scaffold(
         contentWindowInsets = WindowInsets.statusBars.union(WindowInsets.displayCutout),
         topBar = {
-            TopAppBar(
+            AdaptiveTopAppBar(
                 title = uiState.taskTitle,
+                isWideScreen = windowLayoutInfo.isWideScreen,
                 navigationIcon = {
-                    Icon(
+                    TopAppBarIconButton(
                         imageVector = MiuixIcons.Back,
                         contentDescription = stringResource(R.string.back_content_description),
+                        onClick = onBack,
                         modifier = Modifier
-                            .padding(start = 12.dp)
-                            .clickable { onBack() }
+                            .padding(start = 4.dp)
                     )
                 },
                 actions = {
                     Box(
-                        modifier = Modifier
-                                .padding(end = 12.dp)
-                                .clickable { menuExpanded = true },
+                        modifier = Modifier.padding(end = 4.dp),
                             contentAlignment = Alignment.Center
                     ) {
-                        Icon(
+                        TopAppBarIconButton(
                             imageVector = MiuixIcons.MoreCircle,
                             contentDescription = stringResource(R.string.more_options),
-                            modifier = Modifier.size(24.dp)
+                            onClick = { menuExpanded = true }
                         )
 
                         val menuItems = listOf(
@@ -334,10 +339,12 @@ private fun DetailScreen(
             uiState = uiState,
             onMediaClick = onMediaClick,
             onDeleteMedia = onDeleteMedia,
+            topPadding = padding.calculateTopPadding(),
+            contentStartPadding = windowLayoutInfo.contentStartPadding,
+            contentEndPadding = windowLayoutInfo.contentEndPadding,
             modifier = Modifier
                 .fillMaxSize()
                 .nestedScroll(scrollBehavior.nestedScrollConnection)
-                .padding(padding)
         )
     }
 }
@@ -347,34 +354,38 @@ private fun FilesPage(
     uiState: DetailUiState,
     onMediaClick: (MediaItem) -> Unit,
     onDeleteMedia: (MediaItem) -> Unit,
+    topPadding: androidx.compose.ui.unit.Dp,
+    contentStartPadding: androidx.compose.ui.unit.Dp,
+    contentEndPadding: androidx.compose.ui.unit.Dp,
     modifier: Modifier = Modifier
 ) {
-    val navPadding = WindowInsets.navigationBars
-        .asPaddingValues()
-        .calculateBottomPadding()
-
     LazyVerticalStaggeredGrid(
         columns = StaggeredGridCells.Fixed(2),
         verticalItemSpacing = 10.dp,
         horizontalArrangement = Arrangement.spacedBy(10.dp),
         contentPadding = PaddingValues(
-            top = 16.dp,
-            start = 16.dp,
-            end = 16.dp,
-            bottom = 20.dp + navPadding
+            top = topPadding,
+            start = contentStartPadding + 12.dp,
+            end = contentEndPadding + 12.dp
         ),
         modifier = modifier
     ) {
 
         // ===== 笔记文案（单列 / 满行）=====
         if (uiState.noteContent != null) {
-            item(span = StaggeredGridItemSpan.FullLine) {
+            item(
+                key = "note_content_title",
+                span = StaggeredGridItemSpan.FullLine
+            ) {
                 SmallTitle(
                     text = stringResource(R.string.notes_content_title),
-                    insideMargin = PaddingValues(12.dp, 0.dp)
+                    insideMargin = PaddingValues(start = 12.dp, top = 8.dp)
                 )
             }
-            item(span = StaggeredGridItemSpan.FullLine) {
+            item(
+                key = "note_content",
+                span = StaggeredGridItemSpan.FullLine
+            ) {
                 Card(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -402,7 +413,10 @@ private fun FilesPage(
         }
 
         // ===== 已下载文件标题（单列 / 满行）=====
-        item(span = StaggeredGridItemSpan.FullLine) {
+        item(
+            key = "downloaded_files_title",
+            span = StaggeredGridItemSpan.FullLine
+        ) {
             SmallTitle(
                 text = stringResource(R.string.downloaded_files_title_lower),
                 insideMargin = PaddingValues(12.dp, 0.dp)
@@ -411,12 +425,17 @@ private fun FilesPage(
 
         // ===== 空态（单列 / 满行）=====
         if (uiState.mediaItems.isEmpty()) {
-            item(span = StaggeredGridItemSpan.FullLine) {
+            item(
+                key = "downloaded_files_empty",
+                span = StaggeredGridItemSpan.FullLine
+            ) {
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clip(ContinuousRoundedRectangle(18.dp))
-                        .background(MiuixTheme.colorScheme.surfaceVariant)
+                        .squircleBackground(
+                            color = MiuixTheme.colorScheme.surfaceVariant,
+                            cornerRadius = 18.dp
+                        )
                 ) {
                     Text(
                         text = stringResource(R.string.no_downloaded_files),
@@ -425,13 +444,34 @@ private fun FilesPage(
                 }
             }
         } else {
-            item(span = StaggeredGridItemSpan.FullLine) {
-                DetailMediaWaterfall(
-                    mediaItems = uiState.mediaItems,
-                    onMediaClick = onMediaClick,
-                    onDeleteMedia = onDeleteMedia
+            items(
+                items = uiState.mediaItems,
+                key = { it.path }
+            ) { mediaItem ->
+                val cachedItem = remember(mediaItem.path, mediaItem.type) {
+                    CachedMediaItem(
+                        path = mediaItem.path,
+                        displayName = File(mediaItem.path).name,
+                        type = mediaItem.type
+                    )
+                }
+                DetailMediaPreview(
+                    item = cachedItem,
+                    onClick = { onMediaClick(mediaItem) },
+                    onDelete = { onDeleteMedia(mediaItem) }
                 )
             }
+        }
+
+        item(
+            key = "detail_bottom_spacer",
+            span = StaggeredGridItemSpan.FullLine
+        ) {
+            Spacer(
+                modifier = Modifier
+                    .height(24.dp)
+                    .navigationBarsPadding()
+            )
         }
     }
 }
@@ -554,8 +594,10 @@ private fun MediaPreview(item: MediaItem, onClick: () -> Unit, onDelete: (MediaI
 
     Column(
         modifier = Modifier
-            .clip(ContinuousRoundedRectangle(18.dp))
-            .background(MiuixTheme.colorScheme.surfaceVariant)
+            .squircleSurface(
+                color = MiuixTheme.colorScheme.surfaceVariant,
+                cornerRadius = 18.dp
+            )
             .clickable { onClick() }
     ) {
         Box(
@@ -682,7 +724,7 @@ private fun PlaceholderMedia(
             imageVector = if (type == MediaType.VIDEO) MiuixIcons.Play else MiuixIcons.Info,
             contentDescription = null,
             modifier = Modifier.size(36.dp),
-            tint = Color.Gray
+            tint = MiuixTheme.colorScheme.onSurfaceVariantSummary
         )
     }
 }

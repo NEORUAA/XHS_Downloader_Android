@@ -34,6 +34,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.role
@@ -502,7 +503,11 @@ object TabRowDefaults {
     fun tabRowColors(
         backgroundColor: Color = MiuixTheme.colorScheme.surfaceContainerHigh,
         contentColor: Color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-        selectedBackgroundColor: Color = MiuixTheme.colorScheme.surfaceContainer,
+        selectedBackgroundColor: Color = if (MiuixTheme.colorScheme.background.luminance() < 0.5f) {
+            Color(0xFF434343)
+        } else {
+            Color(0xFFFFFFFF)
+        },
         selectedContentColor: Color = MiuixTheme.colorScheme.onBackground,
     ): TabRowColors = TabRowColors(
         backgroundColor = backgroundColor,

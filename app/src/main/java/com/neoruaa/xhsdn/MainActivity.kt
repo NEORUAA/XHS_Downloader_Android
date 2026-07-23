@@ -5,7 +5,6 @@ import android.content.Context
 import android.content.Intent
 import android.content.SharedPreferences
 import android.content.pm.PackageManager
-import android.content.res.Configuration
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -109,10 +108,8 @@ import androidx.compose.foundation.combinedClickable
 import java.io.File
 import android.util.LruCache
 import androidx.compose.foundation.layout.statusBars
-import androidx.compose.ui.platform.LocalConfiguration
 import com.neoruaa.xhsdn.ui.AdaptiveTopAppBar
 import com.neoruaa.xhsdn.ui.TopAppBarIconButton
-import com.neoruaa.xhsdn.ui.TabRowDefaults
 import com.neoruaa.xhsdn.ui.TabRowWithContour
 import com.neoruaa.xhsdn.ui.SelectableMediaPreview
 import com.neoruaa.xhsdn.ui.rememberWindowLayoutInfo
@@ -1050,9 +1047,6 @@ private fun HistoryPage(
                     selectedTabIndex = selectedFilter,
                     fontSize = 14.sp,
                     height = 40.dp,
-                    colors = TabRowDefaults.tabRowColors(
-                       selectedBackgroundColor = MiuixTheme.colorScheme.surfaceContainer
-                    ),
                     itemSpacing = 2.dp,
                     onTabSelected = { selectedFilter = it },
                     modifier = Modifier

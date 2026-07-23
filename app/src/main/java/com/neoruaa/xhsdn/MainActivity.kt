@@ -1396,9 +1396,8 @@ private fun TaskCell(
     
     val typeText = when (// Check if this is a web crawl task (created from WebViewActivity)
         task.noteType) {
-        com.neoruaa.xhsdn.data.NoteType.UNKNOWN if (task.noteUrl?.contains("xhslink.com") == true ||
-                task.noteUrl?.contains("xiaohongshu.com") == true ||
-                task.noteUrl?.startsWith("http") == true && task.totalFiles > 0) -> stringResource(R.string.note_type_web_crawl)
+        com.neoruaa.xhsdn.data.NoteType.UNKNOWN if (UrlUtils.isXhsLink(task.noteUrl) ||
+                task.noteUrl.startsWith("http") && task.totalFiles > 0) -> stringResource(R.string.note_type_web_crawl)
         com.neoruaa.xhsdn.data.NoteType.IMAGE -> stringResource(R.string.note_type_image)
         com.neoruaa.xhsdn.data.NoteType.VIDEO -> stringResource(R.string.note_type_video)
         com.neoruaa.xhsdn.data.NoteType.UNKNOWN -> stringResource(R.string.note_type_unknown)

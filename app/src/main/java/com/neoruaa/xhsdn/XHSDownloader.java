@@ -49,7 +49,7 @@ public class XHSDownloader {
     private static final Pattern XHS_LINK_PATTERN = Pattern.compile("(?:https?://)?www\\.xiaohongshu\\.com/explore/\\S+");
     private static final Pattern XHS_USER_PATTERN = Pattern.compile("(?:https?://)?www\\.xiaohongshu\\.com/user/profile/[a-z0-9]+/\\S+");
     private static final Pattern XHS_SHARE_PATTERN = Pattern.compile("(?:https?://)?www\\.xiaohongshu\\.com/discovery/item/\\S+");
-    private static final Pattern XHS_SHORT_PATTERN = Pattern.compile("(?:https?://)?xhslink\\.com/[^\\s\\\"<>\\\\\\^`{|}，。；！？、【】《》]+");
+    private static final Pattern XHS_SHORT_PATTERN = Pattern.compile("(?:https?://)?xhslink\\.(?:com|cn)/[^\\s\\\"<>\\\\\\^`{|}，。；！？、【】《》]+");
     
     private DownloadCallback downloadCallback;
     // Map to store the relationship between transformed URLs and original URLs for fallback
@@ -613,7 +613,7 @@ public class XHSDownloader {
             
             String processedPart = part;
             
-            // 检查短链接格式 (xhslink.com)
+            // 检查短链接格式 (xhslink.com / xhslink.cn)
             Matcher shortMatcher = XHS_SHORT_PATTERN.matcher(part);
             if (shortMatcher.find()) {
                 String shortUrl = part.substring(shortMatcher.start(), shortMatcher.end());
@@ -670,8 +670,8 @@ public class XHSDownloader {
         }
         
         // 如果标准模式匹配失败，尝试从xhslink短链接格式中提取
-        // xhslink.com/路径格式，ID通常在路径的最后一部分
-        if (url.contains("xhslink.com/")) {
+        // xhslink.com / xhslink.cn 路径格式，ID通常在路径的最后一部分
+        if (url.contains("xhslink.com/") || url.contains("xhslink.cn/")) {
             String[] parts = url.split("/");
             if (parts.length > 0) {
                 String lastPart = parts[parts.length - 1];

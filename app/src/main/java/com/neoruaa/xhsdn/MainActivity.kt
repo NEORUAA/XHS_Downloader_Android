@@ -42,10 +42,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.lazy.staggeredgrid.LazyVerticalStaggeredGrid
-import androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridCells
-import androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridItemSpan
-import androidx.compose.foundation.lazy.staggeredgrid.items
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.runtime.Composable
@@ -111,7 +107,7 @@ import androidx.compose.foundation.layout.statusBars
 import com.neoruaa.xhsdn.ui.AdaptiveTopAppBar
 import com.neoruaa.xhsdn.ui.TopAppBarIconButton
 import com.neoruaa.xhsdn.ui.TabRowWithContour
-import com.neoruaa.xhsdn.ui.SelectableMediaPreview
+import com.neoruaa.xhsdn.ui.SelectableMediaWaterfall
 import com.neoruaa.xhsdn.ui.rememberWindowLayoutInfo
 import com.neoruaa.xhsdn.viewmodels.MainUiState
 import com.neoruaa.xhsdn.viewmodels.MainViewModel
@@ -855,8 +851,7 @@ private fun SelectiveDownloadSheet(
             )
         }
     ) {
-        LazyVerticalStaggeredGrid(
-            columns = StaggeredGridCells.Fixed(2),
+        LazyColumn(
             modifier = Modifier
                 .fillMaxWidth()
                 .animateContentSize(
@@ -864,14 +859,9 @@ private fun SelectiveDownloadSheet(
                     alignment = Alignment.TopCenter
                 )
                 .heightIn(max = 560.dp),
-            //contentPadding = PaddingValues(horizontal = 12.dp), 这里不需要这个
-            verticalItemSpacing = 10.dp,
-            horizontalArrangement = Arrangement.spacedBy(10.dp)
+            verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            item(
-                key = "selective_download_status",
-                span = StaggeredGridItemSpan.FullLine
-            ) {
+            item(key = "selective_download_status") {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(
                         text = when (selectiveState.phase) {
@@ -928,22 +918,16 @@ private fun SelectiveDownloadSheet(
             }
 
             if (selectiveState.phase == SelectiveDownloadPhase.Ready && selectiveState.items.isNotEmpty()) {
-                items(
-                    items = selectiveState.items,
-                    key = { it.path }
-                ) { item ->
-                    SelectableMediaPreview(
-                        item = item,
-                        selected = item.path in selectiveState.selectedPaths,
-                        onToggle = { onToggleItem(item.path) }
+                item(key = "selective_download_media") {
+                    SelectableMediaWaterfall(
+                        items = selectiveState.items,
+                        selectedPaths = selectiveState.selectedPaths,
+                        onToggle = onToggleItem
                     )
                 }
             }
 
-            item(
-                key = "selective_download_bottom_spacer",
-                span = StaggeredGridItemSpan.FullLine
-            ) {
+            item(key = "selective_download_bottom_spacer") {
                 Spacer(
                     modifier = Modifier
                         .height(24.dp)

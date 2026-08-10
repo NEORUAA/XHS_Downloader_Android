@@ -35,7 +35,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.lazy.staggeredgrid.LazyVerticalStaggeredGrid
 import androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridCells
-import androidx.compose.foundation.lazy.staggeredgrid.items
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -57,7 +56,7 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.neoruaa.xhsdn.ui.AdaptiveTopAppBar
 import com.neoruaa.xhsdn.ui.TopAppBarIconButton
-import com.neoruaa.xhsdn.ui.DetailMediaPreview
+import com.neoruaa.xhsdn.ui.DetailMediaWaterfall
 import com.neoruaa.xhsdn.ui.rememberWindowLayoutInfo
 import com.neoruaa.xhsdn.viewmodels.DetailViewModel
 import kotlinx.coroutines.Dispatchers
@@ -87,7 +86,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridItemSpan
 import androidx.compose.foundation.text.selection.SelectionContainer
 import com.neoruaa.xhsdn.viewmodels.MediaItem
-import com.neoruaa.xhsdn.viewmodels.CachedMediaItem
 import com.neoruaa.xhsdn.viewmodels.MediaType
 import com.neoruaa.xhsdn.utils.detectMediaType
 import com.neoruaa.xhsdn.utils.decodeSampledBitmap
@@ -444,21 +442,14 @@ private fun FilesPage(
                 }
             }
         } else {
-            items(
-                items = uiState.mediaItems,
-                key = { it.path }
-            ) { mediaItem ->
-                val cachedItem = remember(mediaItem.path, mediaItem.type) {
-                    CachedMediaItem(
-                        path = mediaItem.path,
-                        displayName = File(mediaItem.path).name,
-                        type = mediaItem.type
-                    )
-                }
-                DetailMediaPreview(
-                    item = cachedItem,
-                    onClick = { onMediaClick(mediaItem) },
-                    onDelete = { onDeleteMedia(mediaItem) }
+            item(
+                key = "downloaded_files",
+                span = StaggeredGridItemSpan.FullLine
+            ) {
+                DetailMediaWaterfall(
+                    mediaItems = uiState.mediaItems,
+                    onMediaClick = onMediaClick,
+                    onDeleteMedia = onDeleteMedia
                 )
             }
         }

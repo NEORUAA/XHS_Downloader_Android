@@ -32,6 +32,7 @@ import androidx.compose.ui.unit.dp
 import com.neoruaa.xhsdn.R
 import com.neoruaa.xhsdn.utils.createVideoThumbnail
 import com.neoruaa.xhsdn.utils.decodeSampledBitmap
+import com.neoruaa.xhsdn.utils.readImageAspectRatio
 import com.neoruaa.xhsdn.utils.readMediaAspectRatio
 import com.neoruaa.xhsdn.utils.storedMediaSize
 import com.neoruaa.xhsdn.viewmodels.CachedMediaItem
@@ -569,15 +570,7 @@ private fun readSelectableAspectRatio(item: CachedMediaItem): Float? {
     return runCatching {
         when (item.type) {
             MediaType.IMAGE -> {
-                val options = android.graphics.BitmapFactory.Options().apply {
-                    inJustDecodeBounds = true
-                }
-                android.graphics.BitmapFactory.decodeFile(file.path, options)
-                if (options.outWidth > 0 && options.outHeight > 0) {
-                    options.outWidth.toFloat() / options.outHeight.toFloat()
-                } else {
-                    null
-                }
+                readImageAspectRatio(file.path)
             }
             MediaType.VIDEO -> {
                 val retriever = android.media.MediaMetadataRetriever()

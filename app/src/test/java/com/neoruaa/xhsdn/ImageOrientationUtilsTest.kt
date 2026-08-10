@@ -32,4 +32,26 @@ class ImageOrientationUtilsTest {
         assertEquals(90, ImageOrientationUtils.rotationDegrees(ImageOrientationUtils.ORIENTATION_TRANSPOSE))
         assertEquals(270, ImageOrientationUtils.rotationDegrees(ImageOrientationUtils.ORIENTATION_TRANSVERSE))
     }
+
+    @Test
+    fun aspectRatioUsesDisplayedDimensions() {
+        assertEquals(
+            1.5f,
+            ImageOrientationUtils.aspectRatio(6000, 4000, ImageOrientationUtils.ORIENTATION_NORMAL),
+        )
+        assertEquals(
+            2f / 3f,
+            ImageOrientationUtils.aspectRatio(6000, 4000, ImageOrientationUtils.ORIENTATION_ROTATE_270),
+        )
+        assertEquals(
+            2f / 3f,
+            ImageOrientationUtils.aspectRatio(6000, 4000, ImageOrientationUtils.ORIENTATION_TRANSPOSE),
+        )
+    }
+
+    @Test
+    fun aspectRatioRejectsInvalidDimensions() {
+        assertEquals(null, ImageOrientationUtils.aspectRatio(0, 4000, ImageOrientationUtils.ORIENTATION_NORMAL))
+        assertEquals(null, ImageOrientationUtils.aspectRatio(6000, 0, ImageOrientationUtils.ORIENTATION_NORMAL))
+    }
 }

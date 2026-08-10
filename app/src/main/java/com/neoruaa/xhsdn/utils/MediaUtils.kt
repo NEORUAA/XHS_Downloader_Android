@@ -3,9 +3,12 @@ package com.neoruaa.xhsdn.utils
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.Matrix
+import android.media.ExifInterface
 import android.media.MediaMetadataRetriever
 import android.provider.DocumentsContract
 import android.provider.OpenableColumns
+import com.neoruaa.xhsdn.ImageOrientationUtils
 import com.neoruaa.xhsdn.data.storage.StoredMediaRef
 import com.neoruaa.xhsdn.viewmodels.MediaType
 import java.io.File
@@ -20,7 +23,8 @@ fun decodeSampledBitmap(filePath: String, reqWidth: Int, reqHeight: Int): Bitmap
         options.inSampleSize = calculateInSampleSize(options, reqWidth, reqHeight)
 
         options.inJustDecodeBounds = false
-        BitmapFactory.decodeFile(filePath, options)
+        val bitmap = BitmapFactory.decodeFile(filePath, options) ?: return null
+        bitmap.applyExifOrientation(readExifOrientation(filePath))
     }.getOrNull()
 }
 
@@ -54,6 +58,7 @@ fun createVideoThumbnail(file: File): Bitmap? {
 
 fun Context.decodeSampledBitmap(ref: StoredMediaRef, reqWidth: Int, reqHeight: Int): Bitmap? {
     ref.legacyPath?.let { return decodeSampledBitmap(it, reqWidth, reqHeight) }
+    val orientation = readExifOrientation(ref)
     return runCatching {
         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         val boundsDescriptor = contentResolver.openFileDescriptor(ref.androidUri, "r")
@@ -68,9 +73,19 @@ fun Context.decodeSampledBitmap(ref: StoredMediaRef, reqWidth: Int, reqHeight: I
         }
         contentResolver.openFileDescriptor(ref.androidUri, "r")?.use { descriptor ->
             BitmapFactory.decodeFileDescriptor(descriptor.fileDescriptor, null, options)
-        }
+        }?.applyExifOrientation(orientation)
     }.getOrNull()
 }
+
+fun readImageAspectRatio(filePath: String): Float? = runCatching {
+    val options = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+    BitmapFactory.decodeFile(filePath, options)
+    ImageOrientationUtils.aspectRatio(
+        width = options.outWidth,
+        height = options.outHeight,
+        orientation = readExifOrientation(filePath),
+    )
+}.getOrNull()
 
 fun Context.createVideoThumbnail(ref: StoredMediaRef): Bitmap? {
     ref.legacyPath?.let { return createVideoThumbnail(File(it)) }
@@ -96,11 +111,11 @@ fun Context.readMediaAspectRatio(ref: StoredMediaRef, type: MediaType): Float? =
                     BitmapFactory.decodeFileDescriptor(descriptor.fileDescriptor, null, options)
                 }
             }
-            if (options.outWidth > 0 && options.outHeight > 0) {
-                options.outWidth.toFloat() / options.outHeight.toFloat()
-            } else {
-                null
-            }
+            ImageOrientationUtils.aspectRatio(
+                width = options.outWidth,
+                height = options.outHeight,
+                orientation = readExifOrientation(ref),
+            )
         }
 
         MediaType.VIDEO -> {
@@ -124,6 +139,49 @@ fun Context.readMediaAspectRatio(ref: StoredMediaRef, type: MediaType): Float? =
         MediaType.OTHER -> null
     }
 }.getOrNull()
+
+private fun readExifOrientation(filePath: String): Int = runCatching {
+    ExifInterface(filePath).getAttributeInt(
+        ExifInterface.TAG_ORIENTATION,
+        ExifInterface.ORIENTATION_NORMAL,
+    )
+}.getOrDefault(ExifInterface.ORIENTATION_NORMAL)
+
+private fun Context.readExifOrientation(ref: StoredMediaRef): Int {
+    ref.legacyPath?.let { return readExifOrientation(it) }
+    return runCatching {
+        contentResolver.openFileDescriptor(ref.androidUri, "r")?.use { descriptor ->
+            ExifInterface(descriptor.fileDescriptor).getAttributeInt(
+                ExifInterface.TAG_ORIENTATION,
+                ExifInterface.ORIENTATION_NORMAL,
+            )
+        } ?: ExifInterface.ORIENTATION_NORMAL
+    }.getOrDefault(ExifInterface.ORIENTATION_NORMAL)
+}
+
+private fun Bitmap.applyExifOrientation(orientation: Int): Bitmap {
+    val matrix = Matrix()
+    when (orientation) {
+        ExifInterface.ORIENTATION_FLIP_HORIZONTAL -> matrix.setScale(-1f, 1f)
+        ExifInterface.ORIENTATION_ROTATE_180 -> matrix.setRotate(180f)
+        ExifInterface.ORIENTATION_FLIP_VERTICAL -> matrix.setScale(1f, -1f)
+        ExifInterface.ORIENTATION_TRANSPOSE -> {
+            matrix.setRotate(90f)
+            matrix.postScale(-1f, 1f)
+        }
+        ExifInterface.ORIENTATION_ROTATE_90 -> matrix.setRotate(90f)
+        ExifInterface.ORIENTATION_TRANSVERSE -> {
+            matrix.setRotate(270f)
+            matrix.postScale(-1f, 1f)
+        }
+        ExifInterface.ORIENTATION_ROTATE_270 -> matrix.setRotate(270f)
+        else -> return this
+    }
+
+    val orientedBitmap = Bitmap.createBitmap(this, 0, 0, width, height, matrix, true)
+    if (orientedBitmap !== this) recycle()
+    return orientedBitmap
+}
 
 fun Context.storedMediaSize(ref: StoredMediaRef): Long? {
     if (ref.legacyPath != null) {

@@ -27,6 +27,16 @@ internal object ImageOrientationUtils {
             orientation == ORIENTATION_ROTATE_270
 
     @JvmStatic
+    fun aspectRatio(width: Int, height: Int, orientation: Int): Float? {
+        if (width <= 0 || height <= 0) return null
+        return if (swapsWidthAndHeight(orientation)) {
+            height.toFloat() / width.toFloat()
+        } else {
+            width.toFloat() / height.toFloat()
+        }
+    }
+
+    @JvmStatic
     fun rotationDegrees(orientation: Int): Int = when (orientation) {
         ORIENTATION_TRANSPOSE, ORIENTATION_ROTATE_90 -> 90
         ORIENTATION_ROTATE_180, ORIENTATION_FLIP_VERTICAL -> 180

@@ -122,7 +122,6 @@
     <string name="unable_to_open_file">无法打开文件: %1$s</string>
     <string name="link_copied">链接已复制</string>
     <string name="no_valid_link_found">未找到有效链接</string>
-    <string name="storage_permission_required">缺少存储权限，请打开 App 授予权限</string>
     <string name="clipboard_no_xhs_link">剪贴板中未检测到小红书链接</string>
     <string name="copied_description">已复制文案</string>
     <string name="unable_to_open_browser">无法打开浏览器: %1$s</string>
@@ -132,17 +131,9 @@
     <string name="file_does_not_exist">文件不存在：%1$s</string>
     <string name="unable_to_open_file_error">无法打开文件：%1$s</string>
     <string name="grant_all_files_access_retry">请授予所有文件访问权限后重试</string>
-    <string name="task_ignored_downloading">任务忽略，链接正在下载中，请勿重复复制</string>
-    <string name="task_ignored_recently_downloaded">任务忽略，该链接最近已下载过，请在历史页查看</string>
-    <string name="auto_download_unavailable">无法自动下载</string>
     <string name="preparing_download">正在准备下载...</string>
-    <string name="downloading_files_count">正在下载... 共 %1$d 个文件</string>
-    <string name="download_completed_files_count">下载完成，成功下载 %1$d 个文件</string>
-    <string name="download_failed_no_files">下载失败，未能下载文件</string>
-    <string name="download_failed_check_network">下载失败，请检查网络或链接</string>
     <string name="download_cancelled_by_user">下载已取消，用户操作</string>
     <string name="download_error_message">下载出错：%1$s</string>
-    <string name="user_manually_stopped">用户手动停止</string>
     <string name="delete_file_dialog_title">删除文件</string>
     <string name="delete_file_dialog_message">是否删除 \"%1$s\" 媒体文件？</string>
     <string name="notes_content_title">笔记文案</string>
@@ -156,13 +147,6 @@
     <string name="failed_files_format">· %1$d 失败</string>
     <string name="files_completed_format">%1$d/%2$d</string>
     <string name="official_limitation_tip">因官方限制，仅能下载低清版本。如需高清，选网页爬取。</string>
-    <string name="download_completed_notification_title">下载完成</string>
-    <string name="download_failed_notification_title">下载失败</string>
-    <string name="download_cancelled_notification_title">下载已取消</string>
-    <string name="download_error_notification_title">下载出错</string>
-    <string name="media_type_image">图片</string>
-    <string name="media_type_video">视频</string>
-    <string name="media_type_other">其他</string>
     <string name="note_type_image">图文</string>
     <string name="note_type_video">视频</string>
     <string name="note_type_unknown">未知</string>
@@ -261,4 +245,8 @@
     <string name="debug_keyword_web_crawl">网页爬取</string>
     <string name="debug_keyword_hint">提示</string>
     <string name="common_zero_progress">0/0</string>
+    <string name="main_search_history">搜索分享链接或简介</string>
+    <string name="common_clear_search">清除搜索</string>
+    <string name="main_search_no_results">没有匹配的下载任务</string>
+    <string name="main_search_adjust_query">请尝试其他关键词或状态筛选</string>
 </resources>

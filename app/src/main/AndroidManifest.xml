@@ -9,6 +9,7 @@
         android:maxSdkVersion="29" />
     <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" 
         tools:ignore="ScopedStorage" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
 
     <application
@@ -31,15 +32,15 @@
         
         <activity
             android:name=".WebViewActivity"
-            android:theme="@style/Theme.MiuixCompatActionBar"
+            android:theme="@style/Theme.MiuixApp"
             android:exported="false" />
         <activity
             android:name=".SettingsActivity"
-            android:theme="@style/Theme.MiuixCompatActionBar"
+            android:theme="@style/Theme.MiuixApp"
             android:exported="false" />
         <activity
             android:name=".DetailActivity"
-            android:theme="@style/Theme.MiuixCompatActionBar"
+            android:theme="@style/Theme.MiuixApp"
             android:exported="false" />
         
         <provider
@@ -54,7 +55,4 @@
 
 
     </application>
-
-    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
-
 </manifest>

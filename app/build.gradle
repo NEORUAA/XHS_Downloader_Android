@@ -1,19 +1,20 @@
 plugins {
     id 'com.android.application'
-    id 'org.jetbrains.kotlin.android'
     id 'org.jetbrains.kotlin.plugin.compose'
+    id 'com.google.devtools.ksp'
+    id 'androidx.room3'
 }
 
 android {
-    namespace 'com.neoruaa.xhsdn'
+    namespace = 'com.neoruaa.xhsdn'
     compileSdk 37
 
     defaultConfig {
         applicationId "com.neoruaa.xhsdn"
         minSdk 24
         targetSdk 37
-        versionCode 22
-        versionName "1.3.4"
+        versionCode 23
+        versionName "1.3.5"
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -28,19 +29,24 @@ android {
         sourceCompatibility JavaVersion.VERSION_11
         targetCompatibility JavaVersion.VERSION_11
     }
-    kotlinOptions {
-        jvmTarget = '11'
-    }
     buildFeatures {
-        compose true
-        buildConfig true
+        compose = true
+        buildConfig = true
     }
 }
 
+kotlin {
+    compilerOptions {
+        jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_11
+    }
+}
+
+room3 {
+    schemaDirectory "$projectDir/schemas"
+}
+
 dependencies {
-    implementation 'androidx.appcompat:appcompat:1.7.1'
     implementation 'com.google.android.material:material:1.14.0'
-    implementation 'androidx.constraintlayout:constraintlayout:2.2.1'
     implementation 'androidx.activity:activity-compose:1.13.0'
     implementation 'androidx.lifecycle:lifecycle-runtime-ktx:2.11.0'
     implementation 'androidx.lifecycle:lifecycle-viewmodel-ktx:2.11.0'
@@ -50,12 +56,13 @@ dependencies {
     implementation "org.jetbrains.compose.foundation:foundation:1.11.1"
     implementation "org.jetbrains.compose.ui:ui:1.11.1"
     implementation "org.jetbrains.compose.ui:ui-tooling-preview:1.11.1"
-    implementation 'androidx.compose.material3:material3:1.4.0'
-    implementation 'androidx.compose.ui:ui:1.11.4'
     debugImplementation "org.jetbrains.compose.ui:ui-tooling:1.11.1"
-    implementation "org.jetbrains.compose.material3:material3:1.9.0"
-    implementation "org.jetbrains.compose.material3:material3-window-size-class:1.9.0"
     implementation "org.jetbrains.kotlinx:kotlinx-coroutines-android:1.11.0"
+
+    implementation 'androidx.datastore:datastore-preferences:1.2.1'
+    implementation 'androidx.room3:room3-runtime:3.0.1'
+    implementation 'androidx.sqlite:sqlite-framework:2.7.0'
+    ksp 'androidx.room3:room3-compiler:3.0.1'
 
     implementation "top.yukonga.miuix.kmp:miuix-ui-android:0.9.3"
     implementation "top.yukonga.miuix.kmp:miuix-icons-android:0.9.3"
@@ -63,6 +70,10 @@ dependencies {
 
     implementation 'com.squareup.okhttp3:okhttp:5.4.0'
     testImplementation 'junit:junit:4.13.2'
+    testImplementation 'org.json:json:20260719'
+    testImplementation 'org.jetbrains.kotlinx:kotlinx-coroutines-test:1.11.0'
+    androidTestImplementation 'androidx.room3:room3-testing:3.0.1'
+    androidTestImplementation 'androidx.test:core-ktx:1.7.0'
     androidTestImplementation 'androidx.test.ext:junit:1.3.0'
     androidTestImplementation 'androidx.test.espresso:espresso-core:3.7.0'
 }

@@ -9,6 +9,7 @@ import android.os.Build
 import androidx.core.app.NotificationCompat
 import com.neoruaa.xhsdn.MainActivity
 import com.neoruaa.xhsdn.R
+import com.neoruaa.xhsdn.XHSApplication
 
 object NotificationHelper {
     private const val CHANNEL_ID = "xhs_download_channel_v2"
@@ -19,8 +20,7 @@ object NotificationHelper {
 
     fun showDiagnosticNotification(context: Context, title: String, content: String, id: Int = MONITOR_STATUS_ID) {
         val appContext = context.applicationContext
-        val prefs = appContext.getSharedPreferences("XHSDownloaderPrefs", Context.MODE_PRIVATE)
-        val isDebugEnabled = prefs.getBoolean("debug_notification_enabled", false)
+        val isDebugEnabled = isDebugNotificationEnabled(appContext)
 
         if (!isDebugEnabled) {
             return
@@ -52,8 +52,7 @@ object NotificationHelper {
         id: Int = DEBUG_STATUS_ID
     ) {
         val appContext = context.applicationContext
-        val prefs = appContext.getSharedPreferences("XHSDownloaderPrefs", Context.MODE_PRIVATE)
-        val isDebugEnabled = prefs.getBoolean("debug_notification_enabled", false)
+        val isDebugEnabled = isDebugNotificationEnabled(appContext)
 
         if (!isDebugEnabled) {
             cancelNotification(appContext, id)
@@ -118,6 +117,14 @@ object NotificationHelper {
         val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         notificationManager.cancel(id)
     }
+
+    private fun isDebugNotificationEnabled(context: Context): Boolean =
+        (context.applicationContext as? XHSApplication)
+            ?.appContainer
+            ?.settingsRepository
+            ?.currentSettings
+            ?.debugNotificationEnabled
+            ?: false
 
     private fun createDownloadChannel(context: Context) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {

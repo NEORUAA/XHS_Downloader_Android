@@ -435,7 +435,7 @@ private fun extractImages(
 
                 if (allUrls.isNotEmpty()) {
                     // Create a task for the web crawl
-                    val taskId = com.neoruaa.xhsdn.data.TaskManager.createTask(
+                    val taskId = com.neoruaa.xhsdn.data.tasks.TaskManager.createTask(
                         noteUrl = webView.url ?: "",
                         noteTitle = webView.title ?: "",
                         noteType = com.neoruaa.xhsdn.data.NoteType.UNKNOWN,
@@ -444,7 +444,7 @@ private fun extractImages(
                     )
 
                     // Update the task status to DOWNLOADING immediately
-                    com.neoruaa.xhsdn.data.TaskManager.updateTaskStatus(taskId, com.neoruaa.xhsdn.data.TaskStatus.DOWNLOADING)
+                    com.neoruaa.xhsdn.data.tasks.TaskManager.updateTaskStatus(taskId, com.neoruaa.xhsdn.data.TaskStatus.DOWNLOADING)
 
                     // Debug: Show that URLs were found and task was created
 //                    Toast.makeText(context, "找到${allUrls.size}个URL, 任务ID: $taskId", Toast.LENGTH_SHORT).show()

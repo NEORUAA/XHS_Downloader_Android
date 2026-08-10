@@ -1,7 +1,6 @@
 package com.neoruaa.xhsdn
 
 import android.content.Intent
-import android.content.SharedPreferences
 import android.content.res.Configuration
 import android.net.Uri
 import android.os.Build
@@ -51,6 +50,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
+import com.neoruaa.xhsdn.data.settings.AppSettings
+import com.neoruaa.xhsdn.data.settings.SettingsRepository
 import com.neoruaa.xhsdn.ui.ActionIconButton
 import com.neoruaa.xhsdn.ui.AdaptiveTopAppBar
 import com.neoruaa.xhsdn.ui.TopAppBarIconButton
@@ -59,6 +60,8 @@ import com.neoruaa.xhsdn.ui.rememberWindowLayoutInfo
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import top.yukonga.miuix.kmp.basic.BasicComponent
 import top.yukonga.miuix.kmp.basic.BasicComponentDefaults
 import top.yukonga.miuix.kmp.basic.Card
@@ -79,8 +82,6 @@ import top.yukonga.miuix.kmp.theme.ThemeController
 import top.yukonga.miuix.kmp.squircle.squircleBorder
 import android.graphics.Color as AndroidColor
 
-private const val PREFS_NAME = "XHSDownloaderPrefs"
-
 data class SettingsUiState(
     val createLivePhotos: Boolean = true,
     val useCustomNaming: Boolean = false,
@@ -94,134 +95,122 @@ data class SettingsUiState(
     val manualInputLinks: Boolean = false
 )
 
-class SettingsViewModel(private val prefs: SharedPreferences) : ViewModel() {
-    private val _state = MutableStateFlow(loadState())
+class SettingsViewModel(
+    private val repository: SettingsRepository
+) : ViewModel() {
+    private val _state = MutableStateFlow(repository.currentSettings.toUiState())
     val state: StateFlow<SettingsUiState> = _state
+    private val persistenceMutex = Mutex()
     private var hasChanges = false
 
-    private fun loadState(): SettingsUiState {
-        val createLivePhotos = prefs.getBoolean("create_live_photos", true)
-        val hasNewFlag = prefs.contains("use_custom_naming_format")
-        val legacyFlag = prefs.getBoolean("use_metadata_file_names", false)
-        val useCustomNaming = if (hasNewFlag) prefs.getBoolean("use_custom_naming_format", false) else legacyFlag
-        var template = prefs.getString("custom_naming_template", NamingFormat.DEFAULT_TEMPLATE)
-        if (template.isNullOrEmpty()) {
-            template = NamingFormat.DEFAULT_TEMPLATE
+    init {
+        viewModelScope.launch {
+            repository.settings.collect { settings ->
+                val currentTemplate = _state.value.template
+                _state.value = settings.toUiState(
+                    templateValue = if (currentTemplate.text == settings.customNamingTemplate) {
+                        currentTemplate
+                    } else {
+                        TextFieldValue(settings.customNamingTemplate)
+                    }
+                )
+            }
         }
-        val debugNotificationEnabled = prefs.getBoolean("debug_notification_enabled", false)
-        val selectiveDownload = prefs.getBoolean("selective_download", false)
-        val keepScreenOn = prefs.getBoolean("keep_screen_on", false)
-        val showClipboardBubble = prefs.getBoolean("show_clipboard_bubble", true) // Default true
-        val autoReadClipboard = prefs.getBoolean("auto_read_clipboard", false)
-        val manualInputLinks = prefs.getBoolean("manual_input_links", false)
-        return SettingsUiState(
-            createLivePhotos = createLivePhotos,
-            useCustomNaming = useCustomNaming,
-            template = TextFieldValue(template),
-            tokens = NamingFormat.getAvailableTokens(),
-            debugNotificationEnabled = debugNotificationEnabled,
-            selectiveDownload = selectiveDownload,
-            keepScreenOn = keepScreenOn,
-            showClipboardBubble = showClipboardBubble,
-            autoReadClipboard = autoReadClipboard,
-            manualInputLinks = manualInputLinks
-        )
     }
 
-
-
     fun onCreateLivePhotosChange(enabled: Boolean) = updateState {
-        it.copy(createLivePhotos = enabled).also { newState ->
-            persist(newState)
-        }
+        it.copy(createLivePhotos = enabled)
     }
 
     fun onUseCustomNamingChange(enabled: Boolean) = updateState {
-        it.copy(useCustomNaming = enabled).also { newState ->
-            persist(newState)
-        }
+        it.copy(useCustomNaming = enabled)
     }
 
     fun onTemplateChange(value: TextFieldValue) = updateState {
-        it.copy(template = value).also { newState ->
-            persist(newState)
-        }
+        it.copy(template = value)
     }
 
     fun onResetTemplate() = updateState {
-        it.copy(template = TextFieldValue(NamingFormat.DEFAULT_TEMPLATE)).also { newState ->
-            persist(newState)
-        }
+        it.copy(template = TextFieldValue(NamingFormat.DEFAULT_TEMPLATE))
     }
 
-
-
     fun onDebugNotificationChange(enabled: Boolean) = updateState {
-        it.copy(debugNotificationEnabled = enabled).also { newState ->
-            persist(newState)
-        }
+        it.copy(debugNotificationEnabled = enabled)
     }
 
     fun onSelectiveDownloadChange(enabled: Boolean) = updateState {
-        it.copy(selectiveDownload = enabled).also { newState ->
-            persist(newState)
-        }
+        it.copy(selectiveDownload = enabled)
     }
 
     fun onKeepScreenOnChange(enabled: Boolean) = updateState {
-        it.copy(keepScreenOn = enabled).also { newState ->
-            persist(newState)
-        }
+        it.copy(keepScreenOn = enabled)
     }
 
     fun onShowClipboardBubbleChange(enabled: Boolean) = updateState {
-        it.copy(showClipboardBubble = enabled).also { newState ->
-            persist(newState)
-        }
+        it.copy(showClipboardBubble = enabled)
     }
 
     fun onAutoReadClipboardChange(enabled: Boolean) = updateState {
-        it.copy(autoReadClipboard = enabled).also { newState ->
-            persist(newState)
-        }
+        it.copy(autoReadClipboard = enabled)
     }
 
     fun onManualInputLinksChange(enabled: Boolean) = updateState {
-        it.copy(manualInputLinks = enabled).also { newState ->
-            persist(newState)
-        }
+        it.copy(manualInputLinks = enabled)
     }
 
     private fun persist(state: SettingsUiState) {
         hasChanges = true
-        prefs.edit()
-            .putBoolean("create_live_photos", state.createLivePhotos)
-            .putBoolean("use_custom_naming_format", state.useCustomNaming)
-            .putString("custom_naming_template", state.template.text.ifBlank { NamingFormat.DEFAULT_TEMPLATE })
-            .putBoolean("debug_notification_enabled", state.debugNotificationEnabled)
-            .putBoolean("selective_download", state.selectiveDownload)
-            .putBoolean("keep_screen_on", state.keepScreenOn)
-            .putBoolean("show_clipboard_bubble", state.showClipboardBubble)
-            .putBoolean("auto_read_clipboard", state.autoReadClipboard)
-            .putBoolean("manual_input_links", state.manualInputLinks)
-            .remove("use_metadata_file_names")
-            .apply()
+        viewModelScope.launch {
+            persistenceMutex.withLock {
+                repository.update { current ->
+                    current.copy(
+                        createLivePhotos = state.createLivePhotos,
+                        useCustomNamingFormat = state.useCustomNaming,
+                        customNamingTemplate = state.template.text.ifBlank { NamingFormat.DEFAULT_TEMPLATE },
+                        debugNotificationEnabled = state.debugNotificationEnabled,
+                        selectiveDownload = state.selectiveDownload,
+                        keepScreenOn = state.keepScreenOn,
+                        showClipboardBubble = state.showClipboardBubble,
+                        autoReadClipboard = state.autoReadClipboard,
+                        manualInputLinks = state.manualInputLinks,
+                        useMetadataFileNames = false
+                    )
+                }
+            }
+        }
     }
 
     fun hasChanges(): Boolean = hasChanges
 
     private fun updateState(block: (SettingsUiState) -> SettingsUiState) {
-        viewModelScope.launch {
-            _state.emit(block(_state.value))
-        }
+        val updated = block(_state.value)
+        _state.value = updated
+        persist(updated)
     }
+
+    private fun AppSettings.toUiState(
+        templateValue: TextFieldValue = TextFieldValue(customNamingTemplate)
+    ): SettingsUiState = SettingsUiState(
+        createLivePhotos = createLivePhotos,
+        useCustomNaming = useCustomNamingFormat,
+        template = templateValue,
+        tokens = NamingFormat.getAvailableTokens(),
+        debugNotificationEnabled = debugNotificationEnabled,
+        selectiveDownload = selectiveDownload,
+        keepScreenOn = keepScreenOn,
+        showClipboardBubble = showClipboardBubble,
+        autoReadClipboard = autoReadClipboard,
+        manualInputLinks = manualInputLinks
+    )
 }
 
-class SettingsViewModelFactory(private val prefs: SharedPreferences) : ViewModelProvider.Factory {
+class SettingsViewModelFactory(
+    private val repository: SettingsRepository
+) : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
         if (modelClass.isAssignableFrom(SettingsViewModel::class.java)) {
             @Suppress("UNCHECKED_CAST")
-            return SettingsViewModel(prefs) as T
+            return SettingsViewModel(repository) as T
         }
         throw IllegalArgumentException("Unknown ViewModel class")
     }
@@ -229,7 +218,9 @@ class SettingsViewModelFactory(private val prefs: SharedPreferences) : ViewModel
 
 class SettingsActivity : ComponentActivity() {
     private val viewModel: SettingsViewModel by viewModels {
-        SettingsViewModelFactory(getSharedPreferences(PREFS_NAME, MODE_PRIVATE))
+        SettingsViewModelFactory(
+            (application as XHSApplication).appContainer.settingsRepository
+        )
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {

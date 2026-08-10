@@ -3,7 +3,6 @@ package com.neoruaa.xhsdn
 import android.Manifest
 import android.content.Context
 import android.content.Intent
-import android.content.SharedPreferences
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
@@ -14,6 +13,7 @@ import android.view.WindowManager
 import android.widget.Toast
 import androidx.core.view.WindowCompat
 import androidx.activity.ComponentActivity
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.compose.setContent
 import androidx.activity.viewModels
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -51,9 +51,11 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.produceState
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -67,10 +69,10 @@ import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -114,6 +116,10 @@ import com.neoruaa.xhsdn.viewmodels.MainViewModel
 import com.neoruaa.xhsdn.viewmodels.MediaItem
 import com.neoruaa.xhsdn.viewmodels.MediaType
 import com.neoruaa.xhsdn.viewmodels.SelectiveDownloadPhase
+import com.neoruaa.xhsdn.feature.history.HistoryFilter
+import com.neoruaa.xhsdn.feature.history.HistoryUiState
+import com.neoruaa.xhsdn.feature.history.HistoryViewModel
+import com.neoruaa.xhsdn.data.settings.SettingsRepository
 import top.yukonga.miuix.kmp.basic.DropdownImpl
 import top.yukonga.miuix.kmp.basic.ListPopupColumn
 import top.yukonga.miuix.kmp.basic.ListPopupDefaults
@@ -126,14 +132,17 @@ import android.util.Log
 import androidx.compose.ui.text.font.FontWeight
 import com.kyant.capsule.ContinuousRoundedRectangle
 import com.neoruaa.xhsdn.ui.rememberOffsetPopupPositionProvider
-import kotlinx.coroutines.awaitCancellation
 import top.yukonga.miuix.kmp.basic.TextField
+import top.yukonga.miuix.kmp.basic.InputField
+import top.yukonga.miuix.kmp.basic.SearchBar
 import top.yukonga.miuix.kmp.basic.IconButton
 import top.yukonga.miuix.kmp.icon.extended.File
 import top.yukonga.miuix.kmp.icon.extended.Link
 import top.yukonga.miuix.kmp.icon.extended.Close
 import top.yukonga.miuix.kmp.icon.extended.Download
 import top.yukonga.miuix.kmp.icon.extended.Ok
+import top.yukonga.miuix.kmp.icon.basic.Search
+import top.yukonga.miuix.kmp.icon.basic.SearchCleanup
 import top.yukonga.miuix.kmp.window.WindowBottomSheet
 import top.yukonga.miuix.kmp.anim.folmeSpring
 import top.yukonga.miuix.kmp.squircle.squircleBackground
@@ -144,8 +153,43 @@ private val thumbnailCache = object : LruCache<String, ImageBitmap>(50) {}
 
 class MainActivity : ComponentActivity() {
     private val viewModel: MainViewModel by viewModels()
+    private val historyViewModel: HistoryViewModel by viewModels {
+        HistoryViewModel.factory(
+            (application as XHSApplication).appContainer.taskRepository
+        )
+    }
+    private val settingsRepository: SettingsRepository by lazy {
+        (application as XHSApplication).appContainer.settingsRepository
+    }
     private val _autoDownloadIntentUrl = mutableStateOf<String?>(null)
     private var context: Context =  this
+
+    private val notificationPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { }
+
+    private val storagePermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { grants ->
+        val granted = grants.isNotEmpty() && grants.values.all { it }
+        showToast(
+            getString(
+                if (granted) {
+                    R.string.storage_permission_granted_continue
+                } else {
+                    R.string.storage_permission_missing_unable_save
+                }
+            )
+        )
+    }
+
+    private val webViewLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == RESULT_OK) {
+            handleWebViewResult(result.data)
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -155,35 +199,40 @@ class MainActivity : ComponentActivity() {
         if (Build.VERSION.SDK_INT >= 33) { // Android 13
             val permission = Manifest.permission.POST_NOTIFICATIONS
             if (ContextCompat.checkSelfPermission(this, permission) != PackageManager.PERMISSION_GRANTED) {
-                ActivityCompat.requestPermissions(this, arrayOf(permission), 200)
+                notificationPermissionLauncher.launch(permission)
             }
         }
 
         enableEdgeToEdge()
-        com.neoruaa.xhsdn.data.TaskManager.init(this)
+        com.neoruaa.xhsdn.data.tasks.TaskManager.init(this)
         WindowCompat.setDecorFitsSystemWindows(window, false)
 
-        // 防止自动锁屏
-        val prefs = getSharedPreferences("XHSDownloaderPrefs", MODE_PRIVATE)
-        if (prefs.getBoolean("keep_screen_on", false)) {
-            window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        }
         setContent {
             val controller = ThemeController(ColorSchemeMode.System)
             val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+            val historyUiState by historyViewModel.uiState.collectAsStateWithLifecycle()
+            val appSettings by settingsRepository.settings.collectAsStateWithLifecycle(
+                initialValue = settingsRepository.currentSettings
+            )
             val topBarState = rememberTopAppBarState()
             val scrollBehavior = MiuixScrollBehavior(state = topBarState)
+
+            LaunchedEffect(appSettings.keepScreenOn) {
+                if (appSettings.keepScreenOn) {
+                    window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                } else {
+                    window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                }
+            }
             
             // 处理自动下载
             val autoUrl by _autoDownloadIntentUrl
-            LaunchedEffect(autoUrl) {
+            LaunchedEffect(autoUrl, appSettings.selectiveDownload) {
                 autoUrl?.let { url ->
                      if (url.isNotEmpty()) {
                         viewModel.updateUrl(url)
                         ensureStoragePermission { 
-                            val selectiveDownload = getSharedPreferences("XHSDownloaderPrefs", MODE_PRIVATE)
-                                .getBoolean("selective_download", false)
-                            if (selectiveDownload) {
+                            if (appSettings.selectiveDownload) {
                                 viewModel.startSelectiveDownload { showToast(it) }
                             } else {
                                 viewModel.startDownload { showToast(it) }
@@ -196,44 +245,17 @@ class MainActivity : ComponentActivity() {
             
             // 剪贴板检测相关状态
             context = LocalContext.current
-            val prefs = remember { context.getSharedPreferences("XHSDownloaderPrefs", MODE_PRIVATE) }
             var detectedXhsLink by remember { mutableStateOf<String?>(null) }
-            var manualInputLinks by remember { mutableStateOf(prefs.getBoolean("manual_input_links", false)) }
-            var selectiveDownload by remember { mutableStateOf(prefs.getBoolean("selective_download", false)) }
-
-            // 监听SharedPreferences变化，确保UI能够实时响应设置更改
-            LaunchedEffect(Unit) {
-                val listener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
-                    if (key == "manual_input_links") {
-                        manualInputLinks = prefs.getBoolean("manual_input_links", false)
-                    } else if (key == "selective_download") {
-                        selectiveDownload = prefs.getBoolean("selective_download", false)
-                    } else if (key == "keep_screen_on") {
-                        if (prefs.getBoolean("keep_screen_on", false)) {
-                            window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-                        } else {
-                            window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-                        }
-                    }
-                }
-                prefs.registerOnSharedPreferenceChangeListener(listener)
-
-                // 清理监听器
-                try {
-                    awaitCancellation()
-                } finally {
-                    prefs.unregisterOnSharedPreferenceChangeListener(listener)
-                }
-            }
+            val manualInputLinks = appSettings.manualInputLinks
+            val selectiveDownload = appSettings.selectiveDownload
             
             // 监听生命周期 ON_RESUME 和 ON_PAUSE 进行剪贴板监听器管理
             val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
 
             // 提取核心检测逻辑为可复用函数
             fun checkClipboard() {
-                // 1. Refresh Preferences
-                val currentAutoRead = prefs.getBoolean("auto_read_clipboard", false)
-                val currentShowBubble = prefs.getBoolean("show_clipboard_bubble", true)
+                val currentAutoRead = appSettings.autoReadClipboard
+                val currentShowBubble = appSettings.showClipboardBubble
 
                 Log.d("XHS_Debug", "checkClipboard: AutoRead=$currentAutoRead, ShowBubble=$currentShowBubble, ManualInput=$manualInputLinks")
 
@@ -305,13 +327,14 @@ class MainActivity : ComponentActivity() {
             }
             
             val scope = androidx.lifecycle.compose.LocalLifecycleOwner.current.lifecycleScope
+            val checkClipboardState = rememberUpdatedState(newValue = { checkClipboard() })
             
             val clipboardListener = remember {
                 android.content.ClipboardManager.OnPrimaryClipChangedListener {
                      // 延迟检测，解决 listener 触发时 ClipData 可能尚未准备好的问题
                      scope.launch {
                          kotlinx.coroutines.delay(300) // 300ms 延迟
-                         checkClipboard()
+                         checkClipboardState.value()
                      }
                 }
             }
@@ -325,7 +348,7 @@ class MainActivity : ComponentActivity() {
                         // 延迟检测：Android 10+ 需要等待窗口焦点才能访问剪贴板
                         scope.launch {
                             kotlinx.coroutines.delay(500)
-                            checkClipboard()
+                            checkClipboardState.value()
                         }
                     } else if (event == androidx.lifecycle.Lifecycle.Event.ON_PAUSE) {
                         // 移除监听器
@@ -347,6 +370,7 @@ class MainActivity : ComponentActivity() {
 
                 MainScreen(
                     uiState = uiState,
+                    historyUiState = historyUiState,
                     manualInputLinks = manualInputLinks,
                     showInputDialog = showInputDialog,
                     onShowInputDialogChange = { showInputDialog = it },
@@ -406,7 +430,7 @@ class MainActivity : ComponentActivity() {
                                     putExtra("url", cleanUrl)
                                     // Don't pass task_id here - let WebViewActivity create the task when user clicks "爬取"
                                 }
-                                startActivityForResult(webViewIntent, WEBVIEW_REQUEST_CODE)
+                                webViewLauncher.launch(webViewIntent)
 
                                 detectedXhsLink = null
                             } else {
@@ -444,7 +468,7 @@ class MainActivity : ComponentActivity() {
                         }
                     },
                     onDeleteTask = { task ->
-                        com.neoruaa.xhsdn.data.TaskManager.deleteTask(task.id)
+                        com.neoruaa.xhsdn.data.tasks.TaskManager.deleteTask(task.id)
                     },
                     onContinueTask = { task -> 
                         viewModel.continueTask(task)
@@ -454,10 +478,9 @@ class MainActivity : ComponentActivity() {
                         launchWebView(task.noteUrl, task.id)
                     },
                     onStopTask = { task ->
-                         if (viewModel.currentTaskId == task.id) {
-                             viewModel.cancelCurrentDownload()
-                         }
-                         com.neoruaa.xhsdn.data.BackgroundDownloadManager.stopTask(this, task.id)
+                        if (viewModel.currentTaskId == task.id) {
+                            viewModel.cancelCurrentDownload()
+                        }
                     },
                     onClearHistory = { viewModel.clearHistory() },
                     onManualInputDownload = { inputLink ->
@@ -484,7 +507,10 @@ class MainActivity : ComponentActivity() {
                     onDismissPrompt = { detectedXhsLink = null },
                     onCancelSelectiveDownload = viewModel::cancelSelectiveDownload,
                     onSaveSelectedMedia = { viewModel.saveSelectedMedia { showToast(it) } },
-                    onToggleSelectiveItem = viewModel::toggleSelectiveItem
+                    onToggleSelectiveItem = viewModel::toggleSelectiveItem,
+                    onHistoryQueryChange = historyViewModel::updateQuery,
+                    onHistoryQueryClear = historyViewModel::clearQuery,
+                    onHistoryFilterChange = historyViewModel::selectFilter
                 )
 
                 // 检测到"重试同一链接但解析数量不一致"时，提示是否导出诊断日志
@@ -541,7 +567,7 @@ class MainActivity : ComponentActivity() {
         if (taskId != null && taskId > 0) {
             intent.putExtra("task_id", taskId)
         }
-        startActivityForResult(intent, WEBVIEW_REQUEST_CODE)
+        webViewLauncher.launch(intent)
     }
 
 
@@ -578,13 +604,11 @@ class MainActivity : ComponentActivity() {
             startActivity(intent)
             showToast(getString(R.string.grant_all_files_access_retry))
         } else {
-            ActivityCompat.requestPermissions(
-                this,
+            storagePermissionLauncher.launch(
                 arrayOf(
                     Manifest.permission.WRITE_EXTERNAL_STORAGE,
                     Manifest.permission.READ_EXTERNAL_STORAGE
-                ),
-                PERMISSION_REQUEST_CODE
+                )
             )
         }
     }
@@ -595,21 +619,6 @@ class MainActivity : ComponentActivity() {
         } else {
             ContextCompat.checkSelfPermission(this, Manifest.permission.WRITE_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED &&
                 ContextCompat.checkSelfPermission(this, Manifest.permission.READ_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED
-        }
-    }
-
-    override fun onRequestPermissionsResult(
-        requestCode: Int,
-        permissions: Array<String>,
-        grantResults: IntArray
-    ) {
-        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-        if (requestCode == PERMISSION_REQUEST_CODE) {
-            if (grantResults.all { it == PackageManager.PERMISSION_GRANTED }) {
-                showToast(getString(R.string.storage_permission_granted_continue))
-            } else {
-                showToast(getString(R.string.storage_permission_missing_unable_save))
-            }
         }
     }
 
@@ -634,9 +643,8 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
-        super.onActivityResult(requestCode, resultCode, data)
-        if (requestCode == WEBVIEW_REQUEST_CODE && resultCode == RESULT_OK && data != null) {
+    private fun handleWebViewResult(data: Intent?) {
+        if (data != null) {
             // Debug: Show that we received the result
 //            showToast("收到WebView结果")
 
@@ -654,8 +662,8 @@ class MainActivity : ComponentActivity() {
                     taskId
                 } else {
                     // Create a new task when URLs are returned from WebViewActivity
-                    val webViewUrl = data.getStringExtra("url") ?: "Unknown URL"
-                    val newTaskId = com.neoruaa.xhsdn.data.TaskManager.createTask(
+                    val webViewUrl = data.getStringExtra("url").orEmpty()
+                    val newTaskId = com.neoruaa.xhsdn.data.tasks.TaskManager.createTask(
                         noteUrl = webViewUrl,
                         noteTitle = null,
                         noteType = com.neoruaa.xhsdn.data.NoteType.UNKNOWN,
@@ -663,7 +671,7 @@ class MainActivity : ComponentActivity() {
                     )
 
                     // Update the task status to DOWNLOADING immediately since we have the URLs
-                    com.neoruaa.xhsdn.data.TaskManager.updateTaskStatus(newTaskId, com.neoruaa.xhsdn.data.TaskStatus.DOWNLOADING)
+                    com.neoruaa.xhsdn.data.tasks.TaskManager.updateTaskStatus(newTaskId, com.neoruaa.xhsdn.data.TaskStatus.DOWNLOADING)
 
                     // Debug: Show that task was created
 //                    showToast("已创建任务ID: $newTaskId")
@@ -676,16 +684,10 @@ class MainActivity : ComponentActivity() {
             } else {
                 showToast(getString(R.string.no_accessible_urls_found))
             }
-        } else {
-            // Debug: Show that result was not as expected
-            if (requestCode == WEBVIEW_REQUEST_CODE) {
-//                showToast("WebView返回结果异常: resultCode=$resultCode")
-            }
         }
     }
 
     companion object {
-        private const val PERMISSION_REQUEST_CODE = 3001
         const val WEBVIEW_REQUEST_CODE = 3002
     }
 }
@@ -694,6 +696,7 @@ class MainActivity : ComponentActivity() {
 @Composable
 private fun MainScreen(
     uiState: MainUiState,
+    historyUiState: HistoryUiState,
     manualInputLinks: Boolean = false,
     showInputDialog: Boolean = false,
     onShowInputDialogChange: (Boolean) -> Unit,
@@ -716,7 +719,10 @@ private fun MainScreen(
     onDismissPrompt: () -> Unit,
     onCancelSelectiveDownload: () -> Unit,
     onSaveSelectedMedia: () -> Unit,
-    onToggleSelectiveItem: (String) -> Unit
+    onToggleSelectiveItem: (String) -> Unit,
+    onHistoryQueryChange: (String) -> Unit,
+    onHistoryQueryClear: () -> Unit,
+    onHistoryFilterChange: (HistoryFilter) -> Unit
 ) {
     val windowLayoutInfo = rememberWindowLayoutInfo()
     val statusListState = rememberLazyListState()
@@ -780,6 +786,7 @@ private fun MainScreen(
         ) { padding ->
             HistoryPage(
                 uiState = uiState,
+                historyUiState = historyUiState,
                 manualInputLinks = manualInputLinks,
                 showInputDialog = showInputDialog,
                 onShowInputDialogChange = onShowInputDialogChange,
@@ -799,6 +806,9 @@ private fun MainScreen(
                 onDeleteTask = onDeleteTask,
                 detectedXhsLink = detectedXhsLink,
                 onDismissPrompt = onDismissPrompt,
+                onHistoryQueryChange = onHistoryQueryChange,
+                onHistoryQueryClear = onHistoryQueryClear,
+                onHistoryFilterChange = onHistoryFilterChange,
                 contentStartPadding = windowLayoutInfo.contentStartPadding,
                 contentEndPadding = windowLayoutInfo.contentEndPadding,
                 modifier = Modifier
@@ -941,6 +951,8 @@ private fun SelectiveDownloadSheet(
 @Composable
 private fun HistoryPage(
     uiState: MainUiState,
+    historyUiState: HistoryUiState,
+    modifier: Modifier = Modifier,
     manualInputLinks: Boolean = false,
     showInputDialog: Boolean = false,
     onShowInputDialogChange: (Boolean) -> Unit,
@@ -961,12 +973,15 @@ private fun HistoryPage(
     onDeleteTask: (com.neoruaa.xhsdn.data.DownloadTask) -> Unit,
     detectedXhsLink: String?,
     onDismissPrompt: () -> Unit,
+    onHistoryQueryChange: (String) -> Unit,
+    onHistoryQueryClear: () -> Unit,
+    onHistoryFilterChange: (HistoryFilter) -> Unit,
     contentStartPadding: androidx.compose.ui.unit.Dp,
     contentEndPadding: androidx.compose.ui.unit.Dp,
-    modifier: Modifier = Modifier,
     nestedScrollConnection: androidx.compose.ui.input.nestedscroll.NestedScrollConnection? = null
 ) {
-    val tasks by com.neoruaa.xhsdn.data.TaskManager.getAllTasks().collectAsStateWithLifecycle(initialValue = emptyList())
+    val tasks = historyUiState.allTasks
+    val filteredTasks = historyUiState.filteredTasks
     val navPadding = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
     val activeTask = tasks.firstOrNull {
         it.status == com.neoruaa.xhsdn.data.TaskStatus.DOWNLOADING || it.status == com.neoruaa.xhsdn.data.TaskStatus.QUEUED
@@ -977,6 +992,10 @@ private fun HistoryPage(
         stringResource(R.string.clear_history)
     )
     var menuExpanded by remember { mutableStateOf(false) }
+    var searchExpanded by rememberSaveable {
+        mutableStateOf(historyUiState.query.isNotEmpty())
+    }
+    val focusManager = LocalFocusManager.current
 
     var taskToDelete by remember { mutableStateOf<com.neoruaa.xhsdn.data.DownloadTask?>(null) }
 
@@ -1021,18 +1040,98 @@ private fun HistoryPage(
             Column(
                 modifier = Modifier.fillMaxSize()
             ) {
+                SearchBar(
+                    inputField = {
+                        InputField(
+                            query = historyUiState.query,
+                            onQueryChange = onHistoryQueryChange,
+                            onSearch = { focusManager.clearFocus() },
+                            expanded = searchExpanded,
+                            onExpandedChange = { searchExpanded = it },
+                            label = stringResource(R.string.main_search_history),
+                            leadingIcon = {
+                                Icon(
+                                    imageVector = MiuixIcons.Basic.Search,
+                                    contentDescription = stringResource(R.string.main_search_history),
+                                    modifier = Modifier.padding(start = 16.dp, end = 8.dp),
+                                    tint = MiuixTheme.colorScheme.onSurfaceContainerHigh
+                                )
+                            },
+                            trailingIcon = {
+                                androidx.compose.animation.AnimatedVisibility(
+                                    visible = historyUiState.query.isNotEmpty()
+                                ) {
+                                    IconButton(
+                                        onClick = onHistoryQueryClear,
+                                        minHeight = 35.dp,
+                                        minWidth = 35.dp,
+                                        cornerRadius = 35.dp,
+                                        modifier = Modifier.padding(end = 8.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = MiuixIcons.Basic.SearchCleanup,
+                                            contentDescription = stringResource(R.string.common_clear_search),
+                                            tint = MiuixTheme.colorScheme.onSurfaceContainerHighest
+                                        )
+                                    }
+                                }
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    },
+                    outsideEndAction = {
+                        Text(
+                            modifier = Modifier
+                                .padding(end = contentEndPadding + 12.dp)
+                                .clickable(
+                                    interactionSource = null,
+                                    indication = null
+                                ) {
+                                    searchExpanded = false
+                                },
+                            text = stringResource(R.string.cancel),
+                            color = MiuixTheme.colorScheme.primary
+                        )
+                    },
+                    onExpandedChange = { searchExpanded = it },
+                    expanded = searchExpanded,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(
+                            start = contentStartPadding,
+                            end = contentEndPadding,
+                            top = 10.dp
+                        )
+                ) {}
+
+                LaunchedEffect(
+                    historyUiState.query,
+                    historyUiState.selectedFilter,
+                    filteredTasks.firstOrNull()?.id
+                ) {
+                    if (filteredTasks.isNotEmpty()) {
+                        statusListState.animateScrollToItem(0)
+                    }
+                }
+
                 // 筛选标签栏
-                var selectedFilter by remember { mutableStateOf(0) }
-                val waitingCount = tasks.count { it.status == com.neoruaa.xhsdn.data.TaskStatus.WAITING_FOR_USER }
-                val failedCount = tasks.count { it.status == com.neoruaa.xhsdn.data.TaskStatus.FAILED }
-                val filterLabels = listOf(stringResource(R.string.tab_all), stringResource(R.string.tab_waiting_for_selection, waitingCount), stringResource(R.string.tab_failed, failedCount))
+                val filterLabels = listOf(
+                    stringResource(R.string.tab_all),
+                    stringResource(
+                        R.string.tab_waiting_for_selection,
+                        historyUiState.waitingCount
+                    ),
+                    stringResource(R.string.tab_failed, historyUiState.failedCount)
+                )
                 TabRowWithContour(
                     tabs = filterLabels,
-                    selectedTabIndex = selectedFilter,
+                    selectedTabIndex = historyUiState.selectedFilter.ordinal,
                     fontSize = 14.sp,
                     height = 40.dp,
                     itemSpacing = 2.dp,
-                    onTabSelected = { selectedFilter = it },
+                    onTabSelected = { index ->
+                        HistoryFilter.entries.getOrNull(index)?.let(onHistoryFilterChange)
+                    },
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(
@@ -1042,18 +1141,6 @@ private fun HistoryPage(
                             bottom = 10.dp
                         )
                 )
-
-                // 根据筛选条件过滤任务
-                val filteredTasks = when (selectedFilter) {
-                    1 -> tasks.filter { it.status == com.neoruaa.xhsdn.data.TaskStatus.WAITING_FOR_USER }
-                    2 -> tasks.filter { it.status == com.neoruaa.xhsdn.data.TaskStatus.FAILED }
-                    else -> tasks
-                }
-                LaunchedEffect(filteredTasks.size) {
-                    if (filteredTasks.isNotEmpty()) {
-                        statusListState.animateScrollToItem(0)
-                    }
-                }
 
                 LazyColumn(
                     state = statusListState,
@@ -1069,6 +1156,7 @@ private fun HistoryPage(
                 ) {
                     if (filteredTasks.isEmpty()) {
                         item(key = "history_empty") {
+                            val hasNoHistory = tasks.isEmpty()
                             Column(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -1081,20 +1169,38 @@ private fun HistoryPage(
                             ) {
                                 Icon(
                                     imageVector = MiuixIcons.Info,
-                                    contentDescription = stringResource(R.string.no_downloaded_files),
+                                    contentDescription = stringResource(
+                                        if (hasNoHistory) {
+                                            R.string.no_downloaded_files
+                                        } else {
+                                            R.string.main_search_no_results
+                                        }
+                                    ),
                                     modifier = Modifier.size(48.dp),
                                     tint = MiuixTheme.colorScheme.onSurfaceVariantSummary
                                 )
                                 Spacer(modifier = Modifier.height(16.dp))
                                 Text(
-                                    text = stringResource(R.string.no_downloaded_files),
+                                    text = stringResource(
+                                        if (hasNoHistory) {
+                                            R.string.no_downloaded_files
+                                        } else {
+                                            R.string.main_search_no_results
+                                        }
+                                    ),
                                     fontWeight = FontWeight.Medium,
                                     fontSize = MiuixTheme.textStyles.headline1.fontSize,
                                     color = MiuixTheme.colorScheme.onSurfaceVariantSummary
                                 )
                                 Spacer(modifier = Modifier.height(8.dp))
                                 Text(
-                                    text = stringResource(R.string.ready_to_download),
+                                    text = stringResource(
+                                        if (hasNoHistory) {
+                                            R.string.ready_to_download
+                                        } else {
+                                            R.string.main_search_adjust_query
+                                        }
+                                    ),
                                     fontSize = MiuixTheme.textStyles.body2.fontSize,
                                     color = MiuixTheme.colorScheme.onSurfaceVariantSummary
                                 )
@@ -1202,27 +1308,29 @@ private fun HistoryPage(
                         )
                         Text(
                             text = if (uiState.isDownloading) {
-                                stringResource(R.string.downloading_files)
+                                stringResource(R.string.downloading_files) + (activeTask?.noteTitle ?: activeTask?.noteUrl ?: " ")
                             } else if (manualInputLinks) {
                                 stringResource(R.string.manual_input_links)
                             } else {
                                 stringResource(R.string.start_download_from_clipboard)
                             },
+                            maxLines = 1,
+                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                             color = MiuixTheme.colorScheme.onPrimary,
                             fontWeight = FontWeight.Medium
                         )
                     }
 
-                    if (uiState.isDownloading) {
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(
-                            text = activeTask?.noteTitle ?: activeTask?.noteUrl ?: " ",
-                            color = MiuixTheme.colorScheme.onPrimary.copy(alpha = 0.8f),
-                            fontSize = 12.sp,
-                            maxLines = 1,
-                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
-                        )
-                    }
+//                    if (uiState.isDownloading) {
+//                        Spacer(modifier = Modifier.height(4.dp))
+//                        Text(
+//                            text = activeTask?.noteTitle ?: activeTask?.noteUrl ?: " ",
+//                            color = MiuixTheme.colorScheme.onPrimary.copy(alpha = 0.8f),
+//                            fontSize = 12.sp,
+//                            maxLines = 1,
+//                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+//                        )
+//                    }
                 }
             }
 
@@ -1437,6 +1545,7 @@ private fun HistoryPage(
 @Composable
 private fun TaskCell(
     task: com.neoruaa.xhsdn.data.DownloadTask,
+    modifier: Modifier = Modifier,
     mediaItems: List<MediaItem> = emptyList(),
     onCopyUrl: () -> Unit,
     onBrowseUrl: () -> Unit,
@@ -1446,8 +1555,7 @@ private fun TaskCell(
     onStop: () -> Unit,
     onDelete: () -> Unit,
     onMediaClick: (MediaItem) -> Unit = {},
-    onClick: (() -> Unit)? = null,
-    modifier: Modifier = Modifier
+    onClick: (() -> Unit)? = null
 ) {
     val statusColor = when (task.status) {
         com.neoruaa.xhsdn.data.TaskStatus.QUEUED -> Color(0xFF9E9E9E)       // 灰色

@@ -21,7 +21,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.NonCancellable
-import com.neoruaa.xhsdn.data.TaskManager
+import com.neoruaa.xhsdn.data.tasks.TaskManager
 import com.neoruaa.xhsdn.data.TaskStatus
 import com.neoruaa.xhsdn.data.NoteType
 import kotlinx.coroutines.CancellationException
@@ -182,11 +182,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         return when {
             bytesPerSecond >= 1024 * 1024 -> { // >= 1 MB/s
                 val mbps = bytesPerSecond / (1024 * 1024)
-                "${String.format("%.2f", mbps)}MB/s"
+                "${String.format(Locale.getDefault(), "%.2f", mbps)}MB/s"
             }
             bytesPerSecond >= 1024 -> { // >= 1 KB/s
                 val kbps = bytesPerSecond / 1024
-                "${String.format("%.1f", kbps)}KB/s"
+                "${String.format(Locale.getDefault(), "%.1f", kbps)}KB/s"
             }
             else -> {
                 "${bytesPerSecond.toInt()}B/s"
@@ -575,7 +575,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                             selectiveDownload = state.selectiveDownload.copy(
                                 progress = progress,
                                 progressLabel = "${index + 1}/${selectedItems.size}",
-                                progressText = "${String.format("%.1f", progress * 100)}%｜0KB/s"
+                                progressText = "${String.format(Locale.getDefault(), "%.1f", progress * 100)}%｜0KB/s"
                             )
                         )
                     }
@@ -825,6 +825,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun copyDescription(onResult: (String) -> Unit, onError: (String) -> Unit) {
         val targetUrl = _uiState.value.urlInput.trim()
+        val targetTaskId = currentTaskId.takeIf { it > 0 }
         if (targetUrl.isEmpty()) {
             onError(appContext.getString(R.string.please_enter_url))
             return
@@ -839,15 +840,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         appContext.getString(R.string.copy_description_extracted, desc)
                     )
 
-                    // 如果当前有任务ID，则更新任务的笔记内容
-                    if (currentTaskId > 0) {
-                        val currentTask = TaskManager.getTaskById(currentTaskId)
+                    // Bind the asynchronous result to the task that initiated this request.
+                    if (targetTaskId != null) {
+                        val currentTask = TaskManager.getTaskById(targetTaskId)
                         if (currentTask != null) {
                             // 创建更新后的任务，保留原有数据但更新笔记内容
                             val updatedTask = currentTask.copy(noteContent = desc)
 
                             // 更新TaskManager中的任务
-                            TaskManager.updateTask(currentTaskId) { updatedTask }
+                            TaskManager.updateTask(targetTaskId) { updatedTask }
                         }
                     }
 
@@ -1165,7 +1166,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     _uiState.update { state ->
                         state.copy(
                             selectiveDownload = state.selectiveDownload.copy(
-                                progressText = "${String.format("%.1f", progressPercent)}%｜$lastCalculatedSpeed"
+                                progressText = "${String.format(Locale.getDefault(), "%.1f", progressPercent)}%｜$lastCalculatedSpeed"
                             )
                         )
                     }
@@ -1478,7 +1479,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         currentDownloadTotalBytes = total
                         updateProgress()
 
-                        val progressText = "${String.format("%.1f", progressPercent)}%｜$lastCalculatedSpeed"
+                        val progressText = "${String.format(Locale.getDefault(), "%.1f", progressPercent)}%｜$lastCalculatedSpeed"
                         _uiState.update { it.copy(downloadProgressText = progressText) }
                     }
                 }

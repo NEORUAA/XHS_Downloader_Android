@@ -122,7 +122,6 @@
     <string name="unable_to_open_file">Unable to open file: %1$s</string>
     <string name="link_copied">Link copied</string>
     <string name="no_valid_link_found">No valid link found</string>
-    <string name="storage_permission_required">Storage permission required, please open the app to grant permission</string>
     <string name="clipboard_no_xhs_link">No Xiaohongshu link detected in clipboard</string>
     <string name="copied_description">Description copied</string>
     <string name="unable_to_open_browser">Unable to open browser: %1$s</string>
@@ -132,17 +131,9 @@
     <string name="file_does_not_exist">File does not exist: %1$s</string>
     <string name="unable_to_open_file_error">Unable to open file: %1$s</string>
     <string name="grant_all_files_access_retry">Please grant all files access permission and try again</string>
-    <string name="task_ignored_downloading">Task ignored, link is downloading, please do not copy repeatedly</string>
-    <string name="task_ignored_recently_downloaded">Task ignored, this link was recently downloaded, please check the history page</string>
-    <string name="auto_download_unavailable">Automatic download unavailable</string>
     <string name="preparing_download">Preparing download...</string>
-    <string name="downloading_files_count">Downloading... %1$d files in total</string>
-    <string name="download_completed_files_count">Download completed, %1$d files downloaded successfully</string>
-    <string name="download_failed_no_files">Download failed, no files downloaded</string>
-    <string name="download_failed_check_network">Download failed, please check network or link</string>
     <string name="download_cancelled_by_user">Download cancelled by user</string>
     <string name="download_error_message">Download error: %1$s</string>
-    <string name="user_manually_stopped">User manually stopped</string>
     <string name="delete_file_dialog_title">Delete file</string>
     <string name="delete_file_dialog_message">Are you sure you want to delete \"%1$s\" media file?</string>
     <string name="notes_content_title">Notes Content</string>
@@ -156,13 +147,6 @@
     <string name="failed_files_format">· %1$d failed</string>
     <string name="files_completed_format">%1$d/%2$d</string>
     <string name="official_limitation_tip">Due to official restrictions, only low-resolution versions can be downloaded. For high-definition, select web crawl.</string>
-    <string name="download_completed_notification_title">Download completed</string>
-    <string name="download_failed_notification_title">Download failed</string>
-    <string name="download_cancelled_notification_title">Download cancelled</string>
-    <string name="download_error_notification_title">Download error</string>
-    <string name="media_type_image">IMAGE</string>
-    <string name="media_type_video">VIDEO</string>
-    <string name="media_type_other">OTHER</string>
     <string name="note_type_image">Image</string>
     <string name="note_type_video">Video</string>
     <string name="note_type_unknown">Unknown</string>
@@ -261,4 +245,8 @@
     <string name="debug_keyword_web_crawl">web crawl</string>
     <string name="debug_keyword_hint">hint</string>
     <string name="common_zero_progress">0/0</string>
+    <string name="main_search_history">Search links or descriptions</string>
+    <string name="common_clear_search">Clear search</string>
+    <string name="main_search_no_results">No matching download tasks</string>
+    <string name="main_search_adjust_query">Try another search or status filter</string>
 </resources>

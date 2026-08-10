@@ -3,6 +3,7 @@ package com.neoruaa.xhsdn.data.tasks
 import com.neoruaa.xhsdn.data.DownloadTask
 import com.neoruaa.xhsdn.data.NoteType
 import com.neoruaa.xhsdn.data.TaskStatus
+import com.neoruaa.xhsdn.data.storage.StoredMediaRef
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
@@ -22,7 +23,16 @@ class TaskEntityMappingTest {
             createdAt = 100L,
             completedAt = null,
             errorMessage = null,
-            filePaths = listOf("second.jpg", "first.jpg", "second.jpg"),
+            mediaRefs = listOf(
+                StoredMediaRef(
+                    uri = "content://com.android.externalstorage.documents/document/primary%3APictures%2Fsecond.jpg",
+                    displayName = "second.jpg",
+                    mimeType = "image/jpeg",
+                    sizeBytes = 123L,
+                ),
+                DownloadTask.legacyMediaRef("first.jpg"),
+                DownloadTask.legacyMediaRef("second.jpg"),
+            ),
             noteContent = "description"
         )
 

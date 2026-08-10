@@ -3,6 +3,8 @@ package com.neoruaa.xhsdn.domain.download
 import com.neoruaa.xhsdn.core.model.ResolvedMedia
 import com.neoruaa.xhsdn.core.model.ResolvedNote
 import com.neoruaa.xhsdn.data.xhs.XhsContentRepository
+import com.neoruaa.xhsdn.data.storage.StorageDestination
+import com.neoruaa.xhsdn.data.storage.StoredMediaRef
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
@@ -79,6 +81,43 @@ class RepositoryDownloadCoordinatorTest {
 
         assertEquals(DownloadEvent.Resolving, events.first())
         assertEquals(DownloadEvent.Failed(DownloadFailure.RequiresWebView), events.last())
+    }
+
+    @Test
+    fun passesTheRequestDestinationToTheStorageSink() = runTest {
+        val expectedDestination = StorageDestination.CustomTree("content://local/tree/folder")
+        var actualDestination: StorageDestination? = null
+        val expectedRef = StoredMediaRef(
+            uri = "content://local/document/image.jpg",
+            displayName = "image.jpg",
+            mimeType = "image/jpeg",
+        )
+        val sink = object : ResolvedMediaSink {
+            override suspend fun save(taskId: Long, mediaIndex: Int, media: ResolvedMedia): String =
+                error("The typed storage path should be used")
+
+            override suspend fun saveStored(
+                taskId: Long,
+                mediaIndex: Int,
+                media: ResolvedMedia,
+                destination: StorageDestination,
+            ): StoredMediaRef {
+                actualDestination = destination
+                return expectedRef
+            }
+        }
+
+        val events = coordinator(sink).download(
+            DownloadRequest(
+                taskId = 9L,
+                rawInput = note.canonicalUrl,
+                selectedUrls = setOf(note.images.single().sourceUrl),
+                storageDestination = expectedDestination,
+            )
+        ).toList()
+
+        assertEquals(expectedDestination, actualDestination)
+        assertTrue(events.contains(DownloadEvent.Saved(expectedRef)))
     }
 
     private fun coordinator(sink: ResolvedMediaSink): RepositoryDownloadCoordinator =

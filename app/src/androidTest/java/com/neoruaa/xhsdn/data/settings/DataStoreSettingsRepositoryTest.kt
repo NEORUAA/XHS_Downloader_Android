@@ -67,4 +67,32 @@ class DataStoreSettingsRepositoryTest {
         assertTrue(repository.currentSettings.manualInputLinks)
         assertTrue(withTimeout(5_000) { repository.settings.first { it.manualInputLinks } }.manualInputLinks)
     }
+
+    @Test
+    fun persistsAndClearsCustomStorageLocation() = runBlocking {
+        val repository = DataStoreSettingsRepository(context, scope)
+        assertEquals(null, withTimeout(5_000) { repository.settings.first() }.customStorageTreeUri)
+
+        repository.setCustomStorageLocation(
+            "content://com.android.externalstorage.documents/tree/primary%3AXHS",
+            "XHS"
+        )
+        val selected = withTimeout(5_000) {
+            repository.settings.first { it.customStorageTreeUri != null }
+        }
+        assertEquals(
+            "content://com.android.externalstorage.documents/tree/primary%3AXHS",
+            selected.customStorageTreeUri
+        )
+        assertEquals("/storage/emulated/0/XHS", selected.customStorageDisplayName)
+
+        repository.clearCustomStorageLocation()
+        val cleared = withTimeout(5_000) {
+            repository.settings.first {
+                it.customStorageTreeUri == null && it.customStorageDisplayName == null
+            }
+        }
+        assertEquals(null, cleared.customStorageTreeUri)
+        assertEquals(null, cleared.customStorageDisplayName)
+    }
 }

@@ -70,6 +70,15 @@
     <string name="accessibility_service_description">啟用此服務以允許小紅書下載器在背景監聽您的剪貼簿，自動偵測小紅書連結並開始下載。</string>
 
     <!-- Settings category titles -->
+    <string name="storage_location">儲存位置</string>
+    <string name="storage_location_reset">使用預設儲存位置</string>
+    <string name="storage_location_picker_unavailable">此裝置沒有可用的資料夾選擇器</string>
+    <string name="storage_location_local_only">請選擇裝置儲存空間中的本機資料夾</string>
+    <string name="storage_location_permission_required">所選資料夾未授予持久的讀寫權限</string>
+    <string name="storage_location_access_lost_reselect">儲存資料夾的存取權限已失效，請前往設定重新選擇。</string>
+    <string name="storage_location_invalid">所選資料夾無法使用</string>
+    <string name="storage_location_not_writable">請選擇允許建立檔案的資料夾</string>
+    <string name="storage_location_selected_folder">已選取的資料夾</string>
     <string name="download_options">下載選項</string>
     <string name="clipboard">剪貼簿</string>
     <string name="file_naming">檔案命名</string>
@@ -135,6 +144,7 @@
     <string name="download_cancelled_by_user">下載已取消，使用者操作</string>
     <string name="download_error_message">下載發生錯誤：%1$s</string>
     <string name="delete_file_dialog_title">刪除檔案</string>
+    <string name="delete_file_failed">無法刪除「%1$s」</string>
     <string name="delete_file_dialog_message">是否刪除 \"%1$s\" 媒體檔案？</string>
     <string name="notes_content_title">筆記文案</string>
     <string name="downloaded_files_title_lower">已下載檔案</string>

@@ -30,13 +30,29 @@ import com.neoruaa.xhsdn.DownloadCallback
 import com.neoruaa.xhsdn.FileDownloader
 import com.neoruaa.xhsdn.R
 import com.neoruaa.xhsdn.XHSDownloader
+import com.neoruaa.xhsdn.XHSApplication
 import com.neoruaa.xhsdn.data.DownloadTask
+import com.neoruaa.xhsdn.data.storage.StorageDestination
+import com.neoruaa.xhsdn.data.storage.StorageAccessException
+import com.neoruaa.xhsdn.data.storage.StoredMediaRef
 import com.neoruaa.xhsdn.utils.NotificationHelper
 import java.io.File
 import java.io.IOException
+import java.util.concurrent.ConcurrentHashMap
 
 
-data class MediaItem(val path: String, val type: MediaType)
+data class MediaItem(
+    val media: StoredMediaRef,
+    val type: MediaType = com.neoruaa.xhsdn.utils.detectMediaType(media)
+) {
+    val path: String
+        get() = media.path
+
+    constructor(path: String, type: MediaType) : this(
+        media = StoredMediaRef.fromLocation(path),
+        type = type
+    )
+}
 
 enum class MediaType {
     IMAGE, VIDEO, OTHER
@@ -108,6 +124,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private var hasUserContinuedAfterVideoWarning = false
     private var downloadJob: Job? = null
     private var currentDownloader: XHSDownloader? = null
+    private var selectiveStorageDestination: StorageDestination = StorageDestination.DefaultMediaStore
+    private val taskStorageDestinations = ConcurrentHashMap<Long, StorageDestination>()
 
     // Records the previous download attempt so we can detect when the user retries the
     // same URL but the app parses a different number of media items (see issue #37).
@@ -372,6 +390,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
 
         currentUrl = targetUrl
+        selectiveStorageDestination = snapshotStorageDestination()
         currentTaskId = 0
         downloadedCount = 0
         totalMediaCount = 0
@@ -406,7 +425,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         downloadJob = viewModelScope.launch(Dispatchers.IO) {
             val downloader = XHSDownloader(
                 getApplication(),
-                createSelectiveCacheCallback(this)
+                createSelectiveCacheCallback(this),
+                selectiveStorageDestination
             )
             currentDownloader = downloader
             downloader.setShouldStopOnVideo(false)
@@ -551,22 +571,28 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             )
             TaskManager.startTask(taskId)
 
-            val saver = FileDownloader(getApplication(), null)
-            val savedPaths = mutableListOf<String>()
+            val saver = FileDownloader(getApplication(), null, selectiveStorageDestination)
+            val savedMedia = mutableListOf<StoredMediaRef>()
             var failedCount = 0
+            var storageAccessLost = false
 
             selectedItems.forEachIndexed { index, item ->
-                val savedFile = runCatching {
-                    saver.copyCachedFileToMediaStore(File(item.path))
-                }.getOrNull()
-                if (savedFile != null && savedFile.exists()) {
-                    savedPaths.add(savedFile.absolutePath)
-                    TaskManager.addFilePath(taskId, savedFile.absolutePath)
-                } else {
+                if (storageAccessLost) return@forEachIndexed
+                val storedMedia = try {
+                    saver.copyCachedFileToStorage(File(item.path))
+                } catch (_: StorageAccessException) {
+                    storageAccessLost = true
+                    failedCount += selectedItems.size - index
+                    null
+                }
+                if (storedMedia != null) {
+                    savedMedia.add(storedMedia)
+                    TaskManager.addMediaRef(taskId, storedMedia)
+                } else if (!storageAccessLost) {
                     failedCount++
                 }
 
-                val completed = savedPaths.size
+                val completed = savedMedia.size
                 TaskManager.updateProgress(taskId, completed, failedCount, 0f)
                 withContext(Dispatchers.Main) {
                     val progress = (index + 1) / selectedItems.size.toFloat()
@@ -582,13 +608,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 }
             }
 
-            val success = savedPaths.isNotEmpty() && failedCount == 0
+            val success = savedMedia.isNotEmpty() && failedCount == 0
             TaskManager.completeTask(
                 taskId,
                 success,
                 when {
                     success -> null
-                    savedPaths.isNotEmpty() -> appContext.getString(
+                    savedMedia.isNotEmpty() -> appContext.getString(
                         R.string.selective_download_save_partial_count,
                         failedCount
                     )
@@ -599,9 +625,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             cleanupSelectiveCache(selectiveState.cacheDir)
             withContext(Dispatchers.Main) {
                 resetSelectiveDownloadState()
+                if (storageAccessLost) {
+                    onError(appContext.getString(R.string.storage_location_access_lost_reselect))
+                }
                 appendStatus(
                     appContext.getString(
-                        if (success) {
+                        if (storageAccessLost) {
+                            R.string.storage_location_access_lost_reselect
+                        } else if (success) {
                             R.string.selective_download_saved
                         } else {
                             R.string.selective_download_saved_partial
@@ -646,6 +677,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             totalFiles = 1 // We'll update this later after getting the count
         )
         TaskManager.startTask(initialTaskId)
+        val storageDestination = snapshotStorageDestination()
+        taskStorageDestinations[initialTaskId] = storageDestination
 
         currentTaskId = initialTaskId
         // 重置任务跟踪计数器
@@ -673,7 +706,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
             val downloader = XHSDownloader(
                 getApplication(),
-                createDownloadCallback(myTaskId, localCompletedFiles, localFailedFiles, this)
+                createDownloadCallback(myTaskId, localCompletedFiles, localFailedFiles, this),
+                storageDestination
             )
 
             // Store reference so cancelCurrentDownload() can signal this downloader
@@ -742,6 +776,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         // 重置任务状态
         TaskManager.resetTask(task.id)
         currentTaskId = task.id
+        val storageDestination = snapshotStorageDestination()
+        taskStorageDestinations[task.id] = storageDestination
 
         val targetUrl = task.noteUrl
         currentUrl = targetUrl
@@ -778,7 +814,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
             val downloader = XHSDownloader(
                 getApplication(),
-                createDownloadCallback(myTaskId, localCompletedFiles, localFailedFiles, this)
+                createDownloadCallback(myTaskId, localCompletedFiles, localFailedFiles, this),
+                storageDestination
             )
             
             // Store reference so cancelCurrentDownload() can signal this downloader
@@ -928,6 +965,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
         // Update task status to DOWNLOADING if taskId is provided
         val myTaskId = taskId ?: 0L
+        val storageDestination = taskStorageDestinations[myTaskId]
+            ?: snapshotStorageDestination().also { destination ->
+                if (myTaskId > 0) taskStorageDestinations[myTaskId] = destination
+            }
         if (myTaskId > 0) {
             TaskManager.updateTaskStatus(myTaskId, TaskStatus.DOWNLOADING)
             currentTaskId = myTaskId
@@ -955,7 +996,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
             val downloader = XHSDownloader(
                 getApplication(),
-                createDownloadCallback(myTaskId, localCompletedFiles, localFailedFiles, this, isWebCrawl = true)
+                createDownloadCallback(myTaskId, localCompletedFiles, localFailedFiles, this, isWebCrawl = true),
+                storageDestination
             )
 
             // Store reference so cancelCurrentDownload() can signal this downloader
@@ -1255,11 +1297,22 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    private fun addMedia(filePath: String) {
-        val type = detectMediaType(filePath)
+    private fun addMedia(media: StoredMediaRef) {
         _uiState.update { state ->
-            state.copy(mediaItems = state.mediaItems + MediaItem(filePath, type))
+            state.copy(mediaItems = state.mediaItems + MediaItem(media))
         }
+    }
+
+    private fun snapshotStorageDestination(): StorageDestination {
+        val treeUri = (getApplication<Application>() as XHSApplication)
+            .appContainer
+            .settingsRepository
+            .currentSettings
+            .customStorageTreeUri
+            ?.trim()
+            ?.takeIf(String::isNotBlank)
+        return treeUri?.let(StorageDestination::CustomTree)
+            ?: StorageDestination.DefaultMediaStore
     }
 
     fun removeMediaItem(mediaItem: MediaItem) {
@@ -1426,15 +1479,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         isWebCrawl: Boolean = false
     ): DownloadCallback {
         return object : DownloadCallback {
-            override fun onFileDownloaded(filePath: String) {
+            override fun onFileDownloaded(ref: StoredMediaRef) {
                 val completed = completedFiles.incrementAndGet()
                 TaskManager.updateProgress(taskId, completed, failedFiles.get(), 0f)
-                TaskManager.addFilePath(taskId, filePath)
+                TaskManager.addMediaRef(taskId, ref)
 
                 if (taskId == currentTaskId) {
                     scope.launch(Dispatchers.Main) {
-                        if (displayedFiles.add(filePath)) {
-                            addMedia(filePath)
+                        if (displayedFiles.add(ref.path)) {
+                            addMedia(ref)
                             downloadedCount++
                             taskCompletedFiles = completedFiles.get()
                             currentFileProgress = 0f

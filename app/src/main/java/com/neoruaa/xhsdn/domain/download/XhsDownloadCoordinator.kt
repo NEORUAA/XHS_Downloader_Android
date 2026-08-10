@@ -3,6 +3,7 @@ package com.neoruaa.xhsdn.domain.download
 import android.util.Log
 import com.neoruaa.xhsdn.DownloadCallback
 import com.neoruaa.xhsdn.FileDownloader
+import com.neoruaa.xhsdn.data.storage.StoredMediaRef
 import java.io.File
 import java.util.LinkedHashSet
 
@@ -10,6 +11,7 @@ import java.util.LinkedHashSet
 data class XhsDownloadResult(
     val success: Boolean,
     val file: File? = null,
+    val stored: StoredMediaRef? = null,
     val failure: DownloadFailure? = null,
 )
 
@@ -54,11 +56,15 @@ class XhsDownloadCoordinator(
                 } else {
                     null
                 }
-                val success = cachedFile?.exists() == true ||
-                    (cacheDirectory == null && fileDownloader.downloadFile(candidate, filename, timestamp, false))
+                val stored = if (cacheDirectory == null) {
+                    fileDownloader.downloadFileStored(candidate, filename, timestamp, false)
+                } else {
+                    null
+                }
+                val success = cachedFile?.exists() == true || stored != null
                 if (success) {
                     if (candidate != mediaUrl) Log.d(TAG, "Download succeeded via fallback URL: $candidate")
-                    return XhsDownloadResult(true, cachedFile)
+                    return XhsDownloadResult(true, cachedFile, stored)
                 }
                 if (attemptIndex + 1 < MAX_ATTEMPTS && !sleepBeforeRetry(attemptIndex + 1)) {
                     return XhsDownloadResult(false, failure = DownloadFailure.Cancelled)

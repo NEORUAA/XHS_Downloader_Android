@@ -32,4 +32,17 @@ interface SettingsRepository {
     suspend fun setAutoReadClipboard(enabled: Boolean) = update { it.copy(autoReadClipboard = enabled) }
 
     suspend fun setManualInputLinks(enabled: Boolean) = update { it.copy(manualInputLinks = enabled) }
+
+    suspend fun setCustomStorageLocation(uri: String?, displayName: String?) = update {
+        if (uri.isNullOrBlank()) {
+            it.copy(customStorageTreeUri = null, customStorageDisplayName = null)
+        } else {
+            it.copy(
+                customStorageTreeUri = uri,
+                customStorageDisplayName = displayName
+            )
+        }
+    }
+
+    suspend fun clearCustomStorageLocation() = setCustomStorageLocation(null, null)
 }

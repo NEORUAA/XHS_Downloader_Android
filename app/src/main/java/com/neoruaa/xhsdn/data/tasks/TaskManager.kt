@@ -5,6 +5,7 @@ import android.util.Log
 import com.neoruaa.xhsdn.data.DownloadTask
 import com.neoruaa.xhsdn.data.NoteType
 import com.neoruaa.xhsdn.data.TaskStatus
+import com.neoruaa.xhsdn.data.storage.StoredMediaRef
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -171,9 +172,16 @@ object TaskManager {
         persist { it.updateProgress(taskId, completed, failed, fileProgress) }
     }
 
-    fun addFilePath(taskId: Long, path: String) {
+    fun addMediaRef(taskId: Long, media: StoredMediaRef) {
         updateTask(taskId) { task ->
-            if (path.isBlank() || task.filePaths.contains(path)) task else task.copy(filePaths = task.filePaths + path)
+            if (task.mediaRefs.any { it.path == media.path }) task
+            else task.copy(mediaRefs = task.mediaRefs + media)
+        }
+    }
+
+    fun removeMediaRef(taskId: Long, location: String) {
+        updateTask(taskId) { task ->
+            task.copy(mediaRefs = task.mediaRefs.filterNot { it.path == location })
         }
     }
 
@@ -224,7 +232,7 @@ object TaskManager {
             completedFiles = 0,
             failedFiles = 0,
             currentFileProgress = 0f,
-            filePaths = emptyList(),
+            mediaRefs = emptyList(),
             errorMessage = null,
             completedAt = null
         )

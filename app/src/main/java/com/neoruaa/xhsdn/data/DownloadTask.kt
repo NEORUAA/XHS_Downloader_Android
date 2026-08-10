@@ -1,5 +1,7 @@
 package com.neoruaa.xhsdn.data
 
+import com.neoruaa.xhsdn.data.storage.StoredMediaRef
+import java.io.File
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -39,9 +41,13 @@ data class DownloadTask(
     val createdAt: Long,           // 创建时间
     val completedAt: Long? = null, // 完成时间
     val errorMessage: String? = null, // 错误信息
-    val filePaths: List<String> = emptyList(), // 下载的文件路径列表
+    val mediaRefs: List<StoredMediaRef> = emptyList(), // Persisted media locations
     val noteContent: String? = null // 笔记内容
 ) {
+    /** Compatibility view for legacy callers while media locations migrate to stable URIs. */
+    val filePaths: List<String>
+        get() = mediaRefs.map(StoredMediaRef::path)
+
     val progress: Float
         get() = if (totalFiles > 0) {
             val calculatedProgress = (completedFiles + currentFileProgress) / totalFiles.toFloat()
@@ -70,6 +76,15 @@ data class DownloadTask(
             put("completedAt", completedAt ?: 0L)
             put("errorMessage", errorMessage ?: "")
             put("filePaths", JSONArray(filePaths))
+            put("mediaRefs", JSONArray(mediaRefs.map { media ->
+                JSONObject().apply {
+                    put("uri", media.uri)
+                    put("displayName", media.displayName)
+                    put("mimeType", media.mimeType)
+                    put("sizeBytes", media.sizeBytes)
+                    put("legacyPath", media.legacyPath ?: JSONObject.NULL)
+                }
+            }))
             put("noteContent", noteContent ?: "")
         }
     }
@@ -89,11 +104,61 @@ data class DownloadTask(
                 createdAt = json.getLong("createdAt"),
                 completedAt = json.optLong("completedAt", 0L).takeIf { it > 0 },
                 errorMessage = json.optString("errorMessage").takeIf { it.isNotEmpty() },
-                filePaths = json.optJSONArray("filePaths")?.let { array ->
-                    (0 until array.length()).map { array.getString(it) }
-                } ?: emptyList(),
+                mediaRefs = parseMediaRefs(json),
                 noteContent = json.optString("noteContent").takeIf { it.isNotEmpty() }
             )
+        }
+
+        private fun parseMediaRefs(json: JSONObject): List<StoredMediaRef> {
+            val mediaRefs = json.optJSONArray("mediaRefs")
+            if (mediaRefs != null && mediaRefs.length() > 0) {
+                return (0 until mediaRefs.length()).mapNotNull { index ->
+                    val item = mediaRefs.optJSONObject(index) ?: return@mapNotNull null
+                    val uri = item.optString("uri").takeIf(String::isNotBlank)
+                        ?: return@mapNotNull null
+                    val legacyPath = item.optString("legacyPath")
+                        .takeIf { it.isNotBlank() && it != "null" }
+                    StoredMediaRef(
+                        uri = uri,
+                        displayName = item.optString("displayName")
+                            .ifBlank { legacyPath?.let { File(it).name }.orEmpty() },
+                        mimeType = item.optString("mimeType")
+                            .ifBlank { inferMimeType(legacyPath ?: uri) },
+                        sizeBytes = item.optLong("sizeBytes", 0L),
+                        legacyPath = legacyPath
+                    )
+                }
+            }
+
+            return json.optJSONArray("filePaths")?.let { array ->
+                (0 until array.length()).map { index -> legacyMediaRef(array.getString(index)) }
+            } ?: emptyList()
+        }
+
+        fun legacyMediaRef(path: String): StoredMediaRef {
+            val file = File(path)
+            return StoredMediaRef(
+                uri = file.toURI().toString(),
+                displayName = file.name,
+                mimeType = inferMimeType(path),
+                sizeBytes = file.takeIf(File::exists)?.length() ?: 0L,
+                legacyPath = path
+            )
+        }
+
+        private fun inferMimeType(location: String): String = when (
+            location.substringBefore('?').substringAfterLast('.', "").lowercase()
+        ) {
+            "jpg", "jpeg" -> "image/jpeg"
+            "png" -> "image/png"
+            "webp" -> "image/webp"
+            "gif" -> "image/gif"
+            "mp4" -> "video/mp4"
+            "mov" -> "video/quicktime"
+            "avi" -> "video/x-msvideo"
+            "mkv" -> "video/x-matroska"
+            "webm" -> "video/webm"
+            else -> "application/octet-stream"
         }
     }
 }

@@ -1,15 +1,22 @@
 package com.neoruaa.xhsdn
 
+import android.app.Activity
+import android.content.ActivityNotFoundException
+import android.content.ContentResolver
 import android.content.Intent
 import android.content.res.Configuration
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.provider.DocumentsContract
+import android.provider.DocumentsContract.Document
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -52,6 +59,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
 import com.neoruaa.xhsdn.data.settings.AppSettings
 import com.neoruaa.xhsdn.data.settings.SettingsRepository
+import com.neoruaa.xhsdn.data.settings.formatStorageDocumentPath
+import com.neoruaa.xhsdn.data.settings.storageDisplayPathFromTreeUri
 import com.neoruaa.xhsdn.ui.ActionIconButton
 import com.neoruaa.xhsdn.ui.AdaptiveTopAppBar
 import com.neoruaa.xhsdn.ui.TopAppBarIconButton
@@ -76,6 +85,7 @@ import top.yukonga.miuix.kmp.basic.rememberTopAppBarState
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Back
 import top.yukonga.miuix.kmp.icon.extended.Refresh
+import top.yukonga.miuix.kmp.preference.ArrowPreference
 import top.yukonga.miuix.kmp.theme.ColorSchemeMode
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.theme.ThemeController
@@ -92,7 +102,9 @@ data class SettingsUiState(
     val keepScreenOn: Boolean = false,
     val showClipboardBubble: Boolean = true,
     val autoReadClipboard: Boolean = false,
-    val manualInputLinks: Boolean = false
+    val manualInputLinks: Boolean = false,
+    val customStorageTreeUri: String? = null,
+    val customStorageDisplayName: String? = null
 )
 
 class SettingsViewModel(
@@ -158,6 +170,24 @@ class SettingsViewModel(
         it.copy(manualInputLinks = enabled)
     }
 
+    fun onCustomStorageLocationSelected(uri: String, displayName: String?) {
+        updateState {
+            it.copy(
+                customStorageTreeUri = uri,
+                customStorageDisplayName = displayName
+            )
+        }
+    }
+
+    fun onResetCustomStorageLocation() {
+        updateState {
+            it.copy(
+                customStorageTreeUri = null,
+                customStorageDisplayName = null
+            )
+        }
+    }
+
     private fun persist(state: SettingsUiState) {
         hasChanges = true
         viewModelScope.launch {
@@ -173,6 +203,8 @@ class SettingsViewModel(
                         showClipboardBubble = state.showClipboardBubble,
                         autoReadClipboard = state.autoReadClipboard,
                         manualInputLinks = state.manualInputLinks,
+                        customStorageTreeUri = state.customStorageTreeUri,
+                        customStorageDisplayName = state.customStorageDisplayName,
                         useMetadataFileNames = false
                     )
                 }
@@ -200,7 +232,9 @@ class SettingsViewModel(
         keepScreenOn = keepScreenOn,
         showClipboardBubble = showClipboardBubble,
         autoReadClipboard = autoReadClipboard,
-        manualInputLinks = manualInputLinks
+        manualInputLinks = manualInputLinks,
+        customStorageTreeUri = customStorageTreeUri,
+        customStorageDisplayName = customStorageDisplayName
     )
 }
 
@@ -221,6 +255,13 @@ class SettingsActivity : ComponentActivity() {
         SettingsViewModelFactory(
             (application as XHSApplication).appContainer.settingsRepository
         )
+    }
+
+    private val storageTreeLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode != Activity.RESULT_OK) return@registerForActivityResult
+        handleStorageTreeResult(result.data)
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -264,6 +305,8 @@ class SettingsActivity : ComponentActivity() {
                     onShowClipboardBubbleChange = viewModel::onShowClipboardBubbleChange,
                     onAutoReadClipboardChange = viewModel::onAutoReadClipboardChange,
                     onManualInputLinksChange = viewModel::onManualInputLinksChange,
+                    onStorageLocationClick = ::openStorageTreePicker,
+                    onResetStorageLocation = viewModel::onResetCustomStorageLocation,
                     topBarState = topBarState
                 )
             }
@@ -277,6 +320,126 @@ class SettingsActivity : ComponentActivity() {
     
     private fun checkAccessibilityState() {
         // No-op
+    }
+
+    private fun openStorageTreePicker() {
+        val intent = Intent(Intent.ACTION_OPEN_DOCUMENT_TREE).apply {
+            addFlags(
+                Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                    Intent.FLAG_GRANT_WRITE_URI_PERMISSION or
+                    Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION
+            )
+        }
+        try {
+            storageTreeLauncher.launch(intent)
+        } catch (_: ActivityNotFoundException) {
+            showStorageMessage(R.string.storage_location_picker_unavailable)
+        }
+    }
+
+    private fun handleStorageTreeResult(data: Intent?) {
+        val uri = data?.data ?: return
+        val resultFlags = data.flags and
+            (Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
+        val selection = validateStorageTree(uri, resultFlags) ?: return
+        viewModel.onCustomStorageLocationSelected(selection.uri.toString(), selection.displayName)
+    }
+
+    private fun validateStorageTree(uri: Uri, resultFlags: Int): StorageTreeSelection? {
+        if (uri.scheme != ContentResolver.SCHEME_CONTENT ||
+            uri.authority != EXTERNAL_STORAGE_AUTHORITY
+        ) {
+            showStorageMessage(R.string.storage_location_local_only)
+            return null
+        }
+        if (resultFlags !=
+            (Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
+        ) {
+            showStorageMessage(R.string.storage_location_permission_required)
+            return null
+        }
+
+        val documentId = runCatching {
+            DocumentsContract.getTreeDocumentId(uri)
+        }.getOrNull()
+        if (documentId.isNullOrBlank()) {
+            showStorageMessage(R.string.storage_location_invalid)
+            return null
+        }
+
+        val documentUri = runCatching {
+            DocumentsContract.buildDocumentUriUsingTree(uri, documentId)
+        }.getOrNull()
+        if (documentUri == null) {
+            showStorageMessage(R.string.storage_location_invalid)
+            return null
+        }
+
+        val document = runCatching {
+            contentResolver.query(
+                documentUri,
+                arrayOf(Document.COLUMN_MIME_TYPE, Document.COLUMN_FLAGS),
+                null,
+                null,
+                null
+            )?.use { cursor ->
+                if (!cursor.moveToFirst()) {
+                    null
+                } else {
+                    val mimeType = cursor.getString(0)
+                    val flags = cursor.getInt(1)
+                    StorageDocumentInfo(mimeType, flags)
+                }
+            }
+        }.getOrNull()
+        if (document == null ||
+            document.mimeType != Document.MIME_TYPE_DIR ||
+            document.flags and Document.FLAG_DIR_SUPPORTS_CREATE == 0
+        ) {
+            showStorageMessage(R.string.storage_location_not_writable)
+            return null
+        }
+
+        val persistableFlags = resultFlags and
+            (Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
+        try {
+            contentResolver.takePersistableUriPermission(uri, persistableFlags)
+        } catch (_: SecurityException) {
+            showStorageMessage(R.string.storage_location_permission_required)
+            return null
+        }
+
+        val persistedPermission = contentResolver.persistedUriPermissions.firstOrNull {
+            it.uri == uri
+        }
+        if (persistedPermission == null ||
+            !persistedPermission.isReadPermission ||
+            !persistedPermission.isWritePermission
+        ) {
+            showStorageMessage(R.string.storage_location_permission_required)
+            return null
+        }
+
+        val displayName = formatStorageDocumentPath(documentId) ?: uri.toString()
+        return StorageTreeSelection(uri, displayName)
+    }
+
+    private fun showStorageMessage(messageResId: Int) {
+        Toast.makeText(this, getString(messageResId), Toast.LENGTH_SHORT).show()
+    }
+
+    private data class StorageTreeSelection(
+        val uri: Uri,
+        val displayName: String
+    )
+
+    private data class StorageDocumentInfo(
+        val mimeType: String?,
+        val flags: Int
+    )
+
+    private companion object {
+        const val EXTERNAL_STORAGE_AUTHORITY = "com.android.externalstorage.documents"
     }
 
     private fun finishWithResult() {
@@ -300,12 +463,15 @@ private fun SettingsScreen(
     onShowClipboardBubbleChange: (Boolean) -> Unit,
     onAutoReadClipboardChange: (Boolean) -> Unit,
     onManualInputLinksChange: (Boolean) -> Unit,
+    onStorageLocationClick: () -> Unit,
+    onResetStorageLocation: () -> Unit,
     topBarState: TopAppBarState
 ) {
     val context = LocalContext.current
     val scrollBehavior = top.yukonga.miuix.kmp.basic.MiuixScrollBehavior(state = topBarState)
     val windowLayoutInfo = rememberWindowLayoutInfo()
     val downloadRows = listOf(
+        "storage_location",
         "create_live_photos",
         "selective_download",
         "debug_notifications",
@@ -359,6 +525,28 @@ private fun SettingsScreen(
                 key = { "download_option_$it" }
             ) { row ->
                 when (row) {
+                    "storage_location" -> if (uiState.customStorageTreeUri == null) {
+                        ArrowPreference(
+                            title = stringResource(R.string.storage_location),
+                            summary = stringResource(R.string.default_save_path_info),
+                            onClick = onStorageLocationClick
+                        )
+                    } else {
+                        BasicComponent(
+                            title = stringResource(R.string.storage_location),
+                            summary = storageDisplayPathFromTreeUri(uiState.customStorageTreeUri)
+                                ?: uiState.customStorageDisplayName
+                                ?: stringResource(R.string.storage_location_selected_folder),
+                            onClick = onStorageLocationClick,
+                            endActions = {
+                                ActionIconButton(
+                                    imageVector = MiuixIcons.Refresh,
+                                    contentDescription = stringResource(R.string.storage_location_reset),
+                                    onClick = onResetStorageLocation
+                                )
+                            }
+                        )
+                    }
                     "create_live_photos" -> MiuixSwitchWidget(
                         title = stringResource(R.string.create_live_photos),
                         description = stringResource(R.string.create_live_photos_desc),

@@ -5,6 +5,7 @@ import androidx.room3.withWriteTransaction
 import com.neoruaa.xhsdn.data.DownloadTask
 import com.neoruaa.xhsdn.data.NoteType
 import com.neoruaa.xhsdn.data.TaskStatus
+import com.neoruaa.xhsdn.data.storage.StoredMediaRef
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlin.math.max
@@ -107,10 +108,16 @@ class RoomTaskRepository(
         }
     }
 
-    override suspend fun addFilePath(taskId: Long, path: String) {
-        if (path.isBlank()) return
+    override suspend fun addMediaRef(taskId: Long, media: StoredMediaRef) {
         updateTask(taskId) { task ->
-            if (task.filePaths.contains(path)) task else task.copy(filePaths = task.filePaths + path)
+            if (task.mediaRefs.any { it.path == media.path }) task
+            else task.copy(mediaRefs = task.mediaRefs + media)
+        }
+    }
+
+    override suspend fun removeMediaRef(taskId: Long, location: String) {
+        updateTask(taskId) { task ->
+            task.copy(mediaRefs = task.mediaRefs.filterNot { it.path == location })
         }
     }
 
@@ -143,7 +150,7 @@ class RoomTaskRepository(
                 completedFiles = 0,
                 failedFiles = 0,
                 currentFileProgress = 0f,
-                filePaths = emptyList(),
+                mediaRefs = emptyList(),
                 errorMessage = null,
                 completedAt = null
             )
@@ -159,7 +166,7 @@ class RoomTaskRepository(
             val current = dao.getTask(taskId)?.toModel() ?: return@withWriteTransaction
             val updated = update(current)
             if (updated.id != current.id) return@withWriteTransaction
-            if (updated.filePaths == current.filePaths) {
+            if (updated.mediaRefs == current.mediaRefs) {
                 val entity = updated.toEntity()
                 dao.updateTaskFields(
                     taskId = entity.id,

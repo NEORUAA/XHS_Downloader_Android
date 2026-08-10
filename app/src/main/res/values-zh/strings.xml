@@ -70,6 +70,15 @@
     <string name="accessibility_service_description">启用此服务以允许小红书下载器在后台监听您的剪贴板，自动检测小红书链接并开始下载。</string>
 
     <!-- Settings category titles -->
+    <string name="storage_location">存储位置</string>
+    <string name="storage_location_reset">使用默认存储位置</string>
+    <string name="storage_location_picker_unavailable">此设备没有可用的文件夹选择器</string>
+    <string name="storage_location_local_only">请选择设备存储中的本地文件夹</string>
+    <string name="storage_location_permission_required">所选文件夹未授予持久的读写权限</string>
+    <string name="storage_location_access_lost_reselect">存储文件夹的访问权限已失效，请前往设置重新选择。</string>
+    <string name="storage_location_invalid">所选文件夹不可用</string>
+    <string name="storage_location_not_writable">请选择允许创建文件的文件夹</string>
+    <string name="storage_location_selected_folder">已选择的文件夹</string>
     <string name="download_options">下载选项</string>
     <string name="clipboard">剪贴板</string>
     <string name="file_naming">文件命名</string>
@@ -135,6 +144,7 @@
     <string name="download_cancelled_by_user">下载已取消，用户操作</string>
     <string name="download_error_message">下载出错：%1$s</string>
     <string name="delete_file_dialog_title">删除文件</string>
+    <string name="delete_file_failed">无法删除“%1$s”</string>
     <string name="delete_file_dialog_message">是否删除 \"%1$s\" 媒体文件？</string>
     <string name="notes_content_title">笔记文案</string>
     <string name="downloaded_files_title_lower">已下载文件</string>

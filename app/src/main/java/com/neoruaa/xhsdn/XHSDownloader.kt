@@ -1,9 +1,11 @@
 package com.neoruaa.xhsdn
 
 import android.content.Context
-import android.os.Environment
 import android.util.Log
 import com.neoruaa.xhsdn.data.settings.AppSettings
+import com.neoruaa.xhsdn.data.storage.StorageAccessException
+import com.neoruaa.xhsdn.data.storage.StorageDestination
+import com.neoruaa.xhsdn.data.storage.StoredMediaRef
 import com.neoruaa.xhsdn.data.xhs.ParsedXhsNote
 import com.neoruaa.xhsdn.data.xhs.XhsLivePhoto
 import com.neoruaa.xhsdn.data.xhs.XhsNoteMetadata
@@ -27,6 +29,18 @@ import java.util.regex.Pattern
 import okhttp3.OkHttpClient
 import okhttp3.Request
 
+private fun snapshotStorageDestination(context: Context): StorageDestination {
+    val settings = (context.applicationContext as? XHSApplication)
+        ?.appContainer
+        ?.settingsRepository
+        ?.currentSettings
+    val treeUri = settings?.customStorageTreeUri
+        ?.trim()
+        ?.takeIf(String::isNotBlank)
+    return treeUri?.let(StorageDestination::CustomTree)
+        ?: StorageDestination.DefaultMediaStore
+}
+
 /**
  * Compatibility facade for the downloader's historical public API.
  *
@@ -37,6 +51,7 @@ import okhttp3.Request
 class XHSDownloader @JvmOverloads constructor(
     context: Context,
     callback: DownloadCallback? = null,
+    private val sessionStorageDestination: StorageDestination = snapshotStorageDestination(context),
 ) {
     companion object {
         private const val TAG = "XHSDownloader"
@@ -72,6 +87,11 @@ class XHSDownloader @JvmOverloads constructor(
     init {
         downloadCallback = callback?.let { delegate ->
             object : DownloadCallback {
+                override fun onFileDownloaded(ref: StoredMediaRef) {
+                    successfulDownloads.incrementAndGet()
+                    delegate.onFileDownloaded(ref)
+                }
+
                 override fun onFileDownloaded(filePath: String) {
                     successfulDownloads.incrementAndGet()
                     delegate.onFileDownloaded(filePath)
@@ -90,7 +110,7 @@ class XHSDownloader @JvmOverloads constructor(
                 override fun isCancelled(): Boolean = delegate.isCancelled()
             }
         }
-        fileDownloader = FileDownloader(appContext, downloadCallback)
+        fileDownloader = FileDownloader(appContext, downloadCallback, sessionStorageDestination)
         coordinator = XhsDownloadCoordinator(
             fileDownloader = fileDownloader,
             callback = downloadCallback,
@@ -323,6 +343,14 @@ class XHSDownloader @JvmOverloads constructor(
             try {
                 if (!future.get()) hasErrors = true
             } catch (error: Exception) {
+                val storageError = generateSequence<Throwable>(error) { it.cause }
+                    .filterIsInstance<StorageAccessException>()
+                    .firstOrNull()
+                if (storageError != null) {
+                    futures.forEach { it.cancel(true) }
+                    executor?.shutdownNow()
+                    throw storageError
+                }
                 hasErrors = true
                 reportError("Exception downloading: ${mediaUrls[index]}", urlMapping[mediaUrls[index]] ?: mediaUrls[index])
             }
@@ -487,36 +515,48 @@ class XHSDownloader @JvmOverloads constructor(
             val baseName = buildFileBaseName(postId, livePhotoIndex)
             val imageName = "${baseName}_img.${determineFileExtension(pair.imageUrl)}"
             val videoName = "${baseName}_vid.${determineFileExtension(pair.videoUrl)}"
-            val tempDownloader = FileDownloader(appContext, null)
+            val tempDownloader = FileDownloader(appContext, null, sessionStorageDestination)
             var imageFile: File? = null
             var videoFile: File? = null
+            val workingDirectory = cacheDestinationDir.takeIf { cacheDestinationMode }
+                ?: File(appContext.cacheDir, "live_photo/$timestamp")
             try {
-                if (!tempDownloader.downloadFileToInternalStorage(pair.imageUrl, imageName, timestamp) ||
-                    !tempDownloader.downloadFileToInternalStorage(pair.videoUrl, videoName, timestamp)
-                ) {
+                if (!workingDirectory.exists() && !workingDirectory.mkdirs()) {
                     hasErrors = true
                     continue
                 }
-                val externalDir = appContext.getExternalFilesDir(null)
-                if (externalDir == null) {
-                    hasErrors = true
-                    continue
-                }
-                imageFile = File(externalDir, "xhs_${timestamp}_$imageName")
-                videoFile = File(externalDir, "xhs_${timestamp}_$videoName")
-                if (!imageFile.exists() || !videoFile.exists()) {
+                imageFile = tempDownloader.downloadFileToDirectory(
+                    pair.imageUrl,
+                    imageName,
+                    timestamp,
+                    workingDirectory,
+                )
+                videoFile = tempDownloader.downloadFileToDirectory(
+                    pair.videoUrl,
+                    videoName,
+                    timestamp,
+                    workingDirectory,
+                )
+                if (imageFile == null || videoFile == null) {
                     hasErrors = true
                     continue
                 }
 
-                val destinationDir = cacheDestinationDir.takeIf { cacheDestinationMode }
-                    ?: File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES), "xhsdn")
-                if (!destinationDir.exists()) destinationDir.mkdirs()
-                val output = File(destinationDir, "xhs_${baseName}_live.jpg")
-                val created = LivePhotoCreator.createLivePhoto(imageFile, videoFile, output, appContext)
+                val output = File(workingDirectory, "xhs_${baseName}_live.jpg")
+                val created = LivePhotoCreator.createLivePhoto(imageFile, videoFile, output, null)
                 if (created && output.exists() && output.length() > 0) {
-                    downloadCallback?.onFileDownloaded(output.absolutePath)
-                    if (cacheDestinationMode) cachedMediaFiles += CachedMediaFile(output.absolutePath, output.name)
+                    if (cacheDestinationMode) {
+                        val cachedRef = StoredMediaRef.fromLegacyFile(output, "image/jpeg")
+                        downloadCallback?.onFileDownloaded(cachedRef)
+                        cachedMediaFiles += CachedMediaFile(output.absolutePath, output.name)
+                    } else {
+                        val stored = tempDownloader.copyCachedFileToStorage(output)
+                        if (stored != null) {
+                            downloadCallback?.onFileDownloaded(stored)
+                        } else {
+                            hasErrors = true
+                        }
+                    }
                 } else {
                     hasErrors = true
                     downloadCallback?.onDownloadProgress(
@@ -531,12 +571,22 @@ class XHSDownloader @JvmOverloads constructor(
                         )
                     }
                 }
+            } catch (error: StorageAccessException) {
+                downloadCallback?.onDownloadError(
+                    appContext.getString(R.string.storage_location_access_lost_reselect),
+                    pair.imageUrl,
+                )
+                throw error
             } catch (error: Exception) {
                 hasErrors = true
                 Log.e(TAG, "Error creating live photo: ${error.message}")
             } finally {
                 imageFile?.takeIf(File::exists)?.delete()
                 videoFile?.takeIf(File::exists)?.delete()
+                if (!cacheDestinationMode) {
+                    workingDirectory.listFiles()?.forEach { it.delete() }
+                    workingDirectory.delete()
+                }
             }
         }
 

@@ -10,6 +10,7 @@ import androidx.room3.Relation
 import com.neoruaa.xhsdn.data.DownloadTask
 import com.neoruaa.xhsdn.data.NoteType
 import com.neoruaa.xhsdn.data.TaskStatus
+import com.neoruaa.xhsdn.data.storage.StoredMediaRef
 
 /**
  * Room representation of a download task.
@@ -63,7 +64,16 @@ data class TaskFileEntity(
     @ColumnInfo(name = "task_id")
     val taskId: Long,
     val path: String,
-    val position: Int
+    val position: Int,
+    val uri: String? = null,
+    @ColumnInfo(name = "display_name")
+    val displayName: String? = null,
+    @ColumnInfo(name = "mime_type")
+    val mimeType: String? = null,
+    @ColumnInfo(name = "size_bytes")
+    val sizeBytes: Long = 0L,
+    @ColumnInfo(name = "legacy_path")
+    val legacyPath: String? = null
 )
 
 @Entity(tableName = "task_metadata")
@@ -115,10 +125,49 @@ internal fun TaskWithFiles.toModel(): DownloadTask {
         createdAt = task.createdAt,
         completedAt = task.completedAt,
         errorMessage = task.errorMessage,
-        filePaths = files.sortedBy { it.position }.map { it.path },
+        mediaRefs = files.sortedBy { it.position }.map { file ->
+            val legacyPath = file.legacyPath ?: file.path.takeUnless { file.uri != null }
+            StoredMediaRef(
+                uri = file.uri
+                    ?: legacyPath?.let { java.io.File(it).toURI().toString() }
+                    ?: file.path,
+                displayName = file.displayName
+                    ?: legacyPath?.let { java.io.File(it).name }
+                    ?: file.path.substringAfterLast('/'),
+                mimeType = file.mimeType ?: inferMimeType(file.path),
+                sizeBytes = file.sizeBytes,
+                legacyPath = legacyPath
+            )
+        },
         noteContent = task.noteContent
     )
 }
 
-internal fun DownloadTask.toFileEntities(): List<TaskFileEntity> = filePaths
-    .mapIndexed { index, path -> TaskFileEntity(taskId = id, path = path, position = index) }
+internal fun DownloadTask.toFileEntities(): List<TaskFileEntity> = mediaRefs
+    .mapIndexed { index, media ->
+        TaskFileEntity(
+            taskId = id,
+            path = media.path,
+            position = index,
+            uri = media.uri,
+            displayName = media.displayName,
+            mimeType = media.mimeType,
+            sizeBytes = media.sizeBytes,
+            legacyPath = media.legacyPath
+        )
+    }
+
+private fun inferMimeType(location: String): String = when (
+    location.substringBefore('?').substringAfterLast('.', "").lowercase()
+) {
+    "jpg", "jpeg" -> "image/jpeg"
+    "png" -> "image/png"
+    "webp" -> "image/webp"
+    "gif" -> "image/gif"
+    "mp4" -> "video/mp4"
+    "mov" -> "video/quicktime"
+    "avi" -> "video/x-msvideo"
+    "mkv" -> "video/x-matroska"
+    "webm" -> "video/webm"
+    else -> "application/octet-stream"
+}

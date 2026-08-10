@@ -70,6 +70,15 @@
     <string name="accessibility_service_description">Enable this utility to allow XHS Downloader to monitor your clipboard in the background, automatically detect Xiaohongshu links, and start downloading.</string>
 
     <!-- Settings category titles -->
+    <string name="storage_location">Storage location</string>
+    <string name="storage_location_reset">Use default storage location</string>
+    <string name="storage_location_picker_unavailable">No folder picker is available on this device</string>
+    <string name="storage_location_local_only">Choose a local folder from the device storage</string>
+    <string name="storage_location_permission_required">The folder did not grant persistent read and write access</string>
+    <string name="storage_location_access_lost_reselect">Storage folder access was lost. Select the folder again in Settings.</string>
+    <string name="storage_location_invalid">The selected folder is unavailable</string>
+    <string name="storage_location_not_writable">Choose a folder that allows creating files</string>
+    <string name="storage_location_selected_folder">Selected folder</string>
     <string name="download_options">Download Options</string>
     <string name="clipboard">Clipboard</string>
     <string name="file_naming">File Naming</string>
@@ -135,6 +144,7 @@
     <string name="download_cancelled_by_user">Download cancelled by user</string>
     <string name="download_error_message">Download error: %1$s</string>
     <string name="delete_file_dialog_title">Delete file</string>
+    <string name="delete_file_failed">Unable to delete \"%1$s\"</string>
     <string name="delete_file_dialog_message">Are you sure you want to delete \"%1$s\" media file?</string>
     <string name="notes_content_title">Notes Content</string>
     <string name="downloaded_files_title_lower">Downloaded files</string>

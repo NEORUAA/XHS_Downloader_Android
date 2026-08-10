@@ -3,6 +3,7 @@ package com.neoruaa.xhsdn.data.tasks
 import com.neoruaa.xhsdn.data.DownloadTask
 import com.neoruaa.xhsdn.data.NoteType
 import com.neoruaa.xhsdn.data.TaskStatus
+import com.neoruaa.xhsdn.data.storage.StoredMediaRef
 import kotlinx.coroutines.flow.Flow
 
 /** Persistence boundary used by features and the legacy TaskManager facade. */
@@ -30,7 +31,9 @@ interface TaskRepository {
         currentFileProgress: Float = 0f
     )
 
-    suspend fun addFilePath(taskId: Long, path: String)
+    suspend fun addMediaRef(taskId: Long, media: StoredMediaRef)
+
+    suspend fun removeMediaRef(taskId: Long, location: String)
 
     suspend fun completeTask(taskId: Long, success: Boolean, errorMessage: String? = null)
 

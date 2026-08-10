@@ -4,14 +4,24 @@ import com.neoruaa.xhsdn.core.model.ResolvedMedia
 import com.neoruaa.xhsdn.core.model.ResolvedNote
 import com.neoruaa.xhsdn.data.xhs.XhsContentRepository
 import com.neoruaa.xhsdn.data.xhs.XhsResolveException
+import com.neoruaa.xhsdn.data.storage.StorageDestination
+import com.neoruaa.xhsdn.data.storage.StoredMediaRef
 import java.util.concurrent.CancellationException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.flow
 
-/** Saves one resolved media item and returns its persisted path. */
+/** Saves one resolved media item and returns its persisted location. */
 fun interface ResolvedMediaSink {
     suspend fun save(taskId: Long, mediaIndex: Int, media: ResolvedMedia): String
+
+    /** Typed storage seam; the default keeps old implementations source-compatible. */
+    suspend fun saveStored(
+        taskId: Long,
+        mediaIndex: Int,
+        media: ResolvedMedia,
+        destination: StorageDestination = StorageDestination.DefaultMediaStore,
+    ): StoredMediaRef = StoredMediaRef.fromLegacyPath(save(taskId, mediaIndex, media))
 }
 
 /**
@@ -51,15 +61,20 @@ class RepositoryDownloadCoordinator(
                     currentFileFraction = 0f
                 )
             )
-            val path = try {
-                mediaSink.save(request.taskId, index, item)
+            val ref = try {
+                mediaSink.saveStored(
+                    taskId = request.taskId,
+                    mediaIndex = index,
+                    media = item,
+                    destination = request.storageDestination,
+                )
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (error: Throwable) {
                 emit(DownloadEvent.Failed(DownloadFailure.Storage(error)))
                 return@flow
             }
-            emit(DownloadEvent.Saved(path))
+            emit(DownloadEvent.Saved(ref))
             emit(
                 DownloadEvent.Progress(
                     completedFiles = index + 1,

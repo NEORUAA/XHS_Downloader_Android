@@ -14,6 +14,7 @@ import com.neoruaa.xhsdn.data.tasks.RoomTaskRepository
 import com.neoruaa.xhsdn.data.tasks.TaskDatabase
 import com.neoruaa.xhsdn.data.tasks.TaskDatabaseConstants
 import com.neoruaa.xhsdn.data.tasks.TaskRepository
+import com.neoruaa.xhsdn.data.tasks.TASK_DATABASE_MIGRATION_1_2
 import com.neoruaa.xhsdn.domain.download.DownloadCoordinator
 import com.neoruaa.xhsdn.domain.download.RepositoryDownloadCoordinator
 import java.util.concurrent.atomic.AtomicBoolean
@@ -42,6 +43,7 @@ class AppContainer(context: Context) {
             TaskDatabaseConstants.DATABASE_NAME
         )
             .setDriver(AndroidSQLiteDriver())
+            .addMigrations(TASK_DATABASE_MIGRATION_1_2)
             .build()
     }
 

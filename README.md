@@ -33,7 +33,7 @@ iOS 版本仓库➡️ [点我](https://github.com/NEORUAA/XHS_Downloader_iOS)
 ## 常见问题
 1. **下载失败**: 请确认填入的分享链接在浏览器中能被查看
 2. **Live Photo 无效**: 合成失败会自动 fallback 成普通视频来下载；有些设备可能不支持或需要特定应用才能播放
-3. **找不到文件**: 文件保存在安卓 MediaStore 的 `Pictures/xhsdn` 及 `Movies/xhsdn` 目录下，请在相册中查看
+3. **找不到文件**: 默认位置为安卓 MediaStore 的 `Pictures/xhsdn` 与 `Movies/xhsdn`；也可在设置中选择设备内部存储或 SD 卡上的本地文件夹。任意自定义目录能否立即出现在第三方相册中取决于系统索引，但应用内任务预览可直接读取已授权目录
 
 
 ## 开源许可

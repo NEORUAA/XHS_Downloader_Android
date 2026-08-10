@@ -4,6 +4,8 @@ import android.content.Context
 import com.neoruaa.xhsdn.FileDownloader
 import com.neoruaa.xhsdn.LivePhotoCreator
 import com.neoruaa.xhsdn.core.model.ResolvedMedia
+import com.neoruaa.xhsdn.data.storage.StorageDestination
+import com.neoruaa.xhsdn.data.storage.StoredMediaRef
 import com.neoruaa.xhsdn.domain.download.ResolvedMediaSink
 import java.io.File
 import java.io.IOException
@@ -15,8 +17,16 @@ class AndroidResolvedMediaSink(context: Context) : ResolvedMediaSink {
     private val appContext = context.applicationContext
 
     override suspend fun save(taskId: Long, mediaIndex: Int, media: ResolvedMedia): String =
+        saveStored(taskId, mediaIndex, media).path
+
+    override suspend fun saveStored(
+        taskId: Long,
+        mediaIndex: Int,
+        media: ResolvedMedia,
+        destination: StorageDestination,
+    ): StoredMediaRef =
         suspendCancellableCoroutine { continuation ->
-            val downloader = FileDownloader(appContext)
+            val downloader = FileDownloader(appContext, null, destination)
             continuation.invokeOnCancellation { downloader.cancel() }
             Dispatchers.IO.dispatch(continuation.context) {
                 val result = runCatching {
@@ -24,7 +34,7 @@ class AndroidResolvedMediaSink(context: Context) : ResolvedMediaSink {
                         taskId = taskId,
                         mediaIndex = mediaIndex,
                         media = media,
-                        downloader = downloader
+                        downloader = downloader,
                     )
                 }
                 if (continuation.isActive) continuation.resumeWith(result)
@@ -36,7 +46,7 @@ class AndroidResolvedMediaSink(context: Context) : ResolvedMediaSink {
         mediaIndex: Int,
         media: ResolvedMedia,
         downloader: FileDownloader
-    ): String {
+    ): StoredMediaRef {
         val cacheDirectory = File(appContext.cacheDir, "resolved_media/$taskId")
         if (!cacheDirectory.exists() && !cacheDirectory.mkdirs()) {
             throw IOException("Unable to create typed download cache")
@@ -73,11 +83,11 @@ class AndroidResolvedMediaSink(context: Context) : ResolvedMediaSink {
         cacheDirectory: File,
         url: String,
         baseName: String
-    ): String {
+    ): StoredMediaRef {
         val cached = downloader.downloadFileToDirectory(url, baseName, "", cacheDirectory)
             ?: throw IOException("Unable to download resolved media")
         return try {
-            downloader.copyCachedFileToMediaStore(cached)?.absolutePath
+            downloader.copyCachedFileToStorage(cached)
                 ?: throw IOException("Unable to persist resolved media")
         } finally {
             cached.delete()
@@ -89,7 +99,7 @@ class AndroidResolvedMediaSink(context: Context) : ResolvedMediaSink {
         cacheDirectory: File,
         media: ResolvedMedia.LivePhoto,
         baseName: String
-    ): String {
+    ): StoredMediaRef {
         var imageFile: File? = null
         var videoFile: File? = null
         val outputFile = File(cacheDirectory, "xhs_${baseName}_live.jpg")
@@ -109,7 +119,7 @@ class AndroidResolvedMediaSink(context: Context) : ResolvedMediaSink {
             if (!LivePhotoCreator.createLivePhoto(imageFile, videoFile, outputFile, null)) {
                 throw IOException("Unable to create live photo")
             }
-            return downloader.copyCachedFileToMediaStore(outputFile)?.absolutePath
+            return downloader.copyCachedFileToStorage(outputFile)
                 ?: throw IOException("Unable to persist live photo")
         } finally {
             imageFile?.delete()

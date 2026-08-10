@@ -51,7 +51,7 @@ class LegacyTaskHistoryImporterTest {
             status = TaskStatus.COMPLETED,
             createdAt = 1234L,
             completedAt = 2345L,
-            filePaths = listOf("/first.jpg", "/second.jpg"),
+            mediaRefs = listOf("/first.jpg", "/second.jpg").map(DownloadTask::legacyMediaRef),
             noteContent = "Description"
         )
         legacyPreferences().edit()

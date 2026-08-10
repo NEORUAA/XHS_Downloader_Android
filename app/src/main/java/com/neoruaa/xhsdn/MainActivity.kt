@@ -7,8 +7,7 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
-import android.os.Environment
-import android.provider.Settings
+import android.provider.DocumentsContract
 import android.view.WindowManager
 import android.widget.Toast
 import androidx.core.view.WindowCompat
@@ -46,6 +45,9 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.runtime.Composable
 import com.neoruaa.xhsdn.utils.detectMediaType
+import com.neoruaa.xhsdn.utils.createVideoThumbnail
+import com.neoruaa.xhsdn.utils.decodeSampledBitmap
+import com.neoruaa.xhsdn.utils.storedMediaExists
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.DisposableEffect
@@ -163,6 +165,7 @@ class MainActivity : ComponentActivity() {
     }
     private val _autoDownloadIntentUrl = mutableStateOf<String?>(null)
     private var context: Context =  this
+    private var pendingStorageAction: (() -> Unit)? = null
 
     private val notificationPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -181,6 +184,14 @@ class MainActivity : ComponentActivity() {
                 }
             )
         )
+        if (granted) {
+            pendingStorageAction?.also { action ->
+                pendingStorageAction = null
+                action()
+            }
+        } else {
+            pendingStorageAction = null
+        }
     }
 
     private val webViewLauncher = registerForActivityResult(
@@ -593,49 +604,86 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun ensureStoragePermission(onReady: () -> Unit) {
-        if (hasStoragePermission()) {
+        val customTree = settingsRepository.currentSettings.customStorageTreeUri
+        if (customTree != null) {
+            if (hasCustomStorageAccess(Uri.parse(customTree))) {
+                onReady()
+            } else {
+                showToast(getString(R.string.storage_location_access_lost_reselect))
+                startActivity(Intent(this, SettingsActivity::class.java))
+            }
+            return
+        }
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q || hasLegacyStoragePermission()) {
             onReady()
             return
         }
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            val intent = Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION).apply {
-                data = Uri.fromParts("package", packageName, null)
-            }
-            startActivity(intent)
-            showToast(getString(R.string.grant_all_files_access_retry))
-        } else {
-            storagePermissionLauncher.launch(
-                arrayOf(
-                    Manifest.permission.WRITE_EXTERNAL_STORAGE,
-                    Manifest.permission.READ_EXTERNAL_STORAGE
-                )
+        pendingStorageAction = onReady
+        storagePermissionLauncher.launch(
+            arrayOf(
+                Manifest.permission.WRITE_EXTERNAL_STORAGE,
+                Manifest.permission.READ_EXTERNAL_STORAGE
             )
-        }
+        )
     }
 
-    private fun hasStoragePermission(): Boolean {
-        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            Environment.isExternalStorageManager()
-        } else {
-            ContextCompat.checkSelfPermission(this, Manifest.permission.WRITE_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED &&
-                ContextCompat.checkSelfPermission(this, Manifest.permission.READ_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED
+    private fun hasLegacyStoragePermission(): Boolean =
+        ContextCompat.checkSelfPermission(this, Manifest.permission.WRITE_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED &&
+            ContextCompat.checkSelfPermission(this, Manifest.permission.READ_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED
+
+    private fun hasCustomStorageAccess(treeUri: Uri): Boolean {
+        if (treeUri.scheme != "content" || treeUri.authority != "com.android.externalstorage.documents") {
+            return false
         }
+        val persisted = contentResolver.persistedUriPermissions.any { permission ->
+            permission.uri == treeUri && permission.isReadPermission && permission.isWritePermission
+        }
+        if (!persisted) return false
+        val documentUri = runCatching {
+            DocumentsContract.buildDocumentUriUsingTree(
+                treeUri,
+                DocumentsContract.getTreeDocumentId(treeUri)
+            )
+        }.getOrNull() ?: return false
+        return runCatching {
+            contentResolver.query(
+                documentUri,
+                arrayOf(
+                    DocumentsContract.Document.COLUMN_MIME_TYPE,
+                    DocumentsContract.Document.COLUMN_FLAGS
+                ),
+                null,
+                null,
+                null
+            )?.use { cursor ->
+                if (!cursor.moveToFirst()) return@use false
+                val mimeIndex = cursor.getColumnIndex(DocumentsContract.Document.COLUMN_MIME_TYPE)
+                val flagsIndex = cursor.getColumnIndex(DocumentsContract.Document.COLUMN_FLAGS)
+                val mime = if (mimeIndex >= 0) cursor.getString(mimeIndex) else null
+                val flags = if (flagsIndex >= 0) cursor.getInt(flagsIndex) else 0
+                mime == DocumentsContract.Document.MIME_TYPE_DIR &&
+                    flags and DocumentsContract.Document.FLAG_DIR_SUPPORTS_CREATE != 0
+            } ?: false
+        }.getOrDefault(false)
     }
 
     private fun openFile(item: MediaItem) {
-        val file = File(item.path)
-        if (!file.exists()) {
+        if (!storedMediaExists(item.media)) {
             showToast(getString(R.string.file_does_not_exist, item.path))
             return
         }
-        val mimeType = when (item.type) {
+        val mimeType = item.media.mimeType.takeUnless { it == "application/octet-stream" } ?: when (item.type) {
             MediaType.VIDEO -> "video/*"
             MediaType.IMAGE -> "image/*"
             MediaType.OTHER -> "*/*"
         }
-        val uri = FileProvider.getUriForFile(this, "$packageName.fileprovider", file)
+        val uri = item.media.legacyPath?.let { path ->
+            FileProvider.getUriForFile(this, "$packageName.fileprovider", File(path))
+        } ?: item.media.androidUri
         val intent = Intent(Intent.ACTION_VIEW).apply {
             setDataAndType(uri, mimeType)
+            clipData = android.content.ClipData.newRawUri(item.media.displayName, uri)
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
         kotlin.runCatching { startActivity(intent) }.onFailure {
@@ -1212,8 +1260,8 @@ private fun HistoryPage(
                             TaskCell(
                                 task = task,
                                 // 只有正在下载的任务才使用 uiState.mediaItems
-                                mediaItems = if (task.filePaths.isNotEmpty()) {
-                                    task.filePaths.map { MediaItem(it, detectMediaType(it)) }
+                                mediaItems = if (task.mediaRefs.isNotEmpty()) {
+                                    task.mediaRefs.map(::MediaItem)
                                 } else if (task.status == com.neoruaa.xhsdn.data.TaskStatus.DOWNLOADING && uiState.mediaItems.isNotEmpty()) {
                                     uiState.mediaItems
                                 } else {
@@ -1838,6 +1886,7 @@ private fun formatTime(timestamp: Long): String {
 
 @Composable
 private fun rememberThumbnail(item: MediaItem): ImageBitmap? {
+    val context = LocalContext.current
     // 先检查缓存
     val cachedBitmap = thumbnailCache.get(item.path)
     if (cachedBitmap != null) {
@@ -1849,12 +1898,10 @@ private fun rememberThumbnail(item: MediaItem): ImageBitmap? {
             // 再次检查缓存（可能在等待期间被其他协程加载）
             thumbnailCache.get(item.path)?.let { return@withContext it }
             
-            val file = File(item.path)
-            if (!file.exists()) return@withContext null
             val bitmap = runCatching {
                 when (item.type) {
-                    MediaType.IMAGE -> decodeSampledBitmap(file.path, 200, 200)?.asImageBitmap()
-                    MediaType.VIDEO -> createVideoThumbnail(file)?.asImageBitmap()
+                    MediaType.IMAGE -> context.decodeSampledBitmap(item.media, 200, 200)?.asImageBitmap()
+                    MediaType.VIDEO -> context.createVideoThumbnail(item.media)?.asImageBitmap()
                     MediaType.OTHER -> null
                 }
             }.getOrNull()

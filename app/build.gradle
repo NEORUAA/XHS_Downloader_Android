@@ -65,6 +65,7 @@ dependencies {
     ksp 'androidx.room3:room3-compiler:3.0.1'
 
     implementation "top.yukonga.miuix.kmp:miuix-ui-android:0.9.3"
+    implementation "top.yukonga.miuix.kmp:miuix-preference-android:0.9.3"
     implementation "top.yukonga.miuix.kmp:miuix-icons-android:0.9.3"
     implementation "io.github.kyant0:capsule:2.1.3"
 

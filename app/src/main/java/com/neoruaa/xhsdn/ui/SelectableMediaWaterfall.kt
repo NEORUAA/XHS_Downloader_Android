@@ -24,6 +24,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.state.ToggleableState
@@ -31,6 +32,8 @@ import androidx.compose.ui.unit.dp
 import com.neoruaa.xhsdn.R
 import com.neoruaa.xhsdn.utils.createVideoThumbnail
 import com.neoruaa.xhsdn.utils.decodeSampledBitmap
+import com.neoruaa.xhsdn.utils.readMediaAspectRatio
+import com.neoruaa.xhsdn.utils.storedMediaSize
 import com.neoruaa.xhsdn.viewmodels.CachedMediaItem
 import com.neoruaa.xhsdn.viewmodels.MediaItem
 import com.neoruaa.xhsdn.viewmodels.MediaType
@@ -57,10 +60,7 @@ fun DetailMediaWaterfall(
     onMediaClick: (MediaItem) -> Unit,
     onDeleteMedia: (MediaItem) -> Unit
 ) {
-    val items = remember(mediaItems) {
-        mediaItems.map { CachedMediaItem(it.path, File(it.path).name, it.type) }
-    }
-    val columns = rememberSelectableColumns(items)
+    val columns = rememberDetailColumns(mediaItems)
 
     Row(
         modifier = modifier.fillMaxWidth(),
@@ -111,7 +111,7 @@ fun SelectableMediaWaterfall(
 
 @Composable
 private fun DetailMediaColumn(
-    items: List<CachedMediaItem>,
+    items: List<MediaItem>,
     onMediaClick: (MediaItem) -> Unit,
     onDeleteMedia: (MediaItem) -> Unit,
     modifier: Modifier = Modifier
@@ -121,11 +121,10 @@ private fun DetailMediaColumn(
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         items.forEach { item ->
-            val mediaItem = remember(item.path, item.type) { MediaItem(item.path, item.type) }
             DetailMediaPreview(
                 item = item,
-                onClick = { onMediaClick(mediaItem) },
-                onDelete = { onDeleteMedia(mediaItem) }
+                onClick = { onMediaClick(item) },
+                onDelete = { onDeleteMedia(item) }
             )
         }
 
@@ -163,16 +162,16 @@ private fun SelectableMediaColumn(
 @Composable
 fun DetailMediaPreview(
     modifier: Modifier = Modifier,
-    item: CachedMediaItem,
+    item: MediaItem,
     onClick: () -> Unit,
     onDelete: () -> Unit
 ) {
     var showDeleteDialog by remember { mutableStateOf(false) }
-    val bitmap = rememberSelectableThumbnail(item)
-    val aspectRatio = rememberSelectableAspectRatio(item) ?: 0.75f
-    val overlayResId = remember(item.path, item.type) { selectableOverlayResId(item) }
-    val fileName = remember(item.path) { File(item.path).name }
-    val fileSize = remember(item.path) { selectableFileSize(item.path) }
+    val bitmap = rememberStoredThumbnail(item)
+    val aspectRatio = rememberStoredAspectRatio(item) ?: 0.75f
+    val overlayResId = remember(item.path, item.type) { storedOverlayResId(item) }
+    val fileName = item.media.displayName
+    val fileSize = rememberStoredFileSize(item)
 
     Column(
         modifier = modifier
@@ -262,10 +261,6 @@ fun DetailMediaPreview(
                 TextButton(
                     text = stringResource(R.string.apply),
                     onClick = {
-                        runCatching {
-                            val file = File(item.path)
-                            if (file.exists()) file.delete()
-                        }
                         onDelete()
                         showDeleteDialog = false
                     },
@@ -386,6 +381,103 @@ private fun SelectablePlaceholderMedia(type: MediaType) {
             tint = MiuixTheme.colorScheme.onSurfaceVariantSummary
         )
     }
+}
+
+private data class DetailColumns(
+    val left: List<MediaItem>,
+    val right: List<MediaItem>
+)
+
+@Composable
+private fun rememberDetailColumns(items: List<MediaItem>): DetailColumns {
+    val context = LocalContext.current
+    val state = produceState(initialValue = DetailColumns(items, emptyList()), items) {
+        value = withContext(Dispatchers.IO) {
+            var left = mutableListOf<MediaItem>()
+            var right = mutableListOf<MediaItem>()
+            var leftHeight = 0f
+            var rightHeight = 0f
+            items.forEach { item ->
+                val ratio = context.readMediaAspectRatio(item.media, item.type)
+                val height = if (ratio != null && ratio > 0f) {
+                    1f / ratio.coerceIn(0.4f, 2.5f) + 0.34f
+                } else {
+                    1.67f
+                }
+                if (leftHeight <= rightHeight) {
+                    left += item
+                    leftHeight += height
+                } else {
+                    right += item
+                    rightHeight += height
+                }
+                if (rightHeight > leftHeight) {
+                    val oldLeft = left
+                    left = right
+                    right = oldLeft
+                    val oldHeight = leftHeight
+                    leftHeight = rightHeight
+                    rightHeight = oldHeight
+                }
+            }
+            DetailColumns(left.toList(), right.toList())
+        }
+    }
+    return state.value
+}
+
+@Composable
+private fun rememberStoredThumbnail(item: MediaItem): ImageBitmap? {
+    val context = LocalContext.current
+    val state = produceState<ImageBitmap?>(initialValue = null, item.path) {
+        value = withContext(Dispatchers.IO) {
+            runCatching {
+                when (item.type) {
+                    MediaType.IMAGE -> context.decodeSampledBitmap(item.media, 720, 720)?.asImageBitmap()
+                    MediaType.VIDEO -> context.createVideoThumbnail(item.media)?.asImageBitmap()
+                    MediaType.OTHER -> null
+                }
+            }.getOrNull()
+        }
+    }
+    return state.value
+}
+
+@Composable
+private fun rememberStoredAspectRatio(item: MediaItem): Float? {
+    val context = LocalContext.current
+    val state = produceState<Float?>(initialValue = null, item.path) {
+        value = withContext(Dispatchers.IO) {
+            context.readMediaAspectRatio(item.media, item.type)
+        }
+    }
+    return state.value
+}
+
+@Composable
+private fun rememberStoredFileSize(item: MediaItem): String {
+    val context = LocalContext.current
+    val state = produceState<Long?>(initialValue = item.media.sizeBytes.takeIf { it > 0L }, item.path) {
+        value = withContext(Dispatchers.IO) { context.storedMediaSize(item.media) }
+    }
+    return formatFileSize(state.value)
+}
+
+private fun formatFileSize(size: Long?): String = when {
+    size == null -> "--"
+    size > 1024L * 1024L * 1024L -> "%.2f GB".format(size / (1024.0 * 1024.0 * 1024.0))
+    size > 1024L * 1024L -> "%.1f MB".format(size / (1024.0 * 1024.0))
+    size > 1024L -> "%.1f KB".format(size / 1024.0)
+    else -> "$size B"
+}
+
+private fun storedOverlayResId(item: MediaItem): Int? = when {
+    item.type == MediaType.VIDEO -> R.drawable.play_button_overlay
+    item.type == MediaType.IMAGE && (
+        "_live." in item.media.displayName.lowercase() ||
+            "_live_" in item.media.displayName.lowercase()
+        ) -> R.drawable.live_photo_overlay
+    else -> null
 }
 
 private data class SelectableColumns(

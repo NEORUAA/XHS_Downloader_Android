@@ -90,6 +90,9 @@ import com.neoruaa.xhsdn.viewmodels.MediaType
 import com.neoruaa.xhsdn.utils.detectMediaType
 import com.neoruaa.xhsdn.utils.decodeSampledBitmap
 import com.neoruaa.xhsdn.utils.createVideoThumbnail
+import com.neoruaa.xhsdn.utils.deleteStoredMedia
+import com.neoruaa.xhsdn.utils.storedMediaExists
+import com.neoruaa.xhsdn.data.tasks.TaskManager
 import top.yukonga.miuix.kmp.window.WindowDialog
 import top.yukonga.miuix.kmp.window.WindowListPopup
 import top.yukonga.miuix.kmp.icon.extended.Info
@@ -137,6 +140,7 @@ class DetailActivity : ComponentActivity() {
     private val viewModel: DetailViewModel by lazy {
         ViewModelProvider(this)[DetailViewModel::class.java]
     }
+    private var taskId: Long? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -164,13 +168,17 @@ class DetailActivity : ComponentActivity() {
 
         // 获取传递的数据
         val filePaths = intent.getStringArrayListExtra(EXTRA_FILE_PATHS) ?: arrayListOf()
+        taskId = intent.getStringExtra(EXTRA_TASK_ID)?.toLongOrNull()
         val noteContent = intent.getStringExtra(EXTRA_NOTE_CONTENT)
         val noteUrl = intent.getStringExtra(EXTRA_NOTE_URL) // Get the note URL
 
         // 构建媒体项列表
-        val mediaItems = filePaths.map { path ->
-            MediaItem(path, detectMediaType(path))
-        }
+        val mediaItems = taskId
+            ?.let(TaskManager::getTaskById)
+            ?.mediaRefs
+            ?.map(::MediaItem)
+            ?.takeIf { it.isNotEmpty() }
+            ?: filePaths.map { path -> MediaItem(path, detectMediaType(path)) }
 
         // 更新UI状态
         viewModel.updateState(
@@ -192,8 +200,12 @@ class DetailActivity : ComponentActivity() {
                     onBack = { finish() },
                     onMediaClick = { openFile(it) },
                     onDeleteMedia = { mediaItem ->
-                        // 从UI状态中移除该项目
-                        viewModel.removeMediaItem(mediaItem)
+                        if (deleteStoredMedia(mediaItem.media)) {
+                            taskId?.let { id -> TaskManager.removeMediaRef(id, mediaItem.path) }
+                            viewModel.removeMediaItem(mediaItem)
+                        } else {
+                            showToast(getString(R.string.delete_file_failed, mediaItem.media.displayName))
+                        }
                     },
                     onCopyUrl = {
                         // Copy URL to clipboard directly in DetailActivity
@@ -229,19 +241,21 @@ class DetailActivity : ComponentActivity() {
     }
 
     private fun openFile(item: MediaItem) {
-        val file = File(item.path)
-        if (!file.exists()) {
+        if (!storedMediaExists(item.media)) {
             showToast(getString(R.string.file_does_not_exist, item.path))
             return
         }
-        val mimeType = when (item.type) {
+        val mimeType = item.media.mimeType.takeUnless { it == "application/octet-stream" } ?: when (item.type) {
             MediaType.VIDEO -> "video/*"
             MediaType.IMAGE -> "image/*"
             MediaType.OTHER -> "*/*"
         }
-        val uri = FileProvider.getUriForFile(this, "$packageName.fileprovider", file)
+        val uri = item.media.legacyPath?.let { path ->
+            FileProvider.getUriForFile(this, "$packageName.fileprovider", File(path))
+        } ?: item.media.androidUri
         val intent = Intent(Intent.ACTION_VIEW).apply {
             setDataAndType(uri, mimeType)
+            clipData = ClipData.newRawUri(item.media.displayName, uri)
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
         kotlin.runCatching { startActivity(intent) }.onFailure {

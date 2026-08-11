@@ -96,6 +96,7 @@ class DataStoreSettingsRepository(
                     preferences[CUSTOM_STORAGE_DISPLAY_NAME] = it
                 } ?: preferences.remove(CUSTOM_STORAGE_DISPLAY_NAME)
             }
+            preferences[CHECK_EXISTING_FILES_BEFORE_SAVE] = updated.checkExistingFilesBeforeSave
             preferences[USE_METADATA_FILE_NAMES] = updated.useMetadataFileNames
         }
     }
@@ -136,6 +137,9 @@ class DataStoreSettingsRepository(
             if (!preferences.contains(USE_METADATA_FILE_NAMES)) {
                 preferences[USE_METADATA_FILE_NAMES] = legacyBoolean("use_metadata_file_names", false)
             }
+            if (!preferences.contains(CHECK_EXISTING_FILES_BEFORE_SAVE)) {
+                preferences[CHECK_EXISTING_FILES_BEFORE_SAVE] = true
+            }
             preferences[MIGRATION_VERSION] = MIGRATION_VERSION_CURRENT
         }
     }
@@ -171,6 +175,7 @@ class DataStoreSettingsRepository(
             customStorageTreeUri = customStorageTreeUri,
             customStorageDisplayName = customStorageTreeUri?.let(::storageDisplayPathFromTreeUri)
                 ?: storedCustomStorageDisplayName?.takeIf { customStorageTreeUri != null },
+            checkExistingFilesBeforeSave = preferences[CHECK_EXISTING_FILES_BEFORE_SAVE] ?: true,
             useMetadataFileNames = preferences[USE_METADATA_FILE_NAMES]
                 ?: legacyBoolean("use_metadata_file_names", false)
         )
@@ -188,6 +193,7 @@ class DataStoreSettingsRepository(
         manualInputLinks = legacyBoolean("manual_input_links", false),
         customStorageTreeUri = null,
         customStorageDisplayName = null,
+        checkExistingFilesBeforeSave = true,
         useMetadataFileNames = legacyBoolean("use_metadata_file_names", false)
     )
 
@@ -221,7 +227,7 @@ class DataStoreSettingsRepository(
     companion object {
         const val LEGACY_PREFS_NAME = "XHSDownloaderPrefs"
         const val DATASTORE_FILE_NAME = "xhs_settings.preferences_pb"
-        private const val MIGRATION_VERSION_CURRENT = 2
+        private const val MIGRATION_VERSION_CURRENT = 3
 
         private val MIGRATION_VERSION = intPreferencesKey("legacy_migration_version")
         private val CREATE_LIVE_PHOTOS = booleanPreferencesKey("create_live_photos")
@@ -235,6 +241,8 @@ class DataStoreSettingsRepository(
         private val MANUAL_INPUT_LINKS = booleanPreferencesKey("manual_input_links")
         private val CUSTOM_STORAGE_TREE_URI = stringPreferencesKey("custom_storage_tree_uri")
         private val CUSTOM_STORAGE_DISPLAY_NAME = stringPreferencesKey("custom_storage_display_name")
+        private val CHECK_EXISTING_FILES_BEFORE_SAVE =
+            booleanPreferencesKey("check_existing_files_before_save")
         private val USE_METADATA_FILE_NAMES = booleanPreferencesKey("use_metadata_file_names")
     }
 }

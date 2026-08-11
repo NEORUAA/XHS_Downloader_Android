@@ -45,4 +45,7 @@ interface SettingsRepository {
     }
 
     suspend fun clearCustomStorageLocation() = setCustomStorageLocation(null, null)
+
+    suspend fun setCheckExistingFilesBeforeSave(enabled: Boolean) =
+        update { it.copy(checkExistingFilesBeforeSave = enabled) }
 }

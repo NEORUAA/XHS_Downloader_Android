@@ -2,6 +2,7 @@ package com.neoruaa.xhsdn.domain.download
 
 import com.neoruaa.xhsdn.core.model.ResolvedMedia
 import com.neoruaa.xhsdn.core.model.ResolvedNote
+import com.neoruaa.xhsdn.data.storage.ExistingFilePolicy
 import com.neoruaa.xhsdn.data.xhs.XhsContentRepository
 import com.neoruaa.xhsdn.data.storage.StorageDestination
 import com.neoruaa.xhsdn.data.storage.StoredMediaRef
@@ -85,7 +86,10 @@ class RepositoryDownloadCoordinatorTest {
 
     @Test
     fun passesTheRequestDestinationToTheStorageSink() = runTest {
-        val expectedDestination = StorageDestination.CustomTree("content://local/tree/folder")
+        val expectedDestination = StorageDestination.CustomTree(
+            treeUri = "content://local/tree/folder",
+            existingFilePolicy = ExistingFilePolicy.REPLACE,
+        )
         var actualDestination: StorageDestination? = null
         val expectedRef = StoredMediaRef(
             uri = "content://local/document/image.jpg",

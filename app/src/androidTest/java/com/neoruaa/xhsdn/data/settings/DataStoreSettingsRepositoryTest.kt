@@ -62,6 +62,7 @@ class DataStoreSettingsRepositoryTest {
         assertTrue(migrated.selectiveDownload)
         assertEquals(NamingFormat.DEFAULT_TEMPLATE, migrated.customNamingTemplate)
         assertTrue(migrated.showClipboardBubble)
+        assertTrue(migrated.checkExistingFilesBeforeSave)
 
         repository.setManualInputLinks(true)
         assertTrue(repository.currentSettings.manualInputLinks)
@@ -94,5 +95,18 @@ class DataStoreSettingsRepositoryTest {
         }
         assertEquals(null, cleared.customStorageTreeUri)
         assertEquals(null, cleared.customStorageDisplayName)
+    }
+
+    @Test
+    fun persistsCheckExistingFilesBeforeSaveWithTrueDefault() = runBlocking {
+        val repository = DataStoreSettingsRepository(context, scope)
+        assertTrue(withTimeout(5_000) { repository.settings.first() }.checkExistingFilesBeforeSave)
+
+        repository.setCheckExistingFilesBeforeSave(false)
+        val disabled = withTimeout(5_000) {
+            repository.settings.first { !it.checkExistingFilesBeforeSave }
+        }
+        assertFalse(disabled.checkExistingFilesBeforeSave)
+        assertFalse(repository.currentSettings.checkExistingFilesBeforeSave)
     }
 }

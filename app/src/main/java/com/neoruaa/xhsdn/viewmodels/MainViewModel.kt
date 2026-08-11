@@ -35,6 +35,7 @@ import com.neoruaa.xhsdn.data.DownloadTask
 import com.neoruaa.xhsdn.data.storage.StorageDestination
 import com.neoruaa.xhsdn.data.storage.StorageAccessException
 import com.neoruaa.xhsdn.data.storage.StoredMediaRef
+import com.neoruaa.xhsdn.data.storage.resolveStorageDestination
 import com.neoruaa.xhsdn.utils.NotificationHelper
 import java.io.File
 import java.io.IOException
@@ -1304,15 +1305,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private fun snapshotStorageDestination(): StorageDestination {
-        val treeUri = (getApplication<Application>() as XHSApplication)
+        val settings = (getApplication<Application>() as XHSApplication)
             .appContainer
             .settingsRepository
             .currentSettings
-            .customStorageTreeUri
-            ?.trim()
-            ?.takeIf(String::isNotBlank)
-        return treeUri?.let(StorageDestination::CustomTree)
-            ?: StorageDestination.DefaultMediaStore
+        return resolveStorageDestination(
+            customTreeUri = settings.customStorageTreeUri,
+            checkExistingFilesBeforeSave = settings.checkExistingFilesBeforeSave,
+        )
     }
 
     fun removeMediaItem(mediaItem: MediaItem) {

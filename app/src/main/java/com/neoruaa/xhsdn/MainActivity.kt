@@ -8,6 +8,8 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.provider.DocumentsContract
+import android.provider.Settings
+import android.os.Environment
 import android.view.WindowManager
 import android.widget.Toast
 import androidx.core.view.WindowCompat
@@ -15,6 +17,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.compose.setContent
 import androidx.activity.viewModels
+import androidx.annotation.RequiresApi
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.animation.animateContentSize
@@ -194,6 +197,18 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    private val allFilesAccessLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) {
+        val action = pendingStorageAction
+        pendingStorageAction = null
+        if (hasAllFilesAccess()) {
+            action?.invoke()
+        } else if (action != null) {
+            showToast(getString(R.string.settings_check_existing_permission_denied))
+        }
+    }
+
     private val webViewLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
     ) { result ->
@@ -290,28 +305,30 @@ class MainActivity : ComponentActivity() {
                                 
                                 // ... (Auto download logic)
                                 Log.d("XHS_Debug", "Triggering Auto Download")
-                                
-                                // Trigger Download
-                                if (selectiveDownload) {
-                                    viewModel.startSelectiveDownload { showToast(it) }
-                                } else {
-                                    viewModel.startDownload { showToast(it) }
+
+                                ensureStoragePermission {
+                                    // Trigger Download
+                                    if (selectiveDownload) {
+                                        viewModel.startSelectiveDownload { showToast(it) }
+                                    } else {
+                                        viewModel.startDownload { showToast(it) }
+                                    }
+
+                                    // Show Notification with Full Content
+                                    com.neoruaa.xhsdn.utils.NotificationHelper.showDownloadNotification(
+                                        context,
+                                        System.currentTimeMillis().toInt(),
+                                        getString(R.string.preparing_download),
+                                        clipText, // Full content
+                                        false
+                                    )
+
+                                    // Clear Clipboard
+                                    clipboard.setPrimaryClip(android.content.ClipData.newPlainText("", ""))
+
+                                    // Ensure bubble is dismissed
+                                    detectedXhsLink = null
                                 }
-                                
-                                // Show Notification with Full Content
-                                com.neoruaa.xhsdn.utils.NotificationHelper.showDownloadNotification(
-                                    context,
-                                    System.currentTimeMillis().toInt(),
-                                    getString(R.string.preparing_download),
-                                    clipText, // Full content
-                                    false
-                                )
-                                
-                                // Clear Clipboard
-                                clipboard.setPrimaryClip(android.content.ClipData.newPlainText("", ""))
-                                
-                                // Ensure bubble is dismissed
-                                detectedXhsLink = null
                                 
                             } else if (currentShowBubble) {
                                 // B. Show Bubble
@@ -482,7 +499,9 @@ class MainActivity : ComponentActivity() {
                         com.neoruaa.xhsdn.data.tasks.TaskManager.deleteTask(task.id)
                     },
                     onContinueTask = { task -> 
-                        viewModel.continueTask(task)
+                        ensureStoragePermission {
+                            viewModel.continueTask(task)
+                        }
                     },
                     onWebCrawlTask = { task ->
                         viewModel.updateUrl(task.noteUrl)
@@ -517,7 +536,11 @@ class MainActivity : ComponentActivity() {
                     detectedXhsLink = detectedXhsLink,
                     onDismissPrompt = { detectedXhsLink = null },
                     onCancelSelectiveDownload = viewModel::cancelSelectiveDownload,
-                    onSaveSelectedMedia = { viewModel.saveSelectedMedia { showToast(it) } },
+                    onSaveSelectedMedia = {
+                        ensureStoragePermission {
+                            viewModel.saveSelectedMedia { showToast(it) }
+                        }
+                    },
                     onToggleSelectiveItem = viewModel::toggleSelectiveItem,
                     onHistoryQueryChange = historyViewModel::updateQuery,
                     onHistoryQueryClear = historyViewModel::clearQuery,
@@ -607,6 +630,18 @@ class MainActivity : ComponentActivity() {
         val customTree = settingsRepository.currentSettings.customStorageTreeUri
         if (customTree != null) {
             if (hasCustomStorageAccess(Uri.parse(customTree))) {
+                if (settingsRepository.currentSettings.checkExistingFilesBeforeSave) {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && !hasAllFilesAccess()) {
+                        requestAllFilesAccess(onReady)
+                        return
+                    }
+                    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q &&
+                        !hasLegacyStoragePermission()
+                    ) {
+                        requestLegacyStoragePermission(onReady)
+                        return
+                    }
+                }
                 onReady()
             } else {
                 showToast(getString(R.string.storage_location_access_lost_reselect))
@@ -619,6 +654,10 @@ class MainActivity : ComponentActivity() {
             onReady()
             return
         }
+        requestLegacyStoragePermission(onReady)
+    }
+
+    private fun requestLegacyStoragePermission(onReady: () -> Unit) {
         pendingStorageAction = onReady
         storagePermissionLauncher.launch(
             arrayOf(
@@ -627,6 +666,29 @@ class MainActivity : ComponentActivity() {
             )
         )
     }
+
+    @RequiresApi(Build.VERSION_CODES.R)
+    private fun requestAllFilesAccess(onReady: () -> Unit) {
+        pendingStorageAction = onReady
+        val appSpecificIntent = Intent(
+            Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
+            Uri.parse("package:$packageName")
+        )
+        try {
+            allFilesAccessLauncher.launch(appSpecificIntent)
+        } catch (_: android.content.ActivityNotFoundException) {
+            val globalIntent = Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION)
+            try {
+                allFilesAccessLauncher.launch(globalIntent)
+            } catch (_: android.content.ActivityNotFoundException) {
+                pendingStorageAction = null
+                showToast(getString(R.string.settings_check_existing_permission_unavailable))
+            }
+        }
+    }
+
+    private fun hasAllFilesAccess(): Boolean =
+        Build.VERSION.SDK_INT < Build.VERSION_CODES.R || Environment.isExternalStorageManager()
 
     private fun hasLegacyStoragePermission(): Boolean =
         ContextCompat.checkSelfPermission(this, Manifest.permission.WRITE_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED &&

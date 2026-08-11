@@ -16,6 +16,8 @@ data class AppSettings(
     val customStorageTreeUri: String? = null,
     /** Full readable path for [customStorageTreeUri], or null when the default is used. */
     val customStorageDisplayName: String? = null,
+    /** Whether custom-storage saves should check for existing names before writing. */
+    val checkExistingFilesBeforeSave: Boolean = true,
     /** Value of the removed legacy key, retained for diagnostics and compatibility. */
     val useMetadataFileNames: Boolean = false
 )

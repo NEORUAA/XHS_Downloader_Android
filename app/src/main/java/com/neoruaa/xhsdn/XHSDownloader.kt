@@ -6,6 +6,7 @@ import com.neoruaa.xhsdn.data.settings.AppSettings
 import com.neoruaa.xhsdn.data.storage.StorageAccessException
 import com.neoruaa.xhsdn.data.storage.StorageDestination
 import com.neoruaa.xhsdn.data.storage.StoredMediaRef
+import com.neoruaa.xhsdn.data.storage.resolveStorageDestination
 import com.neoruaa.xhsdn.data.xhs.ParsedXhsNote
 import com.neoruaa.xhsdn.data.xhs.XhsLivePhoto
 import com.neoruaa.xhsdn.data.xhs.XhsNoteMetadata
@@ -34,11 +35,10 @@ private fun snapshotStorageDestination(context: Context): StorageDestination {
         ?.appContainer
         ?.settingsRepository
         ?.currentSettings
-    val treeUri = settings?.customStorageTreeUri
-        ?.trim()
-        ?.takeIf(String::isNotBlank)
-    return treeUri?.let(StorageDestination::CustomTree)
-        ?: StorageDestination.DefaultMediaStore
+    return resolveStorageDestination(
+        customTreeUri = settings?.customStorageTreeUri,
+        checkExistingFilesBeforeSave = settings?.checkExistingFilesBeforeSave ?: true,
+    )
 }
 
 /**

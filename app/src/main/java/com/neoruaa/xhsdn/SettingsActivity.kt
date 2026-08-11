@@ -8,8 +8,10 @@ import android.content.res.Configuration
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.Environment
 import android.provider.DocumentsContract
 import android.provider.DocumentsContract.Document
+import android.provider.Settings
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
@@ -17,6 +19,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.annotation.RequiresApi
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -104,7 +107,8 @@ data class SettingsUiState(
     val autoReadClipboard: Boolean = false,
     val manualInputLinks: Boolean = false,
     val customStorageTreeUri: String? = null,
-    val customStorageDisplayName: String? = null
+    val customStorageDisplayName: String? = null,
+    val checkExistingFilesBeforeSave: Boolean = true
 )
 
 class SettingsViewModel(
@@ -170,6 +174,10 @@ class SettingsViewModel(
         it.copy(manualInputLinks = enabled)
     }
 
+    fun onCheckExistingFilesBeforeSaveChange(enabled: Boolean) = updateState {
+        it.copy(checkExistingFilesBeforeSave = enabled)
+    }
+
     fun onCustomStorageLocationSelected(uri: String, displayName: String?) {
         updateState {
             it.copy(
@@ -205,6 +213,7 @@ class SettingsViewModel(
                         manualInputLinks = state.manualInputLinks,
                         customStorageTreeUri = state.customStorageTreeUri,
                         customStorageDisplayName = state.customStorageDisplayName,
+                        checkExistingFilesBeforeSave = state.checkExistingFilesBeforeSave,
                         useMetadataFileNames = false
                     )
                 }
@@ -234,7 +243,8 @@ class SettingsViewModel(
         autoReadClipboard = autoReadClipboard,
         manualInputLinks = manualInputLinks,
         customStorageTreeUri = customStorageTreeUri,
-        customStorageDisplayName = customStorageDisplayName
+        customStorageDisplayName = customStorageDisplayName,
+        checkExistingFilesBeforeSave = checkExistingFilesBeforeSave
     )
 }
 
@@ -262,6 +272,20 @@ class SettingsActivity : ComponentActivity() {
     ) { result ->
         if (result.resultCode != Activity.RESULT_OK) return@registerForActivityResult
         handleStorageTreeResult(result.data)
+    }
+
+    private var pendingCheckExistingFilesChange: Boolean? = null
+
+    private val allFilesAccessLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) {
+        val requestedValue = pendingCheckExistingFilesChange
+        pendingCheckExistingFilesChange = null
+        if (requestedValue == true && hasAllFilesAccess()) {
+            viewModel.onCheckExistingFilesBeforeSaveChange(true)
+        } else if (requestedValue == true) {
+            showStorageMessage(R.string.settings_check_existing_permission_denied)
+        }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -305,6 +329,7 @@ class SettingsActivity : ComponentActivity() {
                     onShowClipboardBubbleChange = viewModel::onShowClipboardBubbleChange,
                     onAutoReadClipboardChange = viewModel::onAutoReadClipboardChange,
                     onManualInputLinksChange = viewModel::onManualInputLinksChange,
+                    onCheckExistingFilesBeforeSaveChange = ::onCheckExistingFilesBeforeSaveChange,
                     onStorageLocationClick = ::openStorageTreePicker,
                     onResetStorageLocation = viewModel::onResetCustomStorageLocation,
                     topBarState = topBarState
@@ -321,6 +346,41 @@ class SettingsActivity : ComponentActivity() {
     private fun checkAccessibilityState() {
         // No-op
     }
+
+    private fun onCheckExistingFilesBeforeSaveChange(enabled: Boolean) {
+        if (!enabled || Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
+            viewModel.onCheckExistingFilesBeforeSaveChange(enabled)
+            return
+        }
+        if (hasAllFilesAccess()) {
+            viewModel.onCheckExistingFilesBeforeSaveChange(true)
+            return
+        }
+        pendingCheckExistingFilesChange = true
+        launchAllFilesAccessSettings()
+    }
+
+    @RequiresApi(Build.VERSION_CODES.R)
+    private fun launchAllFilesAccessSettings() {
+        val appSpecificIntent = Intent(
+            Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
+            Uri.parse("package:$packageName")
+        )
+        try {
+            allFilesAccessLauncher.launch(appSpecificIntent)
+        } catch (_: ActivityNotFoundException) {
+            val globalIntent = Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION)
+            try {
+                allFilesAccessLauncher.launch(globalIntent)
+            } catch (_: ActivityNotFoundException) {
+                pendingCheckExistingFilesChange = null
+                showStorageMessage(R.string.settings_check_existing_permission_unavailable)
+            }
+        }
+    }
+
+    private fun hasAllFilesAccess(): Boolean =
+        Build.VERSION.SDK_INT < Build.VERSION_CODES.R || Environment.isExternalStorageManager()
 
     private fun openStorageTreePicker() {
         val intent = Intent(Intent.ACTION_OPEN_DOCUMENT_TREE).apply {
@@ -463,6 +523,7 @@ private fun SettingsScreen(
     onShowClipboardBubbleChange: (Boolean) -> Unit,
     onAutoReadClipboardChange: (Boolean) -> Unit,
     onManualInputLinksChange: (Boolean) -> Unit,
+    onCheckExistingFilesBeforeSaveChange: (Boolean) -> Unit,
     onStorageLocationClick: () -> Unit,
     onResetStorageLocation: () -> Unit,
     topBarState: TopAppBarState
@@ -470,13 +531,16 @@ private fun SettingsScreen(
     val context = LocalContext.current
     val scrollBehavior = top.yukonga.miuix.kmp.basic.MiuixScrollBehavior(state = topBarState)
     val windowLayoutInfo = rememberWindowLayoutInfo()
-    val downloadRows = listOf(
-        "storage_location",
-        "create_live_photos",
-        "selective_download",
-        "debug_notifications",
-        "keep_screen_on"
-    )
+    val downloadRows = buildList {
+        add("storage_location")
+        if (uiState.customStorageTreeUri != null) {
+            add("check_existing_files_before_save")
+        }
+        add("create_live_photos")
+        add("selective_download")
+        add("debug_notifications")
+        add("keep_screen_on")
+    }
     val clipboardRows = buildList {
         add("manual_input_links")
         if (!uiState.manualInputLinks) {
@@ -547,6 +611,18 @@ private fun SettingsScreen(
                             }
                         )
                     }
+                    "check_existing_files_before_save" -> MiuixSwitchWidget(
+                        title = stringResource(R.string.settings_check_existing_files_before_save),
+                        description = stringResource(
+                            if (uiState.checkExistingFilesBeforeSave) {
+                                R.string.settings_check_existing_files_before_save_enabled_desc
+                            } else {
+                                R.string.settings_check_existing_files_before_save_disabled_desc
+                            }
+                        ),
+                        checked = uiState.checkExistingFilesBeforeSave,
+                        onCheckedChange = onCheckExistingFilesBeforeSaveChange
+                    )
                     "create_live_photos" -> MiuixSwitchWidget(
                         title = stringResource(R.string.create_live_photos),
                         description = stringResource(R.string.create_live_photos_desc),

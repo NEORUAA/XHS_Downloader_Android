@@ -19,10 +19,13 @@ import androidx.activity.compose.setContent
 import androidx.activity.viewModels
 import androidx.annotation.RequiresApi
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.MutableTransitionState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.expandVertically
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
 import androidx.compose.animation.slideInVertically
@@ -1126,6 +1129,13 @@ private fun SelectiveDownloadSheet(
             modifier = Modifier
                 .fillMaxWidth()
                 .heightIn(max = 560.dp)
+                .animateContentSize(
+                    animationSpec = spring(
+                        dampingRatio = 0.82f,
+                        stiffness = 420f
+                    ),
+                    alignment = Alignment.TopCenter
+                )
                 .miuixVerticalScrollEffects(),
             overscrollEffect = null,
             verticalArrangement = Arrangement.spacedBy(10.dp)
@@ -1140,15 +1150,13 @@ private fun SelectiveDownloadSheet(
                                 selectiveState.selectedPaths.size,
                                 selectiveState.items.size
                             )
-                            SelectiveDownloadPhase.Saving -> stringResource(R.string.selective_download_saving)
+                            SelectiveDownloadPhase.Saving -> ""
                             SelectiveDownloadPhase.Error -> selectiveState.errorMessage ?: stringResource(R.string.selective_download_error)
                             SelectiveDownloadPhase.Idle -> ""
                         },
                         fontWeight = FontWeight.Medium
                     )
-                    if (selectiveState.phase == SelectiveDownloadPhase.Caching ||
-                        selectiveState.phase == SelectiveDownloadPhase.Saving
-                    ) {
+                    if (selectiveState.phase == SelectiveDownloadPhase.Caching) {
                         LinearProgressIndicator(
                             progress = selectiveState.progress.coerceIn(0f, 1f),
                             modifier = Modifier
@@ -1241,7 +1249,8 @@ private fun HistoryPage(
 ) {
     val tasks = historyUiState.allTasks
     val filteredTasks = historyUiState.filteredTasks
-    val firstFilteredTaskId = filteredTasks.firstOrNull()?.id
+    val firstFilteredTask = filteredTasks.firstOrNull()
+    val firstFilteredTaskId = firstFilteredTask?.id
     val navPadding = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
     val activeTask = tasks.firstOrNull {
         it.status == com.neoruaa.xhsdn.data.TaskStatus.DOWNLOADING || it.status == com.neoruaa.xhsdn.data.TaskStatus.QUEUED
@@ -1259,6 +1268,14 @@ private fun HistoryPage(
     var lastFirstFilteredTaskId by rememberSaveable {
         mutableStateOf(firstFilteredTaskId)
     }
+    val newlyInsertedTaskId = firstFilteredTask
+        ?.takeIf {
+            it.id != lastFirstFilteredTaskId &&
+                historyUiState.query == lastScrollQuery &&
+                historyUiState.selectedFilter.ordinal == lastScrollFilterOrdinal &&
+                System.currentTimeMillis() - it.createdAt in 0..5_000L
+        }
+        ?.id
     var lastDetectedXhsLink by remember { mutableStateOf(detectedXhsLink) }
     LaunchedEffect(detectedXhsLink) {
         detectedXhsLink?.let { lastDetectedXhsLink = it }
@@ -1396,34 +1413,63 @@ private fun HistoryPage(
                         }
                     } else {
                         itemsIndexed(filteredTasks, key = { _, task -> task.id }) { _, task ->
-                            TaskCell(
-                                task = task,
-                                // 只有正在下载的任务才使用 uiState.mediaItems
-                                mediaItems = if (task.mediaRefs.isNotEmpty()) {
-                                    task.mediaRefs.map(::MediaItem)
-                                } else if (task.status == com.neoruaa.xhsdn.data.TaskStatus.DOWNLOADING && uiState.mediaItems.isNotEmpty()) {
-                                    uiState.mediaItems
-                                } else {
-                                    emptyList()
-                                },
+                            val creationVisibility = remember(task.id) {
+                                MutableTransitionState(task.id != newlyInsertedTaskId).apply {
+                                    targetState = true
+                                }
+                            }
+                            AnimatedVisibility(
+                                visibleState = creationVisibility,
+                                enter = fadeIn(
+                                    animationSpec = tween(
+                                        durationMillis = 180,
+                                        delayMillis = 30
+                                    )
+                                ) + scaleIn(
+                                    animationSpec = spring(
+                                        dampingRatio = 0.58f,
+                                        stiffness = 420f
+                                    ),
+                                    initialScale = 0.86f
+                                ) + expandVertically(
+                                    animationSpec = spring(
+                                        dampingRatio = 0.82f,
+                                        stiffness = 460f
+                                    ),
+                                    expandFrom = Alignment.Top,
+                                    clip = false
+                                ),
+                                exit = fadeOut(animationSpec = tween(durationMillis = 120))
+                            ) {
+                                TaskCell(
+                                    task = task,
+                                    // 只有正在下载的任务才使用 uiState.mediaItems
+                                    mediaItems = if (task.mediaRefs.isNotEmpty()) {
+                                        task.mediaRefs.map(::MediaItem)
+                                    } else if (task.status == com.neoruaa.xhsdn.data.TaskStatus.DOWNLOADING && uiState.mediaItems.isNotEmpty()) {
+                                        uiState.mediaItems
+                                    } else {
+                                        emptyList()
+                                    },
 
-                                onCopyUrl = { onCopyUrl(task.noteUrl) },
-                                onBrowseUrl = { onBrowseUrl(task.noteUrl) },
-                                onRetry = { onRetryTask(task) },
-                                onContinue = { onContinueTask(task) },
-                                onWebCrawl = { onWebCrawlTask(task) },
-                                onStop = { onStopTask(task) },
-                                onDelete = { taskToDelete = task },
-                                onMediaClick = onMediaClick,
-                                onClick = {
-                                    onOpenDetail(task)
-                                },
-                                modifier = Modifier.padding(
-                                    start = contentStartPadding + 12.dp,
-                                    end = contentEndPadding + 12.dp,
-                                    bottom = 12.dp
+                                    onCopyUrl = { onCopyUrl(task.noteUrl) },
+                                    onBrowseUrl = { onBrowseUrl(task.noteUrl) },
+                                    onRetry = { onRetryTask(task) },
+                                    onContinue = { onContinueTask(task) },
+                                    onWebCrawl = { onWebCrawlTask(task) },
+                                    onStop = { onStopTask(task) },
+                                    onDelete = { taskToDelete = task },
+                                    onMediaClick = onMediaClick,
+                                    onClick = {
+                                        onOpenDetail(task)
+                                    },
+                                    modifier = Modifier.padding(
+                                        start = contentStartPadding + 12.dp,
+                                        end = contentEndPadding + 12.dp,
+                                        bottom = 12.dp
+                                    )
                                 )
-                            )
+                            }
                         }
                     }
 
@@ -1796,6 +1842,13 @@ private fun TaskCell(
             .squircleSurface(
                 color = MiuixTheme.colorScheme.surfaceVariant,
                 cornerRadius = 18.dp
+            )
+            .animateContentSize(
+                animationSpec = spring(
+                    dampingRatio = 0.9f,
+                    stiffness = 560f
+                ),
+                alignment = Alignment.TopStart
             )
             .combinedClickable(
                 onClick = { onClick?.invoke() },

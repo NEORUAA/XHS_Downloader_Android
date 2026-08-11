@@ -553,6 +553,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         _uiState.update { state ->
             state.copy(
                 selectiveDownload = state.selectiveDownload.copy(
+                    show = false,
                     phase = SelectiveDownloadPhase.Saving,
                     progress = 0f,
                     progressLabel = "0/${selectedItems.size}",

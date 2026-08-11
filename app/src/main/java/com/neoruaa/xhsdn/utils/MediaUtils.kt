@@ -6,6 +6,7 @@ import android.graphics.BitmapFactory
 import android.graphics.Matrix
 import android.media.ExifInterface
 import android.media.MediaMetadataRetriever
+import android.os.Build
 import android.provider.DocumentsContract
 import android.provider.OpenableColumns
 import com.neoruaa.xhsdn.ImageOrientationUtils
@@ -36,7 +37,7 @@ fun calculateInSampleSize(options: BitmapFactory.Options, reqWidth: Int, reqHeig
         val halfHeight: Int = height / 2
         val halfWidth: Int = width / 2
 
-        while (halfHeight / inSampleSize >= reqHeight && halfWidth / inSampleSize >= reqWidth) {
+        while (halfHeight / inSampleSize >= reqHeight || halfWidth / inSampleSize >= reqWidth) {
             inSampleSize *= 2
         }
     }
@@ -44,12 +45,16 @@ fun calculateInSampleSize(options: BitmapFactory.Options, reqWidth: Int, reqHeig
     return inSampleSize
 }
 
-fun createVideoThumbnail(file: File): Bitmap? {
+fun createVideoThumbnail(
+    file: File,
+    reqWidth: Int = 720,
+    reqHeight: Int = 720
+): Bitmap? {
     return runCatching {
         val retriever = MediaMetadataRetriever()
         try {
             retriever.setDataSource(file.absolutePath)
-            retriever.getFrameAtTime(1000000, MediaMetadataRetriever.OPTION_CLOSEST_SYNC) // 获取第1秒的帧
+            retriever.createScaledThumbnail(reqWidth, reqHeight)
         } finally {
             retriever.release()
         }
@@ -87,13 +92,17 @@ fun readImageAspectRatio(filePath: String): Float? = runCatching {
     )
 }.getOrNull()
 
-fun Context.createVideoThumbnail(ref: StoredMediaRef): Bitmap? {
-    ref.legacyPath?.let { return createVideoThumbnail(File(it)) }
+fun Context.createVideoThumbnail(
+    ref: StoredMediaRef,
+    reqWidth: Int = 720,
+    reqHeight: Int = 720
+): Bitmap? {
+    ref.legacyPath?.let { return createVideoThumbnail(File(it), reqWidth, reqHeight) }
     return runCatching {
         val retriever = MediaMetadataRetriever()
         try {
             retriever.setDataSource(this, ref.androidUri)
-            retriever.getFrameAtTime(1_000_000, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
+            retriever.createScaledThumbnail(reqWidth, reqHeight)
         } finally {
             retriever.release()
         }
@@ -139,6 +148,65 @@ fun Context.readMediaAspectRatio(ref: StoredMediaRef, type: MediaType): Float? =
         MediaType.OTHER -> null
     }
 }.getOrNull()
+
+private fun MediaMetadataRetriever.createScaledThumbnail(
+    reqWidth: Int,
+    reqHeight: Int
+): Bitmap? {
+    require(reqWidth > 0 && reqHeight > 0)
+    val sourceWidth = extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)
+        ?.toIntOrNull()
+    val sourceHeight = extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT)
+        ?.toIntOrNull()
+    val targetSize = scaledSize(
+        sourceWidth = sourceWidth,
+        sourceHeight = sourceHeight,
+        maxWidth = reqWidth,
+        maxHeight = reqHeight
+    )
+
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1 && targetSize != null) {
+        return getScaledFrameAtTime(
+            1_000_000,
+            MediaMetadataRetriever.OPTION_CLOSEST_SYNC,
+            targetSize.first,
+            targetSize.second
+        )
+    }
+
+    return getFrameAtTime(
+        1_000_000,
+        MediaMetadataRetriever.OPTION_CLOSEST_SYNC
+    )?.scaleDownToFit(reqWidth, reqHeight)
+}
+
+private fun scaledSize(
+    sourceWidth: Int?,
+    sourceHeight: Int?,
+    maxWidth: Int,
+    maxHeight: Int
+): Pair<Int, Int>? {
+    if (sourceWidth == null || sourceHeight == null || sourceWidth <= 0 || sourceHeight <= 0) {
+        return null
+    }
+    val scale = minOf(
+        maxWidth.toFloat() / sourceWidth,
+        maxHeight.toFloat() / sourceHeight,
+        1f
+    )
+    return Pair(
+        (sourceWidth * scale).toInt().coerceAtLeast(1),
+        (sourceHeight * scale).toInt().coerceAtLeast(1)
+    )
+}
+
+private fun Bitmap.scaleDownToFit(maxWidth: Int, maxHeight: Int): Bitmap {
+    val targetSize = scaledSize(width, height, maxWidth, maxHeight) ?: return this
+    if (targetSize.first == width && targetSize.second == height) return this
+    val scaled = Bitmap.createScaledBitmap(this, targetSize.first, targetSize.second, true)
+    if (scaled !== this) recycle()
+    return scaled
+}
 
 private fun readExifOrientation(filePath: String): Int = runCatching {
     ExifInterface(filePath).getAttributeInt(

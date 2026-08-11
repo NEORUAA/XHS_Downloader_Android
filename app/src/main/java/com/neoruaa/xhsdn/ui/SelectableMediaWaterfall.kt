@@ -11,11 +11,11 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
@@ -24,16 +24,16 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.state.ToggleableState
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
 import com.neoruaa.xhsdn.R
 import com.neoruaa.xhsdn.utils.createVideoThumbnail
 import com.neoruaa.xhsdn.utils.decodeSampledBitmap
-import com.neoruaa.xhsdn.utils.readImageAspectRatio
-import com.neoruaa.xhsdn.utils.readMediaAspectRatio
 import com.neoruaa.xhsdn.utils.storedMediaSize
 import com.neoruaa.xhsdn.viewmodels.CachedMediaItem
 import com.neoruaa.xhsdn.viewmodels.MediaItem
@@ -53,6 +53,9 @@ import top.yukonga.miuix.kmp.squircle.squircleSurface
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.window.WindowDialog
 import java.io.File
+import kotlin.math.max
+
+private val waterfallThumbnailDispatcher = Dispatchers.IO.limitedParallelism(4)
 
 @Composable
 fun DetailMediaWaterfall(
@@ -61,23 +64,15 @@ fun DetailMediaWaterfall(
     onMediaClick: (MediaItem) -> Unit,
     onDeleteMedia: (MediaItem) -> Unit
 ) {
-    val columns = rememberDetailColumns(mediaItems)
-
-    Row(
-        modifier = modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(10.dp)
-    ) {
-        DetailMediaColumn(
-            items = columns.left,
-            onMediaClick = onMediaClick,
-            onDeleteMedia = onDeleteMedia,
-            modifier = Modifier.weight(1f)
-        )
-        DetailMediaColumn(
-            items = columns.right,
-            onMediaClick = onMediaClick,
-            onDeleteMedia = onDeleteMedia,
-            modifier = Modifier.weight(1f)
+    BalancedTwoLaneLayout(
+        modifier = modifier,
+        items = mediaItems,
+        itemKey = MediaItem::path
+    ) { item ->
+        DetailMediaPreview(
+            item = item,
+            onClick = { onMediaClick(item) },
+            onDelete = { onDeleteMedia(item) }
         )
     }
 }
@@ -89,75 +84,106 @@ fun SelectableMediaWaterfall(
     selectedPaths: Set<String>,
     onToggle: (String) -> Unit
 ) {
-    val columns = rememberSelectableColumns(items)
+    BalancedTwoLaneLayout(
+        modifier = modifier,
+        items = items,
+        itemKey = CachedMediaItem::path
+    ) { item ->
+        SelectableMediaPreview(
+            item = item,
+            selected = selectedPaths.contains(item.path),
+            onToggle = { onToggle(item.path) }
+        )
+    }
+}
 
-    Row(
+@Composable
+private fun <T> BalancedTwoLaneLayout(
+    modifier: Modifier = Modifier,
+    items: List<T>,
+    itemKey: (T) -> Any,
+    itemContent: @Composable (T) -> Unit
+) {
+    Layout(
         modifier = modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(10.dp)
-    ) {
-        SelectableMediaColumn(
-            items = columns.left,
-            selectedPaths = selectedPaths,
-            onToggle = onToggle,
-            modifier = Modifier.weight(1f)
-        )
-        SelectableMediaColumn(
-            items = columns.right,
-            selectedPaths = selectedPaths,
-            onToggle = onToggle,
-            modifier = Modifier.weight(1f)
-        )
-    }
-}
-
-@Composable
-private fun DetailMediaColumn(
-    items: List<MediaItem>,
-    onMediaClick: (MediaItem) -> Unit,
-    onDeleteMedia: (MediaItem) -> Unit,
-    modifier: Modifier = Modifier
-) {
-    Column(
-        modifier = modifier,
-        verticalArrangement = Arrangement.spacedBy(10.dp)
-    ) {
-        items.forEach { item ->
-            DetailMediaPreview(
-                item = item,
-                onClick = { onMediaClick(item) },
-                onDelete = { onDeleteMedia(item) }
-            )
+        content = {
+            items.forEach { item ->
+                key(itemKey(item)) {
+                    itemContent(item)
+                }
+            }
         }
+    ) { measurables, constraints ->
+        val layoutWidth = if (constraints.hasBoundedWidth) {
+            constraints.maxWidth
+        } else {
+            constraints.minWidth
+        }
+        val spacing = 10.dp.roundToPx()
+        val columnWidth = ((layoutWidth - spacing).coerceAtLeast(0)) / 2
+        val itemConstraints = Constraints.fixedWidth(columnWidth)
+        val placeables = measurables.map { it.measure(itemConstraints) }
+        val placement = calculateBalancedWaterfallPlacement(
+            itemHeights = placeables.map { it.height },
+            spacing = spacing
+        )
+        val swapVisualLanes = placement.rightHeight > placement.leftHeight
+        val layoutHeight = max(placement.leftHeight, placement.rightHeight)
+            .coerceIn(constraints.minHeight, constraints.maxHeight)
 
-        if (items.isEmpty()) {
-            Spacer(modifier = Modifier.height(1.dp))
+        layout(layoutWidth, layoutHeight) {
+            placeables.forEachIndexed { index, placeable ->
+                val assignedLane = placement.lanes[index]
+                val visualLane = if (swapVisualLanes) 1 - assignedLane else assignedLane
+                val x = if (visualLane == 0) 0 else layoutWidth - columnWidth
+                placeable.place(x, placement.yOffsets[index])
+            }
         }
     }
 }
 
-@Composable
-private fun SelectableMediaColumn(
-    items: List<CachedMediaItem>,
-    selectedPaths: Set<String>,
-    onToggle: (String) -> Unit,
-    modifier: Modifier = Modifier
-) {
-    Column(
-        modifier = modifier,
-        verticalArrangement = Arrangement.spacedBy(10.dp)
-    ) {
-        items.forEach { item ->
-            SelectableMediaPreview(
-                item = item,
-                selected = selectedPaths.contains(item.path),
-                onToggle = { onToggle(item.path) }
-            )
-        }
+internal data class WaterfallPlacement(
+    val lanes: List<Int>,
+    val yOffsets: List<Int>,
+    val leftHeight: Int,
+    val rightHeight: Int
+)
 
-        if (items.isEmpty()) {
-            Spacer(modifier = Modifier.height(1.dp))
+internal fun calculateBalancedWaterfallPlacement(
+    itemHeights: List<Int>,
+    spacing: Int
+): WaterfallPlacement {
+    require(spacing >= 0)
+    var leftHeight = 0
+    var rightHeight = 0
+    var leftCount = 0
+    var rightCount = 0
+    val lanes = ArrayList<Int>(itemHeights.size)
+    val yOffsets = ArrayList<Int>(itemHeights.size)
+
+    itemHeights.forEach { itemHeight ->
+        require(itemHeight >= 0)
+        if (leftHeight <= rightHeight) {
+            val y = if (leftCount == 0) 0 else leftHeight + spacing
+            lanes += 0
+            yOffsets += y
+            leftHeight = y + itemHeight
+            leftCount++
+        } else {
+            val y = if (rightCount == 0) 0 else rightHeight + spacing
+            lanes += 1
+            yOffsets += y
+            rightHeight = y + itemHeight
+            rightCount++
         }
     }
+
+    return WaterfallPlacement(
+        lanes = lanes,
+        yOffsets = yOffsets,
+        leftHeight = leftHeight,
+        rightHeight = rightHeight
+    )
 }
 
 @Composable
@@ -169,7 +195,7 @@ fun DetailMediaPreview(
 ) {
     var showDeleteDialog by remember { mutableStateOf(false) }
     val bitmap = rememberStoredThumbnail(item)
-    val aspectRatio = rememberStoredAspectRatio(item) ?: 0.75f
+    val aspectRatio = bitmap.aspectRatioOrDefault()
     val overlayResId = remember(item.path, item.type) { storedOverlayResId(item) }
     val fileName = item.media.displayName
     val fileSize = rememberStoredFileSize(item)
@@ -281,7 +307,7 @@ fun SelectableMediaPreview(
     onToggle: () -> Unit
 ) {
     val bitmap = rememberSelectableThumbnail(item)
-    val aspectRatio = rememberSelectableAspectRatio(item) ?: 0.75f
+    val aspectRatio = bitmap.aspectRatioOrDefault()
     val overlayResId = remember(item.path, item.type) { selectableOverlayResId(item) }
     val fileSize = remember(item.path) { selectableFileSize(item.path) }
 
@@ -384,72 +410,18 @@ private fun SelectablePlaceholderMedia(type: MediaType) {
     }
 }
 
-private data class DetailColumns(
-    val left: List<MediaItem>,
-    val right: List<MediaItem>
-)
-
-@Composable
-private fun rememberDetailColumns(items: List<MediaItem>): DetailColumns {
-    val context = LocalContext.current
-    val state = produceState(initialValue = DetailColumns(items, emptyList()), items) {
-        value = withContext(Dispatchers.IO) {
-            var left = mutableListOf<MediaItem>()
-            var right = mutableListOf<MediaItem>()
-            var leftHeight = 0f
-            var rightHeight = 0f
-            items.forEach { item ->
-                val ratio = context.readMediaAspectRatio(item.media, item.type)
-                val height = if (ratio != null && ratio > 0f) {
-                    1f / ratio.coerceIn(0.4f, 2.5f) + 0.34f
-                } else {
-                    1.67f
-                }
-                if (leftHeight <= rightHeight) {
-                    left += item
-                    leftHeight += height
-                } else {
-                    right += item
-                    rightHeight += height
-                }
-                if (rightHeight > leftHeight) {
-                    val oldLeft = left
-                    left = right
-                    right = oldLeft
-                    val oldHeight = leftHeight
-                    leftHeight = rightHeight
-                    rightHeight = oldHeight
-                }
-            }
-            DetailColumns(left.toList(), right.toList())
-        }
-    }
-    return state.value
-}
-
 @Composable
 private fun rememberStoredThumbnail(item: MediaItem): ImageBitmap? {
     val context = LocalContext.current
     val state = produceState<ImageBitmap?>(initialValue = null, item.path) {
-        value = withContext(Dispatchers.IO) {
+        value = withContext(waterfallThumbnailDispatcher) {
             runCatching {
                 when (item.type) {
                     MediaType.IMAGE -> context.decodeSampledBitmap(item.media, 720, 720)?.asImageBitmap()
-                    MediaType.VIDEO -> context.createVideoThumbnail(item.media)?.asImageBitmap()
+                    MediaType.VIDEO -> context.createVideoThumbnail(item.media, 720, 720)?.asImageBitmap()
                     MediaType.OTHER -> null
                 }
             }.getOrNull()
-        }
-    }
-    return state.value
-}
-
-@Composable
-private fun rememberStoredAspectRatio(item: MediaItem): Float? {
-    val context = LocalContext.current
-    val state = produceState<Float?>(initialValue = null, item.path) {
-        value = withContext(Dispatchers.IO) {
-            context.readMediaAspectRatio(item.media, item.type)
         }
     }
     return state.value
@@ -481,71 +453,16 @@ private fun storedOverlayResId(item: MediaItem): Int? = when {
     else -> null
 }
 
-private data class SelectableColumns(
-    val left: List<CachedMediaItem>,
-    val right: List<CachedMediaItem>
-)
-
-@Composable
-private fun rememberSelectableColumns(items: List<CachedMediaItem>): SelectableColumns {
-    val state = produceState(initialValue = SelectableColumns(items, emptyList()), items) {
-        value = withContext(Dispatchers.IO) {
-            distributeSelectableItems(items)
-        }
-    }
-    return state.value
-}
-
-private fun distributeSelectableItems(items: List<CachedMediaItem>): SelectableColumns {
-    var leftItems = mutableListOf<CachedMediaItem>()
-    var rightItems = mutableListOf<CachedMediaItem>()
-    var leftHeight = 0f
-    var rightHeight = 0f
-
-    items.forEach { item ->
-        val estimatedHeight = estimateSelectableCardHeight(item)
-        if (leftHeight <= rightHeight) {
-            leftItems.add(item)
-            leftHeight += estimatedHeight
-        } else {
-            rightItems.add(item)
-            rightHeight += estimatedHeight
-        }
-
-        if (rightHeight > leftHeight) {
-            val oldLeftItems = leftItems
-            leftItems = rightItems
-            rightItems = oldLeftItems
-
-            val oldLeftHeight = leftHeight
-            leftHeight = rightHeight
-            rightHeight = oldLeftHeight
-        }
-    }
-
-    return SelectableColumns(leftItems.toList(), rightItems.toList())
-}
-
-private fun estimateSelectableCardHeight(item: CachedMediaItem): Float {
-    val aspectRatio = readSelectableAspectRatio(item)
-    val previewHeightWeight = if (aspectRatio != null && aspectRatio > 0f) {
-        1f / aspectRatio.coerceIn(0.4f, 2.5f)
-    } else {
-        1.33f
-    }
-    return previewHeightWeight + 0.34f
-}
-
 @Composable
 private fun rememberSelectableThumbnail(item: CachedMediaItem): ImageBitmap? {
     val state = produceState<ImageBitmap?>(initialValue = null, item.path) {
-        value = withContext(Dispatchers.IO) {
+        value = withContext(waterfallThumbnailDispatcher) {
             val file = File(item.path)
             if (!file.exists()) return@withContext null
             runCatching {
                 when (item.type) {
                     MediaType.IMAGE -> decodeSampledBitmap(file.path, 720, 720)?.asImageBitmap()
-                    MediaType.VIDEO -> createVideoThumbnail(file)?.asImageBitmap()
+                    MediaType.VIDEO -> createVideoThumbnail(file, 720, 720)?.asImageBitmap()
                     MediaType.OTHER -> null
                 }
             }.getOrNull()
@@ -554,35 +471,13 @@ private fun rememberSelectableThumbnail(item: CachedMediaItem): ImageBitmap? {
     return state.value
 }
 
-@Composable
-private fun rememberSelectableAspectRatio(item: CachedMediaItem): Float? {
-    val state = produceState<Float?>(initialValue = null, item.path) {
-        value = withContext(Dispatchers.IO) {
-            readSelectableAspectRatio(item)
-        }
+private fun ImageBitmap?.aspectRatioOrDefault(): Float {
+    val bitmap = this ?: return 0.75f
+    return if (bitmap.width > 0 && bitmap.height > 0) {
+        bitmap.width.toFloat() / bitmap.height.toFloat()
+    } else {
+        0.75f
     }
-    return state.value
-}
-
-private fun readSelectableAspectRatio(item: CachedMediaItem): Float? {
-    val file = File(item.path)
-    if (!file.exists()) return null
-    return runCatching {
-        when (item.type) {
-            MediaType.IMAGE -> {
-                readImageAspectRatio(file.path)
-            }
-            MediaType.VIDEO -> {
-                val retriever = android.media.MediaMetadataRetriever()
-                retriever.setDataSource(file.path)
-                val width = retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)?.toFloatOrNull()
-                val height = retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT)?.toFloatOrNull()
-                retriever.release()
-                if (width != null && height != null && height > 0) width / height else null
-            }
-            MediaType.OTHER -> null
-        }
-    }.getOrNull()
 }
 
 private fun selectableOverlayResId(item: CachedMediaItem): Int? {

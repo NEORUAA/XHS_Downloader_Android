@@ -20,7 +20,6 @@ import androidx.activity.viewModels
 import androidx.annotation.RequiresApi
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
-import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -149,7 +148,6 @@ import top.yukonga.miuix.kmp.icon.extended.Ok
 import top.yukonga.miuix.kmp.icon.basic.Search
 import top.yukonga.miuix.kmp.icon.basic.SearchCleanup
 import top.yukonga.miuix.kmp.window.WindowBottomSheet
-import top.yukonga.miuix.kmp.anim.folmeSpring
 import top.yukonga.miuix.kmp.squircle.squircleBackground
 import top.yukonga.miuix.kmp.squircle.squircleSurface
 
@@ -974,10 +972,6 @@ private fun SelectiveDownloadSheet(
         LazyColumn(
             modifier = Modifier
                 .fillMaxWidth()
-                .animateContentSize(
-                    animationSpec = folmeSpring(damping = 0.9f, response = 0.38f),
-                    alignment = Alignment.TopCenter
-                )
                 .heightIn(max = 560.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
@@ -1963,7 +1957,7 @@ private fun rememberThumbnail(item: MediaItem): ImageBitmap? {
             val bitmap = runCatching {
                 when (item.type) {
                     MediaType.IMAGE -> context.decodeSampledBitmap(item.media, 200, 200)?.asImageBitmap()
-                    MediaType.VIDEO -> context.createVideoThumbnail(item.media)?.asImageBitmap()
+                    MediaType.VIDEO -> context.createVideoThumbnail(item.media, 200, 200)?.asImageBitmap()
                     MediaType.OTHER -> null
                 }
             }.getOrNull()

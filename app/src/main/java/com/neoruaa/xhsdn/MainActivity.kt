@@ -18,6 +18,15 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.compose.setContent
 import androidx.activity.viewModels
 import androidx.annotation.RequiresApi
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -65,6 +74,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.displayCutout
@@ -76,6 +86,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.zIndex
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
@@ -1099,6 +1110,10 @@ private fun HistoryPage(
     var searchExpanded by rememberSaveable {
         mutableStateOf(historyUiState.query.isNotEmpty())
     }
+    var lastDetectedXhsLink by remember { mutableStateOf(detectedXhsLink) }
+    LaunchedEffect(detectedXhsLink) {
+        detectedXhsLink?.let { lastDetectedXhsLink = it }
+    }
     val focusManager = LocalFocusManager.current
 
     var taskToDelete by remember { mutableStateOf<com.neoruaa.xhsdn.data.DownloadTask?>(null) }
@@ -1363,6 +1378,7 @@ private fun HistoryPage(
         Row(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
+                .zIndex(1f)
                 .padding(
                     start = contentStartPadding + 24.dp,
                     end = contentEndPadding + 24.dp,
@@ -1505,17 +1521,42 @@ private fun HistoryPage(
         }
 
         // 剪贴板检测提示气泡（叠加层，靠近底部按钮）
-        if (detectedXhsLink != null && !uiState.isDownloading && !manualInputLinks) {
+        val displayedXhsLink = detectedXhsLink ?: lastDetectedXhsLink
+        AnimatedVisibility(
+            visible = detectedXhsLink != null && !uiState.isDownloading && !manualInputLinks,
+            modifier = Modifier
+                .fillMaxWidth()
+                .align(Alignment.BottomCenter)
+                .padding(
+                    start = contentStartPadding + 24.dp,
+                    end = contentEndPadding + 24.dp,
+                    bottom = navPadding + 76.dp
+                ),
+            enter = fadeIn(animationSpec = tween(160)) +
+                slideInVertically(
+                    animationSpec = spring(dampingRatio = 0.72f, stiffness = 420f),
+                    initialOffsetY = { it / 3 }
+                ) +
+                scaleIn(
+                    animationSpec = spring(dampingRatio = 0.72f, stiffness = 420f),
+                    initialScale = 0.92f,
+                    transformOrigin = TransformOrigin(0.5f, 1f)
+                ),
+            exit = fadeOut(animationSpec = tween(140)) +
+                slideOutVertically(
+                    animationSpec = tween(180),
+                    targetOffsetY = { it / 4 }
+                ) +
+                scaleOut(
+                    animationSpec = tween(180),
+                    targetScale = 0.96f,
+                    transformOrigin = TransformOrigin(0.5f, 1f)
+                )
+        ) {
             val promptColor = MiuixTheme.colorScheme.tertiaryContainer
             Column(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .align(Alignment.BottomCenter)
-                    .padding(
-                        start = contentStartPadding + 24.dp,
-                        end = contentEndPadding + 24.dp,
-                        bottom = navPadding + 76.dp
-                    ),
+                    .fillMaxWidth(),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 Card(
@@ -1544,7 +1585,7 @@ private fun HistoryPage(
                                 color = MiuixTheme.colorScheme.onTertiaryContainer
                             )
                             Text(
-                                text = detectedXhsLink,
+                                text = displayedXhsLink.orEmpty(),
                                 fontSize = 12.sp,
                                 color = MiuixTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.7f),
                                 maxLines = 2,

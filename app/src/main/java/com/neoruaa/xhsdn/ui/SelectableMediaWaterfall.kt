@@ -1,5 +1,9 @@
 package com.neoruaa.xhsdn.ui
 
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -14,11 +18,15 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -39,6 +47,7 @@ import com.neoruaa.xhsdn.viewmodels.CachedMediaItem
 import com.neoruaa.xhsdn.viewmodels.MediaItem
 import com.neoruaa.xhsdn.viewmodels.MediaType
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Checkbox
@@ -64,15 +73,19 @@ fun DetailMediaWaterfall(
     onMediaClick: (MediaItem) -> Unit,
     onDeleteMedia: (MediaItem) -> Unit
 ) {
-    BalancedTwoLaneLayout(
+    StagedBalancedTwoLaneLayout(
         modifier = modifier,
         items = mediaItems,
         itemKey = MediaItem::path
-    ) { item ->
+    ) { item, layoutReady, imageVisible, loadEpoch, onThumbnailLoadComplete ->
         DetailMediaPreview(
             item = item,
             onClick = { onMediaClick(item) },
-            onDelete = { onDeleteMedia(item) }
+            onDelete = { onDeleteMedia(item) },
+            thumbnailLayoutReady = layoutReady,
+            thumbnailVisible = imageVisible,
+            thumbnailLoadEpoch = loadEpoch,
+            onThumbnailLoadComplete = onThumbnailLoadComplete
         )
     }
 }
@@ -84,16 +97,72 @@ fun SelectableMediaWaterfall(
     selectedPaths: Set<String>,
     onToggle: (String) -> Unit
 ) {
-    BalancedTwoLaneLayout(
+    StagedBalancedTwoLaneLayout(
         modifier = modifier,
         items = items,
         itemKey = CachedMediaItem::path
-    ) { item ->
+    ) { item, layoutReady, imageVisible, loadEpoch, onThumbnailLoadComplete ->
         SelectableMediaPreview(
             item = item,
             selected = selectedPaths.contains(item.path),
-            onToggle = { onToggle(item.path) }
+            onToggle = { onToggle(item.path) },
+            thumbnailLayoutReady = layoutReady,
+            thumbnailVisible = imageVisible,
+            thumbnailLoadEpoch = loadEpoch,
+            onThumbnailLoadComplete = onThumbnailLoadComplete
         )
+    }
+}
+
+@Composable
+private fun <T> StagedBalancedTwoLaneLayout(
+    modifier: Modifier = Modifier,
+    items: List<T>,
+    itemKey: (T) -> Any,
+    itemContent: @Composable (
+        item: T,
+        layoutReady: Boolean,
+        imageVisible: Boolean,
+        loadEpoch: Any,
+        onThumbnailLoadComplete: () -> Unit
+    ) -> Unit
+) {
+    val itemKeys = remember(items) { items.map(itemKey) }
+    val itemIndices = remember(itemKeys) {
+        itemKeys.withIndex().associate { (index, key) -> key to index }
+    }
+    val loadEpoch = remember(itemKeys) { Any() }
+    val completedKeys = remember(loadEpoch) { mutableStateMapOf<Any, Boolean>() }
+    val allThumbnailsLoaded = itemKeys.all { completedKeys[it] == true }
+    var revealedItemCount by remember(itemKeys) { mutableIntStateOf(0) }
+
+    LaunchedEffect(allThumbnailsLoaded, itemKeys) {
+        revealedItemCount = 0
+        if (allThumbnailsLoaded && itemKeys.isNotEmpty()) {
+            delay(70)
+            val staggerMillis = (600L / itemKeys.size).coerceIn(12L, 55L)
+            itemKeys.indices.forEach { index ->
+                revealedItemCount = index + 1
+                if (index < itemKeys.lastIndex) delay(staggerMillis)
+            }
+        }
+    }
+
+    BalancedTwoLaneLayout(
+        modifier = modifier,
+        items = items,
+        itemKey = itemKey
+    ) { item ->
+        val key = itemKey(item)
+        val index = itemIndices.getValue(key)
+        itemContent(
+            item,
+            allThumbnailsLoaded,
+            index < revealedItemCount,
+            loadEpoch
+        ) {
+            completedKeys[key] = true
+        }
     }
 }
 
@@ -191,11 +260,20 @@ fun DetailMediaPreview(
     modifier: Modifier = Modifier,
     item: MediaItem,
     onClick: () -> Unit,
-    onDelete: () -> Unit
+    onDelete: () -> Unit,
+    thumbnailLayoutReady: Boolean = true,
+    thumbnailVisible: Boolean = true,
+    thumbnailLoadEpoch: Any = Unit,
+    onThumbnailLoadComplete: () -> Unit = {}
 ) {
     var showDeleteDialog by remember { mutableStateOf(false) }
-    val bitmap = rememberStoredThumbnail(item)
-    val aspectRatio = bitmap.aspectRatioOrDefault()
+    val thumbnailState = rememberStoredThumbnail(item)
+    val bitmap = thumbnailState.bitmap
+    val currentLoadCompleteCallback by rememberUpdatedState(onThumbnailLoadComplete)
+    LaunchedEffect(thumbnailState.isComplete, item.path, thumbnailLoadEpoch) {
+        if (thumbnailState.isComplete) currentLoadCompleteCallback()
+    }
+    val aspectRatio = if (thumbnailLayoutReady) bitmap.aspectRatioOrDefault() else 0.75f
     val overlayResId = remember(item.path, item.type) { storedOverlayResId(item) }
     val fileName = item.media.displayName
     val fileSize = rememberStoredFileSize(item)
@@ -214,22 +292,33 @@ fun DetailMediaPreview(
                 .clickable { onClick() },
             contentAlignment = Alignment.Center
         ) {
-            if (bitmap != null) {
-                Image(
-                    bitmap = bitmap,
-                    contentDescription = item.path,
-                    modifier = Modifier.fillMaxSize()
-                )
-            } else {
-                SelectablePlaceholderMedia(type = item.type)
-            }
-
-            if (bitmap != null && overlayResId != null) {
-                Image(
-                    painter = painterResource(id = overlayResId),
-                    contentDescription = null,
-                    modifier = Modifier.size(60.dp)
-                )
+            SelectablePlaceholderMedia(type = item.type)
+            androidx.compose.animation.AnimatedVisibility(
+                visible = thumbnailVisible && bitmap != null,
+                modifier = Modifier.fillMaxSize(),
+                enter = fadeIn(animationSpec = tween(220)) +
+                    scaleIn(animationSpec = tween(260), initialScale = 0.985f),
+                exit = fadeOut(animationSpec = tween(100))
+            ) {
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    bitmap?.let {
+                        Image(
+                            bitmap = it,
+                            contentDescription = item.path,
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    }
+                    if (bitmap != null && overlayResId != null) {
+                        Image(
+                            painter = painterResource(id = overlayResId),
+                            contentDescription = null,
+                            modifier = Modifier.size(60.dp)
+                        )
+                    }
+                }
             }
         }
         Row(
@@ -304,10 +393,19 @@ fun SelectableMediaPreview(
     modifier: Modifier = Modifier,
     item: CachedMediaItem,
     selected: Boolean,
-    onToggle: () -> Unit
+    onToggle: () -> Unit,
+    thumbnailLayoutReady: Boolean = true,
+    thumbnailVisible: Boolean = true,
+    thumbnailLoadEpoch: Any = Unit,
+    onThumbnailLoadComplete: () -> Unit = {}
 ) {
-    val bitmap = rememberSelectableThumbnail(item)
-    val aspectRatio = bitmap.aspectRatioOrDefault()
+    val thumbnailState = rememberSelectableThumbnail(item)
+    val bitmap = thumbnailState.bitmap
+    val currentLoadCompleteCallback by rememberUpdatedState(onThumbnailLoadComplete)
+    LaunchedEffect(thumbnailState.isComplete, item.path, thumbnailLoadEpoch) {
+        if (thumbnailState.isComplete) currentLoadCompleteCallback()
+    }
+    val aspectRatio = if (thumbnailLayoutReady) bitmap.aspectRatioOrDefault() else 0.75f
     val overlayResId = remember(item.path, item.type) { selectableOverlayResId(item) }
     val fileSize = remember(item.path) { selectableFileSize(item.path) }
 
@@ -325,22 +423,33 @@ fun SelectableMediaPreview(
                 .aspectRatio(aspectRatio),
             contentAlignment = Alignment.Center
         ) {
-            if (bitmap != null) {
-                Image(
-                    bitmap = bitmap,
-                    contentDescription = item.path,
-                    modifier = Modifier.fillMaxSize()
-                )
-            } else {
-                SelectablePlaceholderMedia(type = item.type)
-            }
-
-            if (bitmap != null && overlayResId != null) {
-                Image(
-                    painter = painterResource(id = overlayResId),
-                    contentDescription = null,
-                    modifier = Modifier.size(60.dp)
-                )
+            SelectablePlaceholderMedia(type = item.type)
+            androidx.compose.animation.AnimatedVisibility(
+                visible = thumbnailVisible && bitmap != null,
+                modifier = Modifier.fillMaxSize(),
+                enter = fadeIn(animationSpec = tween(220)) +
+                    scaleIn(animationSpec = tween(260), initialScale = 0.985f),
+                exit = fadeOut(animationSpec = tween(100))
+            ) {
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    bitmap?.let {
+                        Image(
+                            bitmap = it,
+                            contentDescription = item.path,
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    }
+                    if (bitmap != null && overlayResId != null) {
+                        Image(
+                            painter = painterResource(id = overlayResId),
+                            contentDescription = null,
+                            modifier = Modifier.size(60.dp)
+                        )
+                    }
+                }
             }
         }
         Row(
@@ -411,10 +520,14 @@ private fun SelectablePlaceholderMedia(type: MediaType) {
 }
 
 @Composable
-private fun rememberStoredThumbnail(item: MediaItem): ImageBitmap? {
+private fun rememberStoredThumbnail(item: MediaItem): ThumbnailLoadState {
     val context = LocalContext.current
-    val state = produceState<ImageBitmap?>(initialValue = null, item.path) {
-        value = withContext(waterfallThumbnailDispatcher) {
+    val state = produceState(
+        initialValue = ThumbnailLoadState(isComplete = false, bitmap = null),
+        item.path,
+        item.type
+    ) {
+        val bitmap = withContext(waterfallThumbnailDispatcher) {
             runCatching {
                 when (item.type) {
                     MediaType.IMAGE -> context.decodeSampledBitmap(item.media, 720, 720)?.asImageBitmap()
@@ -423,6 +536,7 @@ private fun rememberStoredThumbnail(item: MediaItem): ImageBitmap? {
                 }
             }.getOrNull()
         }
+        value = ThumbnailLoadState(isComplete = true, bitmap = bitmap)
     }
     return state.value
 }
@@ -454,9 +568,13 @@ private fun storedOverlayResId(item: MediaItem): Int? = when {
 }
 
 @Composable
-private fun rememberSelectableThumbnail(item: CachedMediaItem): ImageBitmap? {
-    val state = produceState<ImageBitmap?>(initialValue = null, item.path) {
-        value = withContext(waterfallThumbnailDispatcher) {
+private fun rememberSelectableThumbnail(item: CachedMediaItem): ThumbnailLoadState {
+    val state = produceState(
+        initialValue = ThumbnailLoadState(isComplete = false, bitmap = null),
+        item.path,
+        item.type
+    ) {
+        val bitmap = withContext(waterfallThumbnailDispatcher) {
             val file = File(item.path)
             if (!file.exists()) return@withContext null
             runCatching {
@@ -467,9 +585,15 @@ private fun rememberSelectableThumbnail(item: CachedMediaItem): ImageBitmap? {
                 }
             }.getOrNull()
         }
+        value = ThumbnailLoadState(isComplete = true, bitmap = bitmap)
     }
     return state.value
 }
+
+private data class ThumbnailLoadState(
+    val isComplete: Boolean,
+    val bitmap: ImageBitmap?
+)
 
 private fun ImageBitmap?.aspectRatioOrDefault(): Float {
     val bitmap = this ?: return 0.75f

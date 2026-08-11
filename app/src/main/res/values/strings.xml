@@ -177,8 +177,8 @@
     <!-- Additional UI texts -->
     <string name="app_full_name">Xiaohongshu Downloader</string>
     <string name="tab_all">All</string>
-    <string name="tab_waiting_for_selection">Waiting for Selection (%1$d)</string>
-    <string name="tab_failed">Failed (%1$d)</string>
+    <string name="tab_waiting_for_selection">Waiting(%1$d)</string>
+    <string name="tab_failed">Failed(%1$d)</string>
     <string name="start_download_from_clipboard">Start Download from Clipboard</string>
     <string name="clear_history_dialog_title">Clear History</string>
     <string name="clear_history_dialog_message">Are you sure you want to delete all download records? Downloaded files will not be deleted.</string>

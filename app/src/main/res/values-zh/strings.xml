@@ -80,8 +80,8 @@
     <string name="storage_location_not_writable">请选择允许创建文件的文件夹</string>
     <string name="storage_location_selected_folder">已选择的文件夹</string>
     <string name="settings_check_existing_files_before_save">下载前检查已有文件</string>
-    <string name="settings_check_existing_files_before_save_enabled_desc">关闭后不再扫描目录中的文件名，保存更快，但同名文件可能会以 (1)、(2) 等形式共存。Android 11 及以上需要“所有文件访问”权限才能快速定位并覆盖同名文件。</string>
-    <string name="settings_check_existing_files_before_save_disabled_desc">开启后会在保存前定位并覆盖同名文件；Android 11 及以上需要“所有文件访问”权限。</string>
+    <string name="settings_check_existing_files_before_save_enabled_desc">关闭后不再扫描目录中的文件名，保存更快，但同名文件可能会以 (1)、(2) 等形式共存</string>
+    <string name="settings_check_existing_files_before_save_disabled_desc">开启后会在保存前检查目录并覆盖同名文件</string>
     <string name="settings_check_existing_permission_denied">未获得“所有文件访问”权限，未开始下载。</string>
     <string name="settings_check_existing_permission_unavailable">此设备没有可用的“所有文件访问”设置页面。</string>
     <string name="download_options">下载选项</string>

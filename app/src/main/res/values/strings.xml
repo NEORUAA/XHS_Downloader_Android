@@ -80,8 +80,8 @@
     <string name="storage_location_not_writable">Choose a folder that allows creating files</string>
     <string name="storage_location_selected_folder">Selected folder</string>
     <string name="settings_check_existing_files_before_save">Check existing files before saving</string>
-    <string name="settings_check_existing_files_before_save_enabled_desc">When disabled, directory file names are not scanned, saving is faster, and same-name files may coexist as (1), (2), and so on. Android 11 and later requires “All files access” to quickly locate and replace same-name files.</string>
-    <string name="settings_check_existing_files_before_save_disabled_desc">When enabled, same-name files are located and replaced before saving. Android 11 and later requires “All files access”.</string>
+    <string name="settings_check_existing_files_before_save_enabled_desc">When disabled, directory file names are not scanned, saving is faster, and same-name files may coexist as (1), (2), and so on.</string>
+    <string name="settings_check_existing_files_before_save_disabled_desc">When enabled, same-name files are located and replaced before saving.</string>
     <string name="settings_check_existing_permission_denied">“All files access” was not granted. The download was not started.</string>
     <string name="settings_check_existing_permission_unavailable">This device does not provide an “All files access” settings page.</string>
     <string name="download_options">Download Options</string>

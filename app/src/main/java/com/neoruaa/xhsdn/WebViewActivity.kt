@@ -49,7 +49,10 @@ import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import com.neoruaa.xhsdn.ui.AdaptiveTopAppBar
 import com.neoruaa.xhsdn.ui.TopAppBarIconButton
+import com.neoruaa.xhsdn.ui.miuixBackdropSource
+import com.neoruaa.xhsdn.ui.rememberMiuixTopBarBackdrop
 import com.neoruaa.xhsdn.ui.rememberWindowLayoutInfo
+import com.neoruaa.xhsdn.ui.navigation.AppRoute
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import top.yukonga.miuix.kmp.basic.Button
@@ -95,7 +98,6 @@ class WebViewActivity : ComponentActivity() {
         setContent {
             val controller = ThemeController(ColorSchemeMode.System)
             val localInitialUrl = initialUrl // Capture the variable in the composition scope
-            val taskCreatedId = remember { mutableStateOf<Long?>(null) }
             val activity = this@WebViewActivity
             MiuixTheme(controller = controller) {
                 WebViewScreen(
@@ -107,21 +109,31 @@ class WebViewActivity : ComponentActivity() {
                             if (content.isNotEmpty()) {
                                 putExtra("content_text", content)
                             }
-                            // Pass the URL that was crawled
                             putExtra("url", localInitialUrl ?: "")
-                            // Pass the task ID if it was created
-                            taskId?.let { id ->
-                                putExtra("task_id", id)
-                            }
+                            taskId?.let { id -> putExtra("task_id", id) }
                         }
-                        // Make sure setResult is called before finish
-                        activity?.setResult(RESULT_OK, resultIntent)
-                        activity?.finish()
+                        activity.setResult(RESULT_OK, resultIntent)
+                        activity.finish()
                     }
                 )
             }
         }
     }
+}
+
+@Composable
+internal fun WebViewRoute(
+    route: AppRoute.WebView,
+    onBack: () -> Unit,
+    onResult: (List<String>, String, Long?, String) -> Unit
+) {
+    WebViewScreen(
+        initialUrl = route.url,
+        onBack = onBack,
+        onResult = { urls, content, taskId ->
+            onResult(urls, content, taskId, route.url.orEmpty())
+        }
+    )
 }
 
 @SuppressLint("SetJavaScriptEnabled")
@@ -139,6 +151,7 @@ private fun WebViewScreen(
     val topBarState = rememberTopAppBarState()
     val scrollBehavior = top.yukonga.miuix.kmp.basic.MiuixScrollBehavior(state = topBarState)
     val windowLayoutInfo = rememberWindowLayoutInfo()
+    val topBarBackdrop = rememberMiuixTopBarBackdrop()
 
     val webView = remember {
         WebView(context).apply {
@@ -175,6 +188,7 @@ private fun WebViewScreen(
             AdaptiveTopAppBar(
                 title = stringResource(R.string.webview_title),
                 isWideScreen = windowLayoutInfo.isWideScreen,
+                backdrop = topBarBackdrop,
                 navigationIcon = {
                     TopAppBarIconButton(
                         imageVector = MiuixIcons.Back,
@@ -191,6 +205,7 @@ private fun WebViewScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
+                .miuixBackdropSource(topBarBackdrop)
                 .nestedScroll(scrollBehavior.nestedScrollConnection)
                 .background(MiuixTheme.colorScheme.surface)
                 .padding(top = padding.calculateTopPadding())

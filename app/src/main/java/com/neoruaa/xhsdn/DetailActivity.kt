@@ -48,6 +48,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import androidx.core.view.WindowCompat
@@ -57,7 +58,11 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.neoruaa.xhsdn.ui.AdaptiveTopAppBar
 import com.neoruaa.xhsdn.ui.TopAppBarIconButton
 import com.neoruaa.xhsdn.ui.DetailMediaWaterfall
+import com.neoruaa.xhsdn.ui.miuixBackdropSource
+import com.neoruaa.xhsdn.ui.miuixVerticalScrollEffects
+import com.neoruaa.xhsdn.ui.rememberMiuixTopBarBackdrop
 import com.neoruaa.xhsdn.ui.rememberWindowLayoutInfo
+import com.neoruaa.xhsdn.ui.navigation.AppRoute
 import com.neoruaa.xhsdn.viewmodels.DetailViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -208,7 +213,6 @@ class DetailActivity : ComponentActivity() {
                         }
                     },
                     onCopyUrl = {
-                        // Copy URL to clipboard directly in DetailActivity
                         if (!noteUrl.isNullOrEmpty()) {
                             val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                             clipboard.setPrimaryClip(ClipData.newPlainText("xhs_url", noteUrl))
@@ -216,19 +220,15 @@ class DetailActivity : ComponentActivity() {
                         }
                     },
                     onWebCrawl = {
-                        // Launch web crawl directly - task will be created in WebViewActivity when user clicks "爬取"
                         if (!noteUrl.isNullOrEmpty()) {
                             val cleanUrl = com.neoruaa.xhsdn.utils.UrlUtils.extractFirstUrl(noteUrl)
                             if (cleanUrl != null) {
-                                // Launch WebViewActivity for the web crawl
-                                val webViewIntent = Intent(this, WebViewActivity::class.java).apply {
-                                    putExtra("url", cleanUrl)
-                                    // Don't pass task_id here - let WebViewActivity create the task when user clicks "爬取"
-                                }
-                                // Start WebViewActivity for result - DetailActivity will receive the result
-                                // and then finish, allowing MainActivity's onActivityResult to eventually handle it
-                                startActivityForResult(webViewIntent, MainActivity.WEBVIEW_REQUEST_CODE)
-                                finish() // Close DetailActivity and return to MainActivity
+                                startActivity(
+                                    Intent(this, WebViewActivity::class.java).apply {
+                                        putExtra("url", cleanUrl)
+                                    }
+                                )
+                                finish()
                             } else {
                                 Toast.makeText(this, R.string.no_valid_link_found, Toast.LENGTH_SHORT).show()
                             }
@@ -270,6 +270,102 @@ class DetailActivity : ComponentActivity() {
 }
 
 @Composable
+internal fun DetailRoute(
+    route: AppRoute.Detail,
+    onBack: () -> Unit,
+    onOpenWebView: (String) -> Unit
+) {
+    val context = LocalContext.current
+    val taskId = remember(route.taskId) { route.taskId.toLongOrNull() }
+    val initialMediaItems = remember(route) {
+        taskId
+            ?.let(TaskManager::getTaskById)
+            ?.mediaRefs
+            ?.map(::MediaItem)
+            ?.takeIf { it.isNotEmpty() }
+            ?: route.filePaths.map { path -> MediaItem(path, detectMediaType(path)) }
+    }
+    var uiState by remember(route) {
+        mutableStateOf(
+            DetailUiState(
+                mediaItems = initialMediaItems,
+                taskTitle = context.getString(R.string.download_detail_title),
+                isDownloading = false,
+                noteContent = route.noteContent
+            )
+        )
+    }
+    val topBarState = rememberTopAppBarState()
+
+    DetailScreen(
+        uiState = uiState,
+        onBack = onBack,
+        onMediaClick = { item -> openRouteMedia(context, item) },
+        onDeleteMedia = { mediaItem ->
+            if (context.deleteStoredMedia(mediaItem.media)) {
+                taskId?.let { id -> TaskManager.removeMediaRef(id, mediaItem.path) }
+                uiState = uiState.copy(
+                    mediaItems = uiState.mediaItems.filter { it.path != mediaItem.path }
+                )
+            } else {
+                Toast.makeText(
+                    context,
+                    context.getString(R.string.delete_file_failed, mediaItem.media.displayName),
+                    Toast.LENGTH_SHORT
+                ).show()
+            }
+        },
+        onCopyUrl = {
+            route.noteUrl?.takeIf { it.isNotBlank() }?.let { url ->
+                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                clipboard.setPrimaryClip(ClipData.newPlainText("xhs_url", url))
+                Toast.makeText(context, R.string.link_copied, Toast.LENGTH_SHORT).show()
+            }
+        },
+        onWebCrawl = {
+            val cleanUrl = route.noteUrl?.let(com.neoruaa.xhsdn.utils.UrlUtils::extractFirstUrl)
+            if (cleanUrl != null) {
+                onOpenWebView(cleanUrl)
+            } else {
+                Toast.makeText(context, R.string.no_valid_link_found, Toast.LENGTH_SHORT).show()
+            }
+        },
+        topBarState = topBarState
+    )
+}
+
+private fun openRouteMedia(context: Context, item: MediaItem) {
+    if (!context.storedMediaExists(item.media)) {
+        Toast.makeText(
+            context,
+            context.getString(R.string.file_does_not_exist, item.path),
+            Toast.LENGTH_SHORT
+        ).show()
+        return
+    }
+    val mimeType = item.media.mimeType.takeUnless { it == "application/octet-stream" } ?: when (item.type) {
+        MediaType.VIDEO -> "video/*"
+        MediaType.IMAGE -> "image/*"
+        MediaType.OTHER -> "*/*"
+    }
+    val uri = item.media.legacyPath?.let { path ->
+        FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", File(path))
+    } ?: item.media.androidUri
+    val intent = Intent(Intent.ACTION_VIEW).apply {
+        setDataAndType(uri, mimeType)
+        clipData = ClipData.newRawUri(item.media.displayName, uri)
+        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+    }
+    runCatching { context.startActivity(intent) }.onFailure {
+        Toast.makeText(
+            context,
+            context.getString(R.string.unable_to_open_file_error, it.message),
+            Toast.LENGTH_SHORT
+        ).show()
+    }
+}
+
+@Composable
 private fun DetailScreen(
     uiState: DetailUiState,
     onBack: () -> Unit,
@@ -281,6 +377,7 @@ private fun DetailScreen(
 ) {
     val scrollBehavior = MiuixScrollBehavior(state = topBarState)
     val windowLayoutInfo = rememberWindowLayoutInfo()
+    val topBarBackdrop = rememberMiuixTopBarBackdrop()
 
     // Actions menu state
     var menuExpanded by remember { mutableStateOf(false) }
@@ -291,6 +388,7 @@ private fun DetailScreen(
             AdaptiveTopAppBar(
                 title = uiState.taskTitle,
                 isWideScreen = windowLayoutInfo.isWideScreen,
+                backdrop = topBarBackdrop,
                 navigationIcon = {
                     TopAppBarIconButton(
                         imageVector = MiuixIcons.Back,
@@ -356,6 +454,8 @@ private fun DetailScreen(
             contentEndPadding = windowLayoutInfo.contentEndPadding,
             modifier = Modifier
                 .fillMaxSize()
+                .miuixBackdropSource(topBarBackdrop)
+                .miuixVerticalScrollEffects()
                 .nestedScroll(scrollBehavior.nestedScrollConnection)
         )
     }
@@ -380,7 +480,8 @@ private fun FilesPage(
             start = contentStartPadding + 12.dp,
             end = contentEndPadding + 12.dp
         ),
-        modifier = modifier
+        modifier = modifier,
+        overscrollEffect = null
     ) {
 
         // ===== 笔记文案（单列 / 满行）=====

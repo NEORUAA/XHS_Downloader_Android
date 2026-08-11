@@ -80,8 +80,8 @@
     <string name="storage_location_not_writable">請選擇允許建立檔案的資料夾</string>
     <string name="storage_location_selected_folder">已選取的資料夾</string>
     <string name="settings_check_existing_files_before_save">下載前檢查現有檔案</string>
-    <string name="settings_check_existing_files_before_save_enabled_desc">關閉後不再掃描資料夾中的檔名，儲存更快，但同名檔案可能會以 (1)、(2) 等形式共存。Android 11 及以上需要「所有檔案存取」權限才能快速定位並取代同名檔案。</string>
-    <string name="settings_check_existing_files_before_save_disabled_desc">開啟後會在儲存前定位並取代同名檔案；Android 11 及以上需要「所有檔案存取」權限。</string>
+    <string name="settings_check_existing_files_before_save_enabled_desc">關閉後不再掃描資料夾中的檔名，儲存更快，但同名檔案可能會以 (1)、(2) 等形式共存</string>
+    <string name="settings_check_existing_files_before_save_disabled_desc">開啟後會在儲存前定位並取代同名檔案</string>
     <string name="settings_check_existing_permission_denied">未取得「所有檔案存取」權限，未開始下載。</string>
     <string name="settings_check_existing_permission_unavailable">此裝置沒有可用的「所有檔案存取」設定頁面。</string>
     <string name="download_options">下載選項</string>

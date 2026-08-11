@@ -21,13 +21,16 @@ import top.yukonga.miuix.kmp.basic.IconButton
 import top.yukonga.miuix.kmp.basic.ScrollBehavior
 import top.yukonga.miuix.kmp.basic.SmallTopAppBar
 import top.yukonga.miuix.kmp.basic.TopAppBar
+import top.yukonga.miuix.kmp.blur.LayerBackdrop
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 @Immutable
 data class WindowLayoutInfo(
     val isWideScreen: Boolean,
     val contentStartPadding: Dp,
-    val contentEndPadding: Dp
+    val contentEndPadding: Dp,
+    val topBarContentStartPadding: Dp,
+    val topBarContentEndPadding: Dp
 )
 
 @Composable
@@ -41,26 +44,34 @@ fun rememberWindowLayoutInfo(
         .asPaddingValues()
     val screenWidth = configuration.screenWidthDp.dp
     val centeredPadding = ((screenWidth - maxContentWidth) / 2).coerceAtLeast(0.dp)
+    val startInset = horizontalInsets.calculateLeftPadding(layoutDirection)
+    val endInset = horizontalInsets.calculateRightPadding(layoutDirection)
     val startPadding = maxOf(
         centeredPadding,
-        horizontalInsets.calculateLeftPadding(layoutDirection)
+        startInset
     )
     val endPadding = maxOf(
         centeredPadding,
-        horizontalInsets.calculateRightPadding(layoutDirection)
+        endInset
     )
+    val topBarStartPadding = (startPadding - startInset).coerceAtLeast(0.dp)
+    val topBarEndPadding = (endPadding - endInset).coerceAtLeast(0.dp)
 
     return remember(
         configuration.screenWidthDp,
         layoutDirection,
         maxContentWidth,
         startPadding,
-        endPadding
+        endPadding,
+        topBarStartPadding,
+        topBarEndPadding
     ) {
         WindowLayoutInfo(
             isWideScreen = configuration.screenWidthDp >= 600,
             contentStartPadding = startPadding,
-            contentEndPadding = endPadding
+            contentEndPadding = endPadding,
+            topBarContentStartPadding = topBarStartPadding,
+            topBarContentEndPadding = topBarEndPadding
         )
     }
 }
@@ -70,25 +81,31 @@ fun AdaptiveTopAppBar(
     title: String,
     isWideScreen: Boolean,
     modifier: Modifier = Modifier,
+    backdrop: LayerBackdrop? = null,
     navigationIcon: @Composable () -> Unit = {},
     actions: @Composable RowScope.() -> Unit = {},
+    bottomContent: @Composable () -> Unit = {},
     scrollBehavior: ScrollBehavior? = null
 ) {
     if (isWideScreen) {
         SmallTopAppBar(
             title = title,
-            modifier = modifier,
+            modifier = modifier.miuixTopBarBlur(backdrop),
+            color = backdrop.miuixTopBarColor(),
             navigationIcon = navigationIcon,
             actions = actions,
+            bottomContent = bottomContent,
             scrollBehavior = scrollBehavior
         )
     } else {
         TopAppBar(
             title = title,
             largeTitle = title,
-            modifier = modifier,
+            modifier = modifier.miuixTopBarBlur(backdrop),
+            color = backdrop.miuixTopBarColor(),
             navigationIcon = navigationIcon,
             actions = actions,
+            bottomContent = bottomContent,
             scrollBehavior = scrollBehavior
         )
     }

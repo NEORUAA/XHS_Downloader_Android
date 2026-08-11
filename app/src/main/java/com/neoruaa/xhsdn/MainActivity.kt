@@ -91,6 +91,10 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.navigation3.runtime.NavEntry
+import androidx.navigation3.runtime.rememberNavBackStack
+import androidx.navigation3.ui.NavDisplay
+import androidx.navigation3.ui.NavDisplayTransitionEffects
 import kotlinx.coroutines.Dispatchers
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.launch
@@ -125,7 +129,11 @@ import com.neoruaa.xhsdn.ui.AdaptiveTopAppBar
 import com.neoruaa.xhsdn.ui.TopAppBarIconButton
 import com.neoruaa.xhsdn.ui.TabRowWithContour
 import com.neoruaa.xhsdn.ui.SelectableMediaWaterfall
+import com.neoruaa.xhsdn.ui.miuixBackdropSource
+import com.neoruaa.xhsdn.ui.miuixVerticalScrollEffects
+import com.neoruaa.xhsdn.ui.rememberMiuixTopBarBackdrop
 import com.neoruaa.xhsdn.ui.rememberWindowLayoutInfo
+import com.neoruaa.xhsdn.ui.navigation.AppRoute
 import com.neoruaa.xhsdn.viewmodels.MainUiState
 import com.neoruaa.xhsdn.viewmodels.MainViewModel
 import com.neoruaa.xhsdn.viewmodels.MediaItem
@@ -151,6 +159,7 @@ import top.yukonga.miuix.kmp.basic.TextField
 import top.yukonga.miuix.kmp.basic.InputField
 import top.yukonga.miuix.kmp.basic.SearchBar
 import top.yukonga.miuix.kmp.basic.IconButton
+import top.yukonga.miuix.kmp.blur.LayerBackdrop
 import top.yukonga.miuix.kmp.icon.extended.File
 import top.yukonga.miuix.kmp.icon.extended.Link
 import top.yukonga.miuix.kmp.icon.extended.Close
@@ -175,6 +184,7 @@ class MainActivity : ComponentActivity() {
     private val settingsRepository: SettingsRepository by lazy {
         (application as XHSApplication).appContainer.settingsRepository
     }
+    private val pendingRoute = mutableStateOf<AppRoute?>(null)
     private val _autoDownloadIntentUrl = mutableStateOf<String?>(null)
     private var context: Context =  this
     private var pendingStorageAction: (() -> Unit)? = null
@@ -215,14 +225,6 @@ class MainActivity : ComponentActivity() {
             action?.invoke()
         } else if (action != null) {
             showToast(getString(R.string.settings_check_existing_permission_denied))
-        }
-    }
-
-    private val webViewLauncher = registerForActivityResult(
-        ActivityResultContracts.StartActivityForResult()
-    ) { result ->
-        if (result.resultCode == RESULT_OK) {
-            handleWebViewResult(result.data)
         }
     }
 
@@ -402,10 +404,44 @@ class MainActivity : ComponentActivity() {
             }
 
             MiuixTheme(controller = controller) {
-                // 手动输入链接对话框状态
-                var showInputDialog by remember { mutableStateOf(false) }
+                val backStack = rememberNavBackStack(AppRoute.Main)
+                val navigateBack = remember(backStack) {
+                    { if (backStack.size > 1) backStack.removeLastOrNull() }
+                }
+                val navigateTo = remember(backStack) {
+                    { route: AppRoute ->
+                        if (backStack.lastOrNull() != route) backStack.add(route)
+                    }
+                }
+                val requestedRoute = pendingRoute.value
+                LaunchedEffect(requestedRoute) {
+                    requestedRoute?.let {
+                        navigateTo(it)
+                        pendingRoute.value = null
+                    }
+                }
+                val transitionEffects = remember {
+                    NavDisplayTransitionEffects(
+                        enableCornerClip = true,
+                        dimAmount = 0.5f,
+                        blockInputDuringTransition = false
+                    )
+                }
 
-                MainScreen(
+                NavDisplay(
+                    backStack = backStack,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(MiuixTheme.colorScheme.surface),
+                    onBack = navigateBack,
+                    transitionEffects = transitionEffects,
+                    entryProvider = { route ->
+                        NavEntry(route) { destination ->
+                            when (val appRoute = destination as AppRoute) {
+                                AppRoute.Main -> {
+                                    var showInputDialog by remember { mutableStateOf(false) }
+
+                                    MainScreen(
                     uiState = uiState,
                     historyUiState = historyUiState,
                     manualInputLinks = manualInputLinks,
@@ -454,7 +490,7 @@ class MainActivity : ComponentActivity() {
                         }
                         ensureStoragePermission { viewModel.copyDescription({ showToast(getString(R.string.copied_description)) }, { showToast(it) }) } 
                     },
-                    onOpenSettings = { startActivity(Intent(this, SettingsActivity::class.java)) },
+                    onOpenSettings = { navigateTo(AppRoute.Settings) },
                     onWebCrawlFromClipboard = {
                         // 先读取剪贴板
                         val clipboard = getSystemService(CLIPBOARD_SERVICE) as android.content.ClipboardManager
@@ -463,12 +499,8 @@ class MainActivity : ComponentActivity() {
                             // Clean the URL using the same method as other places
                             val cleanUrl = UrlUtils.extractFirstUrl(clipText)
                             if (cleanUrl != null) {
-                                val webViewIntent = Intent(this, WebViewActivity::class.java).apply {
-                                    putExtra("url", cleanUrl)
-                                    // Don't pass task_id here - let WebViewActivity create the task when user clicks "爬取"
-                                }
-                                webViewLauncher.launch(webViewIntent)
-
+                                viewModel.resetWebCrawlFlag()
+                                navigateTo(AppRoute.WebView(cleanUrl))
                                 detectedXhsLink = null
                             } else {
                                 showToast(getString(R.string.invalid_link_please_reenter))
@@ -514,7 +546,13 @@ class MainActivity : ComponentActivity() {
                     },
                     onWebCrawlTask = { task ->
                         viewModel.updateUrl(task.noteUrl)
-                        launchWebView(task.noteUrl, task.id)
+                        val cleanUrl = UrlUtils.extractFirstUrl(task.noteUrl)
+                        if (cleanUrl != null) {
+                            viewModel.resetWebCrawlFlag()
+                            navigateTo(AppRoute.WebView(cleanUrl, task.id))
+                        } else {
+                            showToast(getString(R.string.invalid_link_please_reenter))
+                        }
                     },
                     onStopTask = { task ->
                         if (viewModel.currentTaskId == task.id) {
@@ -553,7 +591,18 @@ class MainActivity : ComponentActivity() {
                     onToggleSelectiveItem = viewModel::toggleSelectiveItem,
                     onHistoryQueryChange = historyViewModel::updateQuery,
                     onHistoryQueryClear = historyViewModel::clearQuery,
-                    onHistoryFilterChange = historyViewModel::selectFilter
+                    onHistoryFilterChange = historyViewModel::selectFilter,
+                    onOpenDetail = { task ->
+                        navigateTo(
+                            AppRoute.Detail(
+                                taskId = task.id.toString(),
+                                taskTitle = task.noteTitle ?: task.noteUrl,
+                                filePaths = task.filePaths,
+                                noteContent = task.noteContent,
+                                noteUrl = task.noteUrl
+                            )
+                        )
+                    }
                 )
 
                 // 检测到"重试同一链接但解析数量不一致"时，提示是否导出诊断日志
@@ -592,29 +641,34 @@ class MainActivity : ComponentActivity() {
                             )
                         }
                     }
-                }
+                                    }
+                                }
+
+                                AppRoute.Settings -> SettingsRoute(onBack = navigateBack)
+
+                                is AppRoute.Detail -> DetailRoute(
+                                    route = appRoute,
+                                    onBack = navigateBack,
+                                    onOpenWebView = { url ->
+                                        backStack[backStack.lastIndex] = AppRoute.WebView(url)
+                                    }
+                                )
+
+                                is AppRoute.WebView -> WebViewRoute(
+                                    route = appRoute,
+                                    onBack = navigateBack,
+                                    onResult = { urls, content, taskId, url ->
+                                        handleWebViewResult(urls, content, taskId, url)
+                                        navigateBack()
+                                    }
+                                )
+                            }
+                        }
+                    }
+                )
             }
         }
     }
-
-
-    private fun launchWebView(input: String, taskId: Long? = null) {
-        val cleanUrl = UrlUtils.extractFirstUrl(input)
-        if (cleanUrl == null) {
-            showToast(getString(R.string.invalid_link_please_reenter))
-            return
-        }
-        viewModel.resetWebCrawlFlag()
-        val intent = Intent(this, WebViewActivity::class.java)
-        intent.putExtra("url", cleanUrl)
-        if (taskId != null && taskId > 0) {
-            intent.putExtra("task_id", taskId)
-        }
-        webViewLauncher.launch(intent)
-    }
-
-
-
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
@@ -654,7 +708,7 @@ class MainActivity : ComponentActivity() {
                 onReady()
             } else {
                 showToast(getString(R.string.storage_location_access_lost_reselect))
-                startActivity(Intent(this, SettingsActivity::class.java))
+                pendingRoute.value = AppRoute.Settings
             }
             return
         }
@@ -762,52 +816,28 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun handleWebViewResult(data: Intent?) {
-        if (data != null) {
-            // Debug: Show that we received the result
-//            showToast("收到WebView结果")
-
-            val urls = data.getStringArrayListExtra("image_urls") ?: emptyList()
-            val content = data.getStringExtra("content_text")
-            val taskId = data.getLongExtra("task_id", -1L).takeIf { it > 0 }
-
-            if (urls.isNotEmpty()) {
-                // Debug: Show how many URLs were received
-//                showToast("收到${urls.size}个URL")
-
-                // Check if a task ID was passed from WebViewActivity (meaning task was already created)
-                val taskToUse = if (taskId != null) {
-                    // Task was already created in WebViewActivity
-                    taskId
-                } else {
-                    // Create a new task when URLs are returned from WebViewActivity
-                    val webViewUrl = data.getStringExtra("url").orEmpty()
-                    val newTaskId = com.neoruaa.xhsdn.data.tasks.TaskManager.createTask(
-                        noteUrl = webViewUrl,
-                        noteTitle = null,
-                        noteType = com.neoruaa.xhsdn.data.NoteType.UNKNOWN,
-                        totalFiles = urls.size
-                    )
-
-                    // Update the task status to DOWNLOADING immediately since we have the URLs
-                    com.neoruaa.xhsdn.data.tasks.TaskManager.updateTaskStatus(newTaskId, com.neoruaa.xhsdn.data.TaskStatus.DOWNLOADING)
-
-                    // Debug: Show that task was created
-//                    showToast("已创建任务ID: $newTaskId")
-                    newTaskId
-                }
-
-//                showToast("开始爬取，请等待任务完成")
-//                showToast("准备调用viewModel.onWebCrawlResult，URL数量: ${urls.size}")
-                viewModel.onWebCrawlResult(urls, content, taskToUse)
-            } else {
-                showToast(getString(R.string.no_accessible_urls_found))
-            }
+    private fun handleWebViewResult(
+        urls: List<String>,
+        content: String,
+        taskId: Long?,
+        webViewUrl: String
+    ) {
+        if (urls.isEmpty()) {
+            showToast(getString(R.string.no_accessible_urls_found))
+            return
         }
-    }
-
-    companion object {
-        const val WEBVIEW_REQUEST_CODE = 3002
+        val taskToUse = taskId ?: com.neoruaa.xhsdn.data.tasks.TaskManager.createTask(
+            noteUrl = webViewUrl,
+            noteTitle = null,
+            noteType = com.neoruaa.xhsdn.data.NoteType.UNKNOWN,
+            totalFiles = urls.size
+        ).also { newTaskId ->
+            com.neoruaa.xhsdn.data.tasks.TaskManager.updateTaskStatus(
+                newTaskId,
+                com.neoruaa.xhsdn.data.TaskStatus.DOWNLOADING
+            )
+        }
+        viewModel.onWebCrawlResult(urls, content, taskToUse)
     }
 }
 
@@ -841,10 +871,24 @@ private fun MainScreen(
     onToggleSelectiveItem: (String) -> Unit,
     onHistoryQueryChange: (String) -> Unit,
     onHistoryQueryClear: () -> Unit,
-    onHistoryFilterChange: (HistoryFilter) -> Unit
+    onHistoryFilterChange: (HistoryFilter) -> Unit,
+    onOpenDetail: (com.neoruaa.xhsdn.data.DownloadTask) -> Unit
 ) {
     val windowLayoutInfo = rememberWindowLayoutInfo()
+    val topBarBackdrop = rememberMiuixTopBarBackdrop()
     val statusListState = rememberLazyListState()
+    var searchExpanded by rememberSaveable {
+        mutableStateOf(historyUiState.query.isNotEmpty())
+    }
+    val focusManager = LocalFocusManager.current
+    val filterLabels = listOf(
+        stringResource(R.string.tab_all),
+        stringResource(
+            R.string.tab_waiting_for_selection,
+            historyUiState.waitingCount
+        ),
+        stringResource(R.string.tab_failed, historyUiState.failedCount)
+    )
 
     // 清除历史记录确认对话框状态
     var showClearHistoryDialog by remember { mutableStateOf(false) }
@@ -887,6 +931,7 @@ private fun MainScreen(
                 AdaptiveTopAppBar(
                     title = title,
                     isWideScreen = windowLayoutInfo.isWideScreen,
+                    backdrop = topBarBackdrop,
                     scrollBehavior = scrollBehavior,
                     actions = {
                         Box(
@@ -897,6 +942,104 @@ private fun MainScreen(
                                 imageVector = MiuixIcons.Settings,
                                 contentDescription = stringResource(R.string.settings),
                                 onClick = onOpenSettings
+                            )
+                        }
+                    },
+                    bottomContent = {
+                        Column(modifier = Modifier.fillMaxWidth()) {
+                            SearchBar(
+                                inputField = {
+                                    InputField(
+                                        query = historyUiState.query,
+                                        onQueryChange = onHistoryQueryChange,
+                                        onSearch = { focusManager.clearFocus() },
+                                        expanded = searchExpanded,
+                                        onExpandedChange = { searchExpanded = it },
+                                        label = stringResource(R.string.main_search_history),
+                                        leadingIcon = {
+                                            Icon(
+                                                imageVector = MiuixIcons.Basic.Search,
+                                                contentDescription = stringResource(
+                                                    R.string.main_search_history
+                                                ),
+                                                modifier = Modifier.padding(
+                                                    start = 16.dp,
+                                                    end = 8.dp
+                                                ),
+                                                tint = MiuixTheme.colorScheme.onSurfaceContainerHigh
+                                            )
+                                        },
+                                        trailingIcon = {
+                                            AnimatedVisibility(
+                                                visible = historyUiState.query.isNotEmpty()
+                                            ) {
+                                                IconButton(
+                                                    onClick = onHistoryQueryClear,
+                                                    minHeight = 35.dp,
+                                                    minWidth = 35.dp,
+                                                    cornerRadius = 35.dp,
+                                                    modifier = Modifier.padding(end = 8.dp)
+                                                ) {
+                                                    Icon(
+                                                        imageVector = MiuixIcons.Basic.SearchCleanup,
+                                                        contentDescription = stringResource(
+                                                            R.string.common_clear_search
+                                                        ),
+                                                        tint = MiuixTheme.colorScheme
+                                                            .onSurfaceContainerHighest
+                                                    )
+                                                }
+                                            }
+                                        },
+                                        modifier = Modifier.fillMaxWidth()
+                                    )
+                                },
+                                outsideEndAction = {
+                                    Text(
+                                        modifier = Modifier
+                                            .padding(
+                                                end = windowLayoutInfo.topBarContentEndPadding +
+                                                    12.dp
+                                            )
+                                            .clickable(
+                                                interactionSource = null,
+                                                indication = null
+                                            ) {
+                                                searchExpanded = false
+                                            },
+                                        text = stringResource(R.string.cancel),
+                                        color = MiuixTheme.colorScheme.primary
+                                    )
+                                },
+                                onExpandedChange = { searchExpanded = it },
+                                expanded = searchExpanded,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(
+                                        start = windowLayoutInfo.topBarContentStartPadding,
+                                        end = windowLayoutInfo.topBarContentEndPadding,
+                                        top = 10.dp
+                                    )
+                            ) {}
+
+                            TabRowWithContour(
+                                tabs = filterLabels,
+                                selectedTabIndex = historyUiState.selectedFilter.ordinal,
+                                fontSize = 14.sp,
+                                height = 40.dp,
+                                itemSpacing = 2.dp,
+                                onTabSelected = { index ->
+                                    HistoryFilter.entries.getOrNull(index)
+                                        ?.let(onHistoryFilterChange)
+                                },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(
+                                        start = windowLayoutInfo.topBarContentStartPadding + 12.dp,
+                                        top = 10.dp,
+                                        end = windowLayoutInfo.topBarContentEndPadding + 12.dp,
+                                        bottom = 10.dp
+                                    )
                             )
                         }
                     }
@@ -925,14 +1068,13 @@ private fun MainScreen(
                 onDeleteTask = onDeleteTask,
                 detectedXhsLink = detectedXhsLink,
                 onDismissPrompt = onDismissPrompt,
-                onHistoryQueryChange = onHistoryQueryChange,
-                onHistoryQueryClear = onHistoryQueryClear,
-                onHistoryFilterChange = onHistoryFilterChange,
+                onOpenDetail = onOpenDetail,
+                backdrop = topBarBackdrop,
                 contentStartPadding = windowLayoutInfo.contentStartPadding,
                 contentEndPadding = windowLayoutInfo.contentEndPadding,
+                topContentPadding = padding.calculateTopPadding(),
                 modifier = Modifier
-                    .fillMaxSize()
-                    .padding(top = padding.calculateTopPadding()),
+                    .fillMaxSize(),
                 nestedScrollConnection = scrollBehavior.nestedScrollConnection
             )
         }
@@ -983,7 +1125,9 @@ private fun SelectiveDownloadSheet(
         LazyColumn(
             modifier = Modifier
                 .fillMaxWidth()
-                .heightIn(max = 560.dp),
+                .heightIn(max = 560.dp)
+                .miuixVerticalScrollEffects(),
+            overscrollEffect = null,
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             item(key = "selective_download_status") {
@@ -1088,15 +1232,16 @@ private fun HistoryPage(
     onDeleteTask: (com.neoruaa.xhsdn.data.DownloadTask) -> Unit,
     detectedXhsLink: String?,
     onDismissPrompt: () -> Unit,
-    onHistoryQueryChange: (String) -> Unit,
-    onHistoryQueryClear: () -> Unit,
-    onHistoryFilterChange: (HistoryFilter) -> Unit,
+    onOpenDetail: (com.neoruaa.xhsdn.data.DownloadTask) -> Unit,
+    backdrop: LayerBackdrop?,
     contentStartPadding: androidx.compose.ui.unit.Dp,
     contentEndPadding: androidx.compose.ui.unit.Dp,
+    topContentPadding: androidx.compose.ui.unit.Dp,
     nestedScrollConnection: androidx.compose.ui.input.nestedscroll.NestedScrollConnection? = null
 ) {
     val tasks = historyUiState.allTasks
     val filteredTasks = historyUiState.filteredTasks
+    val firstFilteredTaskId = filteredTasks.firstOrNull()?.id
     val navPadding = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
     val activeTask = tasks.firstOrNull {
         it.status == com.neoruaa.xhsdn.data.TaskStatus.DOWNLOADING || it.status == com.neoruaa.xhsdn.data.TaskStatus.QUEUED
@@ -1107,15 +1252,17 @@ private fun HistoryPage(
         stringResource(R.string.clear_history)
     )
     var menuExpanded by remember { mutableStateOf(false) }
-    var searchExpanded by rememberSaveable {
-        mutableStateOf(historyUiState.query.isNotEmpty())
+    var lastScrollQuery by rememberSaveable { mutableStateOf(historyUiState.query) }
+    var lastScrollFilterOrdinal by rememberSaveable {
+        mutableStateOf(historyUiState.selectedFilter.ordinal)
+    }
+    var lastFirstFilteredTaskId by rememberSaveable {
+        mutableStateOf(firstFilteredTaskId)
     }
     var lastDetectedXhsLink by remember { mutableStateOf(detectedXhsLink) }
     LaunchedEffect(detectedXhsLink) {
         detectedXhsLink?.let { lastDetectedXhsLink = it }
     }
-    val focusManager = LocalFocusManager.current
-
     var taskToDelete by remember { mutableStateOf<com.neoruaa.xhsdn.data.DownloadTask?>(null) }
 
     if (taskToDelete != null) {
@@ -1148,137 +1295,59 @@ private fun HistoryPage(
         }
     }
 
-    Box(modifier = modifier) {
+    Box(modifier = Modifier.fillMaxSize()) {
         Card(
-            modifier = Modifier.fillMaxSize(),
+            modifier = modifier,
             cornerRadius = 18.dp,
             colors = CardDefaults.defaultColors(
                 color = MiuixTheme.colorScheme.surface
             )
         ) {
-            Column(
-                modifier = Modifier.fillMaxSize()
+            LaunchedEffect(
+                historyUiState.query,
+                historyUiState.selectedFilter,
+                firstFilteredTaskId
             ) {
-                SearchBar(
-                    inputField = {
-                        InputField(
-                            query = historyUiState.query,
-                            onQueryChange = onHistoryQueryChange,
-                            onSearch = { focusManager.clearFocus() },
-                            expanded = searchExpanded,
-                            onExpandedChange = { searchExpanded = it },
-                            label = stringResource(R.string.main_search_history),
-                            leadingIcon = {
-                                Icon(
-                                    imageVector = MiuixIcons.Basic.Search,
-                                    contentDescription = stringResource(R.string.main_search_history),
-                                    modifier = Modifier.padding(start = 16.dp, end = 8.dp),
-                                    tint = MiuixTheme.colorScheme.onSurfaceContainerHigh
-                                )
-                            },
-                            trailingIcon = {
-                                androidx.compose.animation.AnimatedVisibility(
-                                    visible = historyUiState.query.isNotEmpty()
-                                ) {
-                                    IconButton(
-                                        onClick = onHistoryQueryClear,
-                                        minHeight = 35.dp,
-                                        minWidth = 35.dp,
-                                        cornerRadius = 35.dp,
-                                        modifier = Modifier.padding(end = 8.dp)
-                                    ) {
-                                        Icon(
-                                            imageVector = MiuixIcons.Basic.SearchCleanup,
-                                            contentDescription = stringResource(R.string.common_clear_search),
-                                            tint = MiuixTheme.colorScheme.onSurfaceContainerHighest
-                                        )
-                                    }
-                                }
-                            },
-                            modifier = Modifier.fillMaxWidth()
-                        )
-                    },
-                    outsideEndAction = {
-                        Text(
-                            modifier = Modifier
-                                .padding(end = contentEndPadding + 12.dp)
-                                .clickable(
-                                    interactionSource = null,
-                                    indication = null
-                                ) {
-                                    searchExpanded = false
-                                },
-                            text = stringResource(R.string.cancel),
-                            color = MiuixTheme.colorScheme.primary
-                        )
-                    },
-                    onExpandedChange = { searchExpanded = it },
-                    expanded = searchExpanded,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(
-                            start = contentStartPadding,
-                            end = contentEndPadding,
-                            top = 10.dp
-                        )
-                ) {}
+                val scrollTriggerChanged =
+                    lastScrollQuery != historyUiState.query ||
+                        lastScrollFilterOrdinal != historyUiState.selectedFilter.ordinal ||
+                        lastFirstFilteredTaskId != firstFilteredTaskId
 
-                LaunchedEffect(
-                    historyUiState.query,
-                    historyUiState.selectedFilter,
-                    filteredTasks.firstOrNull()?.id
-                ) {
-                    if (filteredTasks.isNotEmpty()) {
-                        statusListState.animateScrollToItem(0)
-                    }
+                lastScrollQuery = historyUiState.query
+                lastScrollFilterOrdinal = historyUiState.selectedFilter.ordinal
+                lastFirstFilteredTaskId = firstFilteredTaskId
+
+                if (scrollTriggerChanged && firstFilteredTaskId != null) {
+                    statusListState.animateScrollToItem(0)
                 }
-
-                // 筛选标签栏
-                val filterLabels = listOf(
-                    stringResource(R.string.tab_all),
-                    stringResource(
-                        R.string.tab_waiting_for_selection,
-                        historyUiState.waitingCount
-                    ),
-                    stringResource(R.string.tab_failed, historyUiState.failedCount)
-                )
-                TabRowWithContour(
-                    tabs = filterLabels,
-                    selectedTabIndex = historyUiState.selectedFilter.ordinal,
-                    fontSize = 14.sp,
-                    height = 40.dp,
-                    itemSpacing = 2.dp,
-                    onTabSelected = { index ->
-                        HistoryFilter.entries.getOrNull(index)?.let(onHistoryFilterChange)
-                    },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(
-                            start = contentStartPadding + 12.dp,
-                            top = 10.dp,
-                            end = contentEndPadding + 12.dp,
-                            bottom = 10.dp
-                        )
-                )
-
-                LazyColumn(
-                    state = statusListState,
-                    contentPadding = PaddingValues(
-                        start = contentStartPadding + 12.dp,
-                        end = contentEndPadding + 12.dp
-                    ),
-                    modifier = if (nestedScrollConnection != null) {
-                        Modifier.fillMaxSize().nestedScroll(nestedScrollConnection)
-                    } else {
-                        Modifier.fillMaxSize()
-                    }
-                ) {
+            }
+            LazyColumn(
+                state = statusListState,
+                overscrollEffect = null,
+                contentPadding = PaddingValues(top = topContentPadding),
+                modifier = if (nestedScrollConnection != null) {
+                    Modifier
+                        .fillMaxSize()
+                        .miuixBackdropSource(backdrop)
+                        .miuixVerticalScrollEffects()
+                        .nestedScroll(nestedScrollConnection)
+                } else {
+                    Modifier
+                        .fillMaxSize()
+                        .miuixBackdropSource(backdrop)
+                        .miuixVerticalScrollEffects()
+                }
+            ) {
                     if (filteredTasks.isEmpty()) {
                         item(key = "history_empty") {
                             val hasNoHistory = tasks.isEmpty()
                             Column(
                                 modifier = Modifier
                                     .fillMaxWidth()
+                                    .padding(
+                                        start = contentStartPadding + 12.dp,
+                                        end = contentEndPadding + 12.dp
+                                    )
                                     .squircleBackground(
                                         color = MiuixTheme.colorScheme.surfaceVariant,
                                         cornerRadius = 18.dp
@@ -1327,7 +1396,6 @@ private fun HistoryPage(
                         }
                     } else {
                         itemsIndexed(filteredTasks, key = { _, task -> task.id }) { _, task ->
-                            val context = LocalContext.current
                             TaskCell(
                                 task = task,
                                 // 只有正在下载的任务才使用 uiState.mediaItems
@@ -1348,17 +1416,13 @@ private fun HistoryPage(
                                 onDelete = { taskToDelete = task },
                                 onMediaClick = onMediaClick,
                                 onClick = {
-                                    val detailIntent = DetailActivity.newIntent(
-                                        context,
-                                        task.id.toString(),
-                                        task.noteTitle ?: task.noteUrl,
-                                        task.filePaths,
-                                        task.noteContent,
-                                        task.noteUrl  // Pass the note URL
-                                    )
-                                    context.startActivity(detailIntent)
+                                    onOpenDetail(task)
                                 },
-                                modifier = Modifier.padding(bottom = 12.dp)
+                                modifier = Modifier.padding(
+                                    start = contentStartPadding + 12.dp,
+                                    end = contentEndPadding + 12.dp,
+                                    bottom = 12.dp
+                                )
                             )
                         }
                     }
@@ -1372,7 +1436,6 @@ private fun HistoryPage(
                     }
                 }
             }
-        }
 
         // Floating bottom actions
         Row(

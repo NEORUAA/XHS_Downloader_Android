@@ -109,6 +109,8 @@
     <string name="auto_read_clipboard_desc">Automatically start downloading when link is detected</string>
     <string name="manual_input_links">Manual Input Links</string>
     <string name="manual_input_links_desc">Enable manual input instead of auto-reading clipboard content</string>
+    <string name="settings_xhs_links">Xiaohongshu links</string>
+    <string name="settings_xhs_links_desc">Enable detection and downloading of Xiaohongshu links</string>
 
     <!-- File naming option strings -->
     <string name="enable_custom_naming_desc">Use template to name files</string>

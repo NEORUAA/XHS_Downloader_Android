@@ -25,7 +25,7 @@ case "${1:-debug}" in
     release)
         echo -e "${YELLOW}Building release APK...${NC}"
         ./gradlew assembleRelease --no-daemon
-        APK_PATH="app/build/outputs/apk/release/app-release-unsigned.apk"
+        APK_PATH="app/build/outputs/apk/release/app-release.apk"
         ;;
     install)
         echo -e "${YELLOW}Building and installing debug APK...${NC}"

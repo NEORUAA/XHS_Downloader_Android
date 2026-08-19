@@ -112,6 +112,7 @@ data class SettingsUiState(
     val showClipboardBubble: Boolean = true,
     val autoReadClipboard: Boolean = false,
     val manualInputLinks: Boolean = false,
+    val xhsLinksEnabled: Boolean = true,
     val customStorageTreeUri: String? = null,
     val customStorageDisplayName: String? = null,
     val checkExistingFilesBeforeSave: Boolean = true
@@ -180,6 +181,10 @@ class SettingsViewModel(
         it.copy(manualInputLinks = enabled)
     }
 
+    fun onXhsLinksEnabledChange(enabled: Boolean) = updateState {
+        it.copy(xhsLinksEnabled = enabled)
+    }
+
     fun onCheckExistingFilesBeforeSaveChange(enabled: Boolean) = updateState {
         it.copy(checkExistingFilesBeforeSave = enabled)
     }
@@ -217,6 +222,7 @@ class SettingsViewModel(
                         showClipboardBubble = state.showClipboardBubble,
                         autoReadClipboard = state.autoReadClipboard,
                         manualInputLinks = state.manualInputLinks,
+                        xhsLinksEnabled = state.xhsLinksEnabled,
                         customStorageTreeUri = state.customStorageTreeUri,
                         customStorageDisplayName = state.customStorageDisplayName,
                         checkExistingFilesBeforeSave = state.checkExistingFilesBeforeSave,
@@ -248,6 +254,7 @@ class SettingsViewModel(
         showClipboardBubble = showClipboardBubble,
         autoReadClipboard = autoReadClipboard,
         manualInputLinks = manualInputLinks,
+        xhsLinksEnabled = xhsLinksEnabled,
         customStorageTreeUri = customStorageTreeUri,
         customStorageDisplayName = customStorageDisplayName,
         checkExistingFilesBeforeSave = checkExistingFilesBeforeSave
@@ -335,6 +342,7 @@ class SettingsActivity : ComponentActivity() {
                     onShowClipboardBubbleChange = viewModel::onShowClipboardBubbleChange,
                     onAutoReadClipboardChange = viewModel::onAutoReadClipboardChange,
                     onManualInputLinksChange = viewModel::onManualInputLinksChange,
+                    onXhsLinksEnabledChange = viewModel::onXhsLinksEnabledChange,
                     onCheckExistingFilesBeforeSaveChange = ::onCheckExistingFilesBeforeSaveChange,
                     onStorageLocationClick = ::openStorageTreePicker,
                     onResetStorageLocation = viewModel::onResetCustomStorageLocation,
@@ -621,6 +629,7 @@ internal fun SettingsRoute(onBack: () -> Unit) {
         onShowClipboardBubbleChange = routeViewModel::onShowClipboardBubbleChange,
         onAutoReadClipboardChange = routeViewModel::onAutoReadClipboardChange,
         onManualInputLinksChange = routeViewModel::onManualInputLinksChange,
+        onXhsLinksEnabledChange = routeViewModel::onXhsLinksEnabledChange,
         onCheckExistingFilesBeforeSaveChange = ::updateCheckExistingFiles,
         onStorageLocationClick = ::openStorageTreePicker,
         onResetStorageLocation = routeViewModel::onResetCustomStorageLocation,
@@ -710,6 +719,7 @@ private fun SettingsScreen(
     onShowClipboardBubbleChange: (Boolean) -> Unit,
     onAutoReadClipboardChange: (Boolean) -> Unit,
     onManualInputLinksChange: (Boolean) -> Unit,
+    onXhsLinksEnabledChange: (Boolean) -> Unit,
     onCheckExistingFilesBeforeSaveChange: (Boolean) -> Unit,
     onStorageLocationClick: () -> Unit,
     onResetStorageLocation: () -> Unit,
@@ -730,6 +740,7 @@ private fun SettingsScreen(
         add("keep_screen_on")
     }
     val clipboardRows = buildList {
+        add("xhs_links")
         add("manual_input_links")
         if (!uiState.manualInputLinks) {
             add("show_clipboard_bubble")
@@ -851,6 +862,12 @@ private fun SettingsScreen(
                 key = { "clipboard_option_$it" }
             ) { row ->
                 when (row) {
+                    "xhs_links" -> MiuixSwitchWidget(
+                        title = stringResource(R.string.settings_xhs_links),
+                        description = stringResource(R.string.settings_xhs_links_desc),
+                        checked = uiState.xhsLinksEnabled,
+                        onCheckedChange = onXhsLinksEnabledChange
+                    )
                     "manual_input_links" -> MiuixSwitchWidget(
                         title = stringResource(R.string.manual_input_links),
                         description = stringResource(R.string.manual_input_links_desc),

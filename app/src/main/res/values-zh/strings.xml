@@ -109,6 +109,8 @@
     <string name="auto_read_clipboard_desc">检测到链接时自动开始下载</string>
     <string name="manual_input_links">手动输入链接</string>
     <string name="manual_input_links_desc">开启后不再自动提取剪切板内容</string>
+    <string name="settings_xhs_links">小红书链接</string>
+    <string name="settings_xhs_links_desc">开启后检测并下载小红书链接</string>
 
     <!-- File naming option strings -->
     <string name="enable_custom_naming_desc">使用模板命名文件</string>

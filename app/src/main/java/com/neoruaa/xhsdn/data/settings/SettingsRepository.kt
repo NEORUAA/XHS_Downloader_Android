@@ -33,6 +33,8 @@ interface SettingsRepository {
 
     suspend fun setManualInputLinks(enabled: Boolean) = update { it.copy(manualInputLinks = enabled) }
 
+    suspend fun setXhsLinksEnabled(enabled: Boolean) = update { it.copy(xhsLinksEnabled = enabled) }
+
     suspend fun setCustomStorageLocation(uri: String?, displayName: String?) = update {
         if (uri.isNullOrBlank()) {
             it.copy(customStorageTreeUri = null, customStorageDisplayName = null)

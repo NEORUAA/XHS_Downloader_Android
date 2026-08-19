@@ -87,6 +87,7 @@ class DataStoreSettingsRepository(
             preferences[SHOW_CLIPBOARD_BUBBLE] = updated.showClipboardBubble
             preferences[AUTO_READ_CLIPBOARD] = updated.autoReadClipboard
             preferences[MANUAL_INPUT_LINKS] = updated.manualInputLinks
+            preferences[XHS_LINKS_ENABLED] = updated.xhsLinksEnabled
             if (updated.customStorageTreeUri == null) {
                 preferences.remove(CUSTOM_STORAGE_TREE_URI)
                 preferences.remove(CUSTOM_STORAGE_DISPLAY_NAME)
@@ -172,6 +173,7 @@ class DataStoreSettingsRepository(
                 ?: legacyBoolean("auto_read_clipboard", false),
             manualInputLinks = preferences[MANUAL_INPUT_LINKS]
                 ?: legacyBoolean("manual_input_links", false),
+            xhsLinksEnabled = preferences[XHS_LINKS_ENABLED] ?: true,
             customStorageTreeUri = customStorageTreeUri,
             customStorageDisplayName = customStorageTreeUri?.let(::storageDisplayPathFromTreeUri)
                 ?: storedCustomStorageDisplayName?.takeIf { customStorageTreeUri != null },
@@ -191,6 +193,7 @@ class DataStoreSettingsRepository(
         showClipboardBubble = legacyBoolean("show_clipboard_bubble", true),
         autoReadClipboard = legacyBoolean("auto_read_clipboard", false),
         manualInputLinks = legacyBoolean("manual_input_links", false),
+        xhsLinksEnabled = true,
         customStorageTreeUri = null,
         customStorageDisplayName = null,
         checkExistingFilesBeforeSave = true,
@@ -239,6 +242,7 @@ class DataStoreSettingsRepository(
         private val SHOW_CLIPBOARD_BUBBLE = booleanPreferencesKey("show_clipboard_bubble")
         private val AUTO_READ_CLIPBOARD = booleanPreferencesKey("auto_read_clipboard")
         private val MANUAL_INPUT_LINKS = booleanPreferencesKey("manual_input_links")
+        private val XHS_LINKS_ENABLED = booleanPreferencesKey("xhs_links_enabled")
         private val CUSTOM_STORAGE_TREE_URI = stringPreferencesKey("custom_storage_tree_uri")
         private val CUSTOM_STORAGE_DISPLAY_NAME = stringPreferencesKey("custom_storage_display_name")
         private val CHECK_EXISTING_FILES_BEFORE_SAVE =

@@ -109,4 +109,17 @@ class DataStoreSettingsRepositoryTest {
         assertFalse(disabled.checkExistingFilesBeforeSave)
         assertFalse(repository.currentSettings.checkExistingFilesBeforeSave)
     }
+
+    @Test
+    fun xhsLinksAreEnabledByDefaultAndCanBeDisabled() = runBlocking {
+        val repository = DataStoreSettingsRepository(context, scope)
+        assertTrue(withTimeout(5_000) { repository.settings.first() }.xhsLinksEnabled)
+
+        repository.setXhsLinksEnabled(false)
+        val disabled = withTimeout(5_000) {
+            repository.settings.first { !it.xhsLinksEnabled }
+        }
+        assertFalse(disabled.xhsLinksEnabled)
+        assertFalse(repository.currentSettings.xhsLinksEnabled)
+    }
 }

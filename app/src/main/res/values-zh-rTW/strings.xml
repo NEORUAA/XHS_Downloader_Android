@@ -109,6 +109,8 @@
     <string name="auto_read_clipboard_desc">偵測到連結時自動開始下載</string>
     <string name="manual_input_links">手動輸入連結</string>
     <string name="manual_input_links_desc">開啟後不再自動擷取剪貼簿內容</string>
+    <string name="settings_xhs_links">小紅書連結</string>
+    <string name="settings_xhs_links_desc">開啟後偵測並下載小紅書連結</string>
 
     <!-- File naming option strings -->
     <string name="enable_custom_naming_desc">使用範本命名檔案</string>

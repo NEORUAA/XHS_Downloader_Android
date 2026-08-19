@@ -234,6 +234,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         _autoDownloadIntentUrl.value = intent.getStringExtra("auto_download_url")
+            ?: intent.dataString?.takeIf(UrlUtils::isXhsLink)
         intent.removeExtra("auto_download_url")
 
         if (Build.VERSION.SDK_INT >= 33) { // Android 13
@@ -267,9 +268,9 @@ class MainActivity : ComponentActivity() {
             
             // 处理自动下载
             val autoUrl by _autoDownloadIntentUrl
-            LaunchedEffect(autoUrl, appSettings.selectiveDownload) {
-                autoUrl?.let { url ->
-                     if (url.isNotEmpty()) {
+            LaunchedEffect(autoUrl, appSettings.selectiveDownload, appSettings.xhsLinksEnabled) {
+            autoUrl?.let { url ->
+                     if (url.isNotEmpty() && appSettings.xhsLinksEnabled) {
                         viewModel.updateUrl(url)
                         ensureStoragePermission { 
                             if (appSettings.selectiveDownload) {
@@ -287,6 +288,7 @@ class MainActivity : ComponentActivity() {
             context = LocalContext.current
             var detectedXhsLink by remember { mutableStateOf<String?>(null) }
             val manualInputLinks = appSettings.manualInputLinks
+            val xhsLinksEnabled = appSettings.xhsLinksEnabled
             val selectiveDownload = appSettings.selectiveDownload
             
             // 监听生命周期 ON_RESUME 和 ON_PAUSE 进行剪贴板监听器管理
@@ -294,6 +296,10 @@ class MainActivity : ComponentActivity() {
 
             // 提取核心检测逻辑为可复用函数
             fun checkClipboard() {
+                if (!xhsLinksEnabled) {
+                    detectedXhsLink = null
+                    return
+                }
                 val currentAutoRead = appSettings.autoReadClipboard
                 val currentShowBubble = appSettings.showClipboardBubble
 
@@ -452,7 +458,7 @@ class MainActivity : ComponentActivity() {
                     onShowInputDialogChange = { showInputDialog = it },
                     scrollBehavior = scrollBehavior,
                     onDownload = {
-                        if (!manualInputLinks) {
+                        if (!manualInputLinks && xhsLinksEnabled) {
                             ensureStoragePermission {
                                 // 先读取剪贴板
                                 val clipboard = getSystemService(CLIPBOARD_SERVICE) as android.content.ClipboardManager
@@ -678,6 +684,9 @@ class MainActivity : ComponentActivity() {
         intent.getStringExtra("auto_download_url")?.let {
             _autoDownloadIntentUrl.value = it
             intent.removeExtra("auto_download_url")
+        }
+        intent.dataString?.takeIf(UrlUtils::isXhsLink)?.let {
+            _autoDownloadIntentUrl.value = it
         }
     }
 

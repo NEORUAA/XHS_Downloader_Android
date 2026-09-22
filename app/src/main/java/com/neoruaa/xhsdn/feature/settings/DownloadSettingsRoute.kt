@@ -99,7 +99,14 @@ internal fun DownloadSettingsRoute(section: Int, onBack: () -> Unit, onOpenBrows
         contentWindowInsets = WindowInsets.statusBars.union(WindowInsets.displayCutout),
         topBar = { AdaptiveTopAppBar(stringResource(title), layout.isWideScreen, backdrop = backdrop,
             scrollBehavior = if (layout.isWideScreen) null else scrollBehavior,
-            navigationIcon = { TopAppBarIconButton(MiuixIcons.Back, stringResource(R.string.back_content_description), onBack) }) }
+            navigationIcon = {
+                TopAppBarIconButton(
+                    imageVector = MiuixIcons.Back,
+                    contentDescription = stringResource(R.string.back_content_description),
+                    onClick = onBack,
+                    modifier = Modifier.padding(start = 4.dp)
+                )
+            }) }
     ) { padding ->
         LazyColumn(
             modifier = Modifier.fillMaxSize().background(MiuixTheme.colorScheme.surface).miuixBackdropSource(backdrop)

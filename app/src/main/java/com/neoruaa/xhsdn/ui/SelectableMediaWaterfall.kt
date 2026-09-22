@@ -267,6 +267,7 @@ fun DetailMediaPreview(
     onThumbnailLoadComplete: () -> Unit = {}
 ) {
     var showDeleteDialog by remember { mutableStateOf(false) }
+    var deleteAfterDismiss by remember { mutableStateOf(false) }
     val thumbnailState = rememberStoredThumbnail(item)
     val bitmap = thumbnailState.bitmap
     val currentLoadCompleteCallback by rememberUpdatedState(onThumbnailLoadComplete)
@@ -357,33 +358,37 @@ fun DetailMediaPreview(
         }
     }
 
-    if (showDeleteDialog) {
-        WindowDialog(
-            title = stringResource(R.string.delete_file_dialog_title),
-            summary = stringResource(R.string.delete_file_dialog_message, fileName),
-            show = showDeleteDialog,
-            onDismissRequest = { showDeleteDialog = false }
-        ) {
-            Row(
-                horizontalArrangement = Arrangement.SpaceBetween,
-                modifier = Modifier.padding(top = 8.dp)
-            ) {
-                TextButton(
-                    text = stringResource(R.string.cancel),
-                    onClick = { showDeleteDialog = false },
-                    modifier = Modifier.weight(1f)
-                )
-                Spacer(Modifier.size(12.dp))
-                TextButton(
-                    text = stringResource(R.string.apply),
-                    onClick = {
-                        onDelete()
-                        showDeleteDialog = false
-                    },
-                    modifier = Modifier.weight(1f),
-                    colors = ButtonDefaults.textButtonColorsPrimary()
-                )
+    WindowDialog(
+        title = stringResource(R.string.delete_file_dialog_title),
+        summary = stringResource(R.string.delete_file_dialog_message, fileName),
+        show = showDeleteDialog,
+        onDismissRequest = { showDeleteDialog = false },
+        onDismissFinished = {
+            if (deleteAfterDismiss) {
+                deleteAfterDismiss = false
+                onDelete()
             }
+        }
+    ) {
+        Row(
+            horizontalArrangement = Arrangement.SpaceBetween,
+            modifier = Modifier.padding(top = 8.dp)
+        ) {
+            TextButton(
+                text = stringResource(R.string.cancel),
+                onClick = { showDeleteDialog = false },
+                modifier = Modifier.weight(1f)
+            )
+            Spacer(Modifier.size(12.dp))
+            TextButton(
+                text = stringResource(R.string.apply),
+                onClick = {
+                    deleteAfterDismiss = true
+                    showDeleteDialog = false
+                },
+                modifier = Modifier.weight(1f),
+                colors = ButtonDefaults.textButtonColorsPrimary()
+            )
         }
     }
 }

@@ -702,6 +702,7 @@ private fun estimateMediaCardHeight(item: MediaItem): Float {
 @Composable
 private fun MediaPreview(item: MediaItem, onClick: () -> Unit, onDelete: (MediaItem) -> Unit) {
     var showDeleteDialog by remember { mutableStateOf(false) }
+    var deleteAfterDismiss by remember { mutableStateOf(false) }
     val bitmap = rememberThumbnail(item)
     val aspectRatio = rememberAspectRatio(item) ?: 0.75f
     val fileName = remember(item.path) { File(item.path).name }
@@ -788,38 +789,41 @@ private fun MediaPreview(item: MediaItem, onClick: () -> Unit, onDelete: (MediaI
         }
     }
 
-    if (showDeleteDialog) {
-        WindowDialog(
-            title = stringResource(R.string.delete_file_dialog_title),
-            summary = stringResource(R.string.delete_file_dialog_message, fileName),
-            show = true,
-            onDismissRequest = { showDeleteDialog = false }
-        ) {
-            Row(
-                horizontalArrangement = Arrangement.SpaceBetween,
-                modifier = Modifier.padding(top = 8.dp)
-            ) {
-                TextButton(
-                    text = stringResource(R.string.cancel),
-                    onClick = { showDeleteDialog = false },
-                    modifier = Modifier.weight(1f)
-                )
-                Spacer(Modifier.width(12.dp))
-                TextButton(
-                    text = stringResource(R.string.apply),
-                    onClick = {
-                        // 删除文件
-                        val file = File(item.path)
-                        if (file.exists()) {
-                            file.delete()
-                        }
-                        onDelete(item) // 调用删除回调
-                        showDeleteDialog = false
-                    },
-                    modifier = Modifier.weight(1f),
-                    colors = ButtonDefaults.textButtonColorsPrimary()
-                )
+    WindowDialog(
+        title = stringResource(R.string.delete_file_dialog_title),
+        summary = stringResource(R.string.delete_file_dialog_message, fileName),
+        show = showDeleteDialog,
+        onDismissRequest = { showDeleteDialog = false },
+        onDismissFinished = {
+            if (deleteAfterDismiss) {
+                deleteAfterDismiss = false
+                val file = File(item.path)
+                if (file.exists()) {
+                    file.delete()
+                }
+                onDelete(item)
             }
+        }
+    ) {
+        Row(
+            horizontalArrangement = Arrangement.SpaceBetween,
+            modifier = Modifier.padding(top = 8.dp)
+        ) {
+            TextButton(
+                text = stringResource(R.string.cancel),
+                onClick = { showDeleteDialog = false },
+                modifier = Modifier.weight(1f)
+            )
+            Spacer(Modifier.width(12.dp))
+            TextButton(
+                text = stringResource(R.string.apply),
+                onClick = {
+                    deleteAfterDismiss = true
+                    showDeleteDialog = false
+                },
+                modifier = Modifier.weight(1f),
+                colors = ButtonDefaults.textButtonColorsPrimary()
+            )
         }
     }
 }

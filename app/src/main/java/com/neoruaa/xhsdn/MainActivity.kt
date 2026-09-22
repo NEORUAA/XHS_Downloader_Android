@@ -871,33 +871,31 @@ private fun MainScreen(
     var showClearHistoryDialog by remember { mutableStateOf(false) }
 
     Box(modifier = Modifier.fillMaxSize()) {
-        if (showClearHistoryDialog) {
-            WindowDialog(
-                title = stringResource(R.string.clear_history_dialog_title),
-                summary = stringResource(R.string.clear_history_dialog_message),
-                show = true,
-                onDismissRequest = { showClearHistoryDialog = false }
+        WindowDialog(
+            title = stringResource(R.string.clear_history_dialog_title),
+            summary = stringResource(R.string.clear_history_dialog_message),
+            show = showClearHistoryDialog,
+            onDismissRequest = { showClearHistoryDialog = false }
+        ) {
+            Row(
+                horizontalArrangement = Arrangement.SpaceBetween,
+                modifier = Modifier.padding(top = 8.dp)
             ) {
-                Row(
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    modifier = Modifier.padding(top = 8.dp)
-                ) {
-                    TextButton(
-                        text = stringResource(R.string.cancel),
-                        onClick = { showClearHistoryDialog = false },
-                        modifier = Modifier.weight(1f)
-                    )
-                    Spacer(Modifier.width(12.dp))
-                    TextButton(
-                        text = stringResource(R.string.apply),
-                        onClick = {
-                            onClearHistory()
-                            showClearHistoryDialog = false
-                        },
-                        modifier = Modifier.weight(1f),
-                        colors = ButtonDefaults.textButtonColorsPrimary()
-                    )
-                }
+                TextButton(
+                    text = stringResource(R.string.cancel),
+                    onClick = { showClearHistoryDialog = false },
+                    modifier = Modifier.weight(1f)
+                )
+                Spacer(Modifier.width(12.dp))
+                TextButton(
+                    text = stringResource(R.string.apply),
+                    onClick = {
+                        onClearHistory()
+                        showClearHistoryDialog = false
+                    },
+                    modifier = Modifier.weight(1f),
+                    colors = ButtonDefaults.textButtonColorsPrimary()
+                )
             }
         }
 
@@ -1179,33 +1177,31 @@ private fun HistoryPage(
     }
     var taskToDelete by remember { mutableStateOf<com.neoruaa.xhsdn.data.DownloadTask?>(null) }
 
-    if (taskToDelete != null) {
-        WindowDialog(
-            title = stringResource(R.string.delete_task_dialog_title),
-            summary = stringResource(R.string.delete_task_dialog_message),
-            show = taskToDelete != null,
-            onDismissRequest = { taskToDelete = null }
+    WindowDialog(
+        title = stringResource(R.string.delete_task_dialog_title),
+        summary = stringResource(R.string.delete_task_dialog_message),
+        show = taskToDelete != null,
+        onDismissRequest = { taskToDelete = null }
+    ) {
+        Row(
+            horizontalArrangement = Arrangement.SpaceBetween,
+            modifier = Modifier.padding(top = 8.dp)
         ) {
-            Row(
-                horizontalArrangement = Arrangement.SpaceBetween,
-                modifier = Modifier.padding(top = 8.dp)
-            ) {
-                TextButton(
-                    text = stringResource(R.string.cancel),
-                    onClick = { taskToDelete = null },
-                    modifier = Modifier.weight(1f)
-                )
-                Spacer(Modifier.width(12.dp))
-                TextButton(
-                    text = stringResource(R.string.apply),
-                    onClick = {
-                        taskToDelete?.let { onDeleteTask(it) }
-                        taskToDelete = null
-                    },
-                    modifier = Modifier.weight(1f),
-                    colors = ButtonDefaults.textButtonColorsPrimary()
-                )
-            }
+            TextButton(
+                text = stringResource(R.string.cancel),
+                onClick = { taskToDelete = null },
+                modifier = Modifier.weight(1f)
+            )
+            Spacer(Modifier.width(12.dp))
+            TextButton(
+                text = stringResource(R.string.apply),
+                onClick = {
+                    taskToDelete?.let { onDeleteTask(it) }
+                    taskToDelete = null
+                },
+                modifier = Modifier.weight(1f),
+                colors = ButtonDefaults.textButtonColorsPrimary()
+            )
         }
     }
 
@@ -1598,65 +1594,58 @@ private fun HistoryPage(
             }
         }
 
-        // 输入分享链接对话框（放在 HistoryPage 内，避免键盘偏移异常）
-        if (showInputDialog) {
-            val context = LocalContext.current
-            val manualInputTitle = stringResource(R.string.manual_input_links)
-            val enterXhsUrl = stringResource(R.string.enter_xhs_url)
-            val cancelText = stringResource(R.string.cancel)
-            val downloadButtonText = stringResource(R.string.download_button)
-            val pleaseEnterUrl = stringResource(R.string.please_enter_url)
+        // Keep the dialog composed until miuix finishes its exit animation.
+        val context = LocalContext.current
+        val manualInputTitle = stringResource(R.string.manual_input_links)
+        val enterXhsUrl = stringResource(R.string.enter_xhs_url)
+        val cancelText = stringResource(R.string.cancel)
+        val downloadButtonText = stringResource(R.string.download_button)
+        val pleaseEnterUrl = stringResource(R.string.please_enter_url)
 
-            var inputLink by remember { mutableStateOf("") }
+        var inputLink by remember { mutableStateOf("") }
 
-            WindowDialog(
-                title = manualInputTitle,
-                show = showInputDialog,
-                summary = enterXhsUrl,
-                onDismissRequest = {
-                    onShowInputDialogChange(false)
-                    inputLink = ""
-                }
-            ) {
-                Column {
-                    TextField(
-                        value = inputLink,
-                        onValueChange = { inputLink = it },
-                        label = stringResource(R.string.main_url_example),
-                        useLabelAsPlaceholder = true,
-                        modifier = Modifier.fillMaxWidth(),
+        WindowDialog(
+            title = manualInputTitle,
+            show = showInputDialog,
+            summary = enterXhsUrl,
+            onDismissRequest = { onShowInputDialogChange(false) },
+            onDismissFinished = { inputLink = "" }
+        ) {
+            Column {
+                TextField(
+                    value = inputLink,
+                    onValueChange = { inputLink = it },
+                    label = stringResource(R.string.main_url_example),
+                    useLabelAsPlaceholder = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Row(
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    modifier = Modifier.padding(top = 16.dp)
+                ) {
+                    TextButton(
+                        text = cancelText,
+                        onClick = {
+                            onShowInputDialogChange(false)
+                        },
+                        modifier = Modifier.weight(1f)
                     )
-                    Row(
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        modifier = Modifier.padding(top = 16.dp)
-                    ) {
-                        TextButton(
-                            text = cancelText,
-                            onClick = {
-                                onShowInputDialogChange(false)
-                                inputLink = ""
-                            },
-                            modifier = Modifier.weight(1f)
-                        )
-                        Spacer(Modifier.width(12.dp))
-                        TextButton(
-                            text = downloadButtonText,
-                            onClick = {
-                                if (inputLink.isNotEmpty()) {
-                                    // 执行手动输入下载
-                                    onManualInputDownload(inputLink)
+                    Spacer(Modifier.width(12.dp))
+                    TextButton(
+                        text = downloadButtonText,
+                        onClick = {
+                            if (inputLink.isNotEmpty()) {
+                                // 执行手动输入下载
+                                onManualInputDownload(inputLink)
 
-                                    // 关闭对话框并清空输入
-                                    onShowInputDialogChange(false)
-                                    inputLink = ""
-                                } else {
-                                    Toast.makeText(context, pleaseEnterUrl, Toast.LENGTH_SHORT).show()
-                                }
-                            },
-                            modifier = Modifier.weight(1f),
-                            colors = ButtonDefaults.textButtonColorsPrimary()
-                        )
-                    }
+                                onShowInputDialogChange(false)
+                            } else {
+                                Toast.makeText(context, pleaseEnterUrl, Toast.LENGTH_SHORT).show()
+                            }
+                        },
+                        modifier = Modifier.weight(1f),
+                        colors = ButtonDefaults.textButtonColorsPrimary()
+                    )
                 }
             }
         }

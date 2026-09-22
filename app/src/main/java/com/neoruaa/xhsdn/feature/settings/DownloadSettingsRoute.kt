@@ -55,7 +55,9 @@ internal fun DownloadSettingsRoute(section: Int, onBack: () -> Unit, onOpenBrows
     val scrollBehavior = MiuixScrollBehavior(rememberTopAppBarState())
     val backdrop = rememberMiuixTopBarBackdrop()
     var choice by rememberSaveable { mutableStateOf<String?>(null) }
+    var showChoice by rememberSaveable { mutableStateOf(false) }
     var edit by rememberSaveable { mutableStateOf<String?>(null) }
+    var showEdit by rememberSaveable { mutableStateOf(false) }
     // Do not persist credential text in saved instance state.
     var input by remember { mutableStateOf("") }
     var sessionRevision by remember { mutableIntStateOf(0) }
@@ -111,13 +113,13 @@ internal fun DownloadSettingsRoute(section: Int, onBack: () -> Unit, onOpenBrows
                     "images" -> OptionSwitch(R.string.settings_download_images, checked = options.imageDownload) { update { it.copy(imageDownload = !it.imageDownload) } }
                     "videos" -> OptionSwitch(R.string.settings_download_videos, checked = options.videoDownload) { update { it.copy(videoDownload = !it.videoDownload) } }
                     "cover" -> OptionSwitch(R.string.settings_download_cover, checked = options.videoCoverDownload) { update { it.copy(videoCoverDownload = !it.videoCoverDownload) } }
-                    "image_format" -> ArrowPreference(title = stringResource(R.string.settings_image_format), summary = stringResource(imageLabels[options.imageFormat.ordinal]), onClick = { choice = row })
-                    "video_quality" -> ArrowPreference(title = stringResource(R.string.settings_video_quality), summary = stringResource(videoLabels[options.videoPreference.ordinal]), onClick = { choice = row })
-                    "live" -> ArrowPreference(title = stringResource(R.string.settings_live_mode), summary = stringResource(liveLabels[options.livePhotoMode.ordinal]), onClick = { choice = row })
+                    "image_format" -> ArrowPreference(title = stringResource(R.string.settings_image_format), summary = stringResource(imageLabels[options.imageFormat.ordinal]), onClick = { choice = row; showChoice = true })
+                    "video_quality" -> ArrowPreference(title = stringResource(R.string.settings_video_quality), summary = stringResource(videoLabels[options.videoPreference.ordinal]), onClick = { choice = row; showChoice = true })
+                    "live" -> ArrowPreference(title = stringResource(R.string.settings_live_mode), summary = stringResource(liveLabels[options.livePhotoMode.ordinal]), onClick = { choice = row; showChoice = true })
                     "skip" -> OptionSwitch(R.string.settings_skip_existing, R.string.settings_skip_hint, options.skipExisting) { update { it.copy(skipExisting = !it.skipExisting) } }
                     "author_archive" -> OptionSwitch(R.string.settings_author_archive, checked = options.authorArchive) { update { it.copy(authorArchive = !it.authorArchive) } }
                     "note_archive" -> OptionSwitch(R.string.settings_note_archive, checked = options.noteArchive) { update { it.copy(noteArchive = !it.noteArchive) } }
-                    "note_format" -> ArrowPreference(title = stringResource(R.string.settings_note_format), summary = stringResource(noteLabels[options.noteFormat.ordinal]), onClick = { choice = row })
+                    "note_format" -> ArrowPreference(title = stringResource(R.string.settings_note_format), summary = stringResource(noteLabels[options.noteFormat.ordinal]), onClick = { choice = row; showChoice = true })
                     "publish_time" -> OptionSwitch(R.string.settings_publish_time, R.string.settings_publish_time_hint, options.writePublishTime) { update { it.copy(writePublishTime = !it.writePublishTime) } }
                     "export_json" -> BasicComponent(title = stringResource(R.string.settings_export_json), summary = stringResource(R.string.settings_export_hint), onClick = { exportJson.launch("xhs-download-records.json") },
                         endActions = { ActionIconButton(MiuixIcons.Regular.FileDownloads, stringResource(R.string.settings_export_json), { exportJson.launch("xhs-download-records.json") }) })
@@ -125,8 +127,8 @@ internal fun DownloadSettingsRoute(section: Int, onBack: () -> Unit, onOpenBrows
                         endActions = { ActionIconButton(MiuixIcons.Regular.FileDownloads, stringResource(R.string.settings_export_csv), { exportCsv.launch("xhs-download-records.csv") }) })
                     "timeout", "retries" -> ArrowPreference(title = stringResource(if (row == "timeout") R.string.settings_timeout else R.string.settings_retries),
                         summary = (if (row == "timeout") options.timeoutSeconds else options.maxRetries).toString(),
-                        onClick = { input = (if (row == "timeout") options.timeoutSeconds else options.maxRetries).toString(); edit = row })
-                    "proxy" -> ArrowPreference(title = stringResource(R.string.settings_proxy), summary = options.proxy.ifBlank { stringResource(R.string.settings_proxy_hint) }, onClick = { input = options.proxy; edit = row })
+                        onClick = { input = (if (row == "timeout") options.timeoutSeconds else options.maxRetries).toString(); edit = row; showEdit = true })
+                    "proxy" -> ArrowPreference(title = stringResource(R.string.settings_proxy), summary = options.proxy.ifBlank { stringResource(R.string.settings_proxy_hint) }, onClick = { input = options.proxy; edit = row; showEdit = true })
                     "proxy_media" -> OptionSwitch(R.string.settings_proxy_media, checked = options.proxyDownload) { update { it.copy(proxyDownload = !it.proxyDownload) } }
                     "web_session" -> OptionSwitch(R.string.settings_web_session, checked = options.useWebSession) { update { it.copy(useWebSession = !it.useWebSession) } }
                     "login" -> BasicComponent(title = stringResource(R.string.settings_open_login), onClick = onOpenBrowser,
@@ -135,7 +137,7 @@ internal fun DownloadSettingsRoute(section: Int, onBack: () -> Unit, onOpenBrows
                         val host = row.substringAfter(':')
                         ArrowPreference(title = stringResource(R.string.settings_cookie, host),
                             summary = stringResource(if (sessionStates[host] == true) R.string.settings_session_saved else R.string.settings_session_empty),
-                            onClick = { input = ""; edit = row })
+                            onClick = { input = ""; edit = row; showEdit = true })
                     }
                 }
             }
@@ -151,7 +153,7 @@ internal fun DownloadSettingsRoute(section: Int, onBack: () -> Unit, onOpenBrows
                 item("authors_hint") { Text(stringResource(if (authors.isEmpty()) R.string.settings_author_empty else R.string.settings_author_remarks_hint), modifier = Modifier.padding(horizontal = 24.dp).padding(bottom = 12.dp), color = MiuixTheme.colorScheme.onSurfaceVariantSummary) }
                 groupedCardItems(authors, key = { "author_${it.id}" }) { author ->
                     ArrowPreference(title = author.remark.ifBlank { author.nickname }, summary = stringResource(R.string.settings_author_identity, author.nickname, author.id),
-                        onClick = { input = author.remark; edit = "author:${author.id}" })
+                        onClick = { input = author.remark; edit = "author:${author.id}"; showEdit = true })
                 }
             }
             item("bottom") { Spacer(Modifier.height(24.dp).navigationBarsPadding()) }
@@ -164,7 +166,12 @@ internal fun DownloadSettingsRoute(section: Int, onBack: () -> Unit, onOpenBrows
             "live" -> Triple(R.string.settings_live_mode, liveLabels, options.livePhotoMode.ordinal)
             else -> Triple(R.string.settings_note_format, noteLabels, options.noteFormat.ordinal)
         }
-        WindowDialog(title = stringResource(label), show = true, onDismissRequest = { choice = null }) {
+        WindowDialog(
+            title = stringResource(label),
+            show = showChoice,
+            onDismissRequest = { showChoice = false },
+            onDismissFinished = { choice = null }
+        ) {
             Column(Modifier.heightIn(max = 500.dp)) {
                 Column(Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState())) {
                     labels.forEachIndexed { index, resource ->
@@ -174,11 +181,11 @@ internal fun DownloadSettingsRoute(section: Int, onBack: () -> Unit, onOpenBrows
                                 "video_quality" -> it.copy(videoPreference = VideoPreference.entries[index])
                                 "live" -> it.copy(livePhotoMode = LivePhotoMode.entries[index])
                                 else -> it.copy(noteFormat = NoteFormat.entries[index])
-                            } }; choice = null
+                            } }; showChoice = false
                         }, endActions = { if (selected == index) Icon(MiuixIcons.Regular.Ok, contentDescription = null) })
                     }
                 }
-                TextButton(stringResource(R.string.cancel), onClick = { choice = null }, modifier = Modifier.fillMaxWidth())
+                TextButton(stringResource(R.string.cancel), onClick = { showChoice = false }, modifier = Modifier.fillMaxWidth())
             }
         }
     }
@@ -197,14 +204,20 @@ internal fun DownloadSettingsRoute(section: Int, onBack: () -> Unit, onOpenBrows
             "proxy" -> stringResource(R.string.settings_proxy_hint)
             else -> null
         }
-        WindowDialog(title = if (cookie) stringResource(R.string.settings_cookie, key.substringAfter(':')) else stringResource(label), summary = summary, show = true, onDismissRequest = { input = ""; edit = null }) {
+        WindowDialog(
+            title = if (cookie) stringResource(R.string.settings_cookie, key.substringAfter(':')) else stringResource(label),
+            summary = summary,
+            show = showEdit,
+            onDismissRequest = { showEdit = false },
+            onDismissFinished = { input = ""; edit = null }
+        ) {
             Column(Modifier.heightIn(max = 500.dp)) {
                 TextField(value = input, onValueChange = { input = it }, singleLine = true,
                     visualTransformation = if (cookie) PasswordVisualTransformation() else VisualTransformation.None,
                     modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp))
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    TextButton(stringResource(R.string.common_not_modified), { input = ""; edit = null }, Modifier.weight(1f))
-                    TextButton(stringResource(R.string.cancel), { input = ""; edit = null }, Modifier.weight(1f))
+                    TextButton(stringResource(R.string.common_not_modified), { showEdit = false }, Modifier.weight(1f))
+                    TextButton(stringResource(R.string.cancel), { showEdit = false }, Modifier.weight(1f))
                     TextButton(stringResource(R.string.apply), {
                         val value = input.trim()
                         val valid = when (key) {
@@ -229,7 +242,7 @@ internal fun DownloadSettingsRoute(section: Int, onBack: () -> Unit, onOpenBrows
                                         }) }
                                     }
                                     sessionRevision++; message(R.string.settings_saved)
-                                    input = ""; edit = null
+                                    showEdit = false
                                 } catch (cancelled: CancellationException) { throw cancelled }
                                 catch (_: Exception) { message(R.string.download_error_storage) }
                             }

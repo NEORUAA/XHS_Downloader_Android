@@ -106,9 +106,7 @@ class WebViewActivity : ComponentActivity() {
                     onResult = { urls, content, taskId ->
                         val resultIntent = Intent().apply {
                             putStringArrayListExtra("image_urls", ArrayList(urls))
-                            if (content.isNotEmpty()) {
-                                putExtra("content_text", content)
-                            }
+                            putExtra("note_json", content)
                             putExtra("url", localInitialUrl ?: "")
                             taskId?.let { id -> putExtra("task_id", id) }
                         }
@@ -131,7 +129,7 @@ internal fun WebViewRoute(
         initialUrl = route.url,
         onBack = onBack,
         onResult = { urls, content, taskId ->
-            onResult(urls, content, taskId, route.url.orEmpty())
+            onResult(urls, content, route.taskId, urls.firstOrNull() ?: route.url.orEmpty())
         }
     )
 }
@@ -169,8 +167,10 @@ private fun WebViewScreen(
                 settings.mixedContentMode = WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
             }
             // 允许明文内容
-            settings.allowUniversalAccessFromFileURLs = true
-            settings.allowFileAccessFromFileURLs = true
+            settings.allowUniversalAccessFromFileURLs = false
+            settings.allowFileAccessFromFileURLs = false
+            settings.allowFileAccess = false
+            settings.allowContentAccess = false
             setInitialScale(80)
         }
     }
@@ -409,69 +409,24 @@ private fun extractImages(
     sniffedUrls: Set<String>,
     onResult: (List<String>, String, Long?) -> Unit
 ) {
-    webView.postDelayed({
-        val jsCode = readAssetFile(context, "xhs_extractor.js") ?: run {
-            Toast.makeText(context, context.getString(R.string.no_urls_found_javascript_null), Toast.LENGTH_SHORT).show()
-            return@postDelayed
+    val pageUrl = webView.url.orEmpty()
+    if (!com.neoruaa.xhsdn.data.xhs.XhsUrlParser.isSupportedUrl(pageUrl)) {
+        Toast.makeText(context, context.getString(R.string.download_error_invalid), Toast.LENGTH_SHORT).show()
+        return
+    }
+    val script = readAssetFile(context, "xhs_extractor.js") ?: return
+    webView.evaluateJavascript(script) { encoded ->
+        try {
+            val decoded = org.json.JSONTokener(encoded).nextValue() as? String ?: error("Missing result")
+            val result = org.json.JSONObject(decoded)
+            val note = result.optJSONObject("note") ?: error("Missing note state")
+            val url = result.optString("url", pageUrl)
+            com.neoruaa.xhsdn.data.xhs.XhsNoteParser().parseNote(note, url, com.neoruaa.xhsdn.data.xhs.XhsUrlParser.extractPostId(pageUrl))
+            onResult(listOf(url), note.toString(), null)
+        } catch (_: Exception) {
+            Toast.makeText(context, context.getString(R.string.download_error_web), Toast.LENGTH_LONG).show()
         }
-        webView.evaluateJavascript(jsCode) { result ->
-            try {
-                if (result == null || result == "null" || result.isEmpty()) {
-                    Toast.makeText(context, context.getString(R.string.no_urls_found_javascript_null), Toast.LENGTH_SHORT).show()
-                    return@evaluateJavascript
-                }
-                var cleanResult = result
-                if (cleanResult.startsWith("\"") && cleanResult.endsWith("\"")) {
-                    cleanResult = cleanResult.substring(1, cleanResult.length - 1)
-                        .replace("\\\"", "\"")
-                        .replace("\\\\", "\\")
-                        .replace("\\n", "\n")
-                        .replace("\\r", "\r")
-                        .replace("\\t", "\t")
-                }
-                val json = org.json.JSONObject(cleanResult)
-                val urlsArray = json.getJSONArray("urls")
-                val contentObj = json.optJSONObject("content")
-                val contentText = contentObj?.optString("content", "") ?: ""
-
-                val allUrls = mutableListOf<String>()
-                for (i in 0 until urlsArray.length()) {
-                    val url = urlsArray.getString(i)
-                    if (url.isNullOrEmpty()) continue
-                    if (url.startsWith("http") && !url.startsWith("blob:") && !url.startsWith("data:")) {
-                        allUrls.add(url)
-                    }
-                }
-
-                // Removed clipboard copy logic as per user request
-
-                // Merge extracted URLs with sniffed URLs
-                allUrls.addAll(sniffedUrls)
-
-                if (allUrls.isNotEmpty()) {
-                    // Create a task for the web crawl
-                    val taskId = com.neoruaa.xhsdn.data.tasks.TaskManager.createTask(
-                        noteUrl = webView.url ?: "",
-                        noteTitle = webView.title ?: "",
-                        noteType = com.neoruaa.xhsdn.data.NoteType.UNKNOWN,
-                        totalFiles = allUrls.size,
-                        noteContent = contentText // Include the content that was copied to clipboard
-                    )
-
-                    // Update the task status to DOWNLOADING immediately
-                    com.neoruaa.xhsdn.data.tasks.TaskManager.updateTaskStatus(taskId, com.neoruaa.xhsdn.data.TaskStatus.DOWNLOADING)
-
-                    // Debug: Show that URLs were found and task was created
-//                    Toast.makeText(context, "找到${allUrls.size}个URL, 任务ID: $taskId", Toast.LENGTH_SHORT).show()
-                    onResult(allUrls, contentText, taskId)
-                } else {
-                    Toast.makeText(context, context.getString(R.string.no_accessible_urls_found), Toast.LENGTH_SHORT).show()
-                }
-            } catch (e: Exception) {
-                Toast.makeText(context, context.getString(R.string.error_parsing_urls, e.message ?: ""), Toast.LENGTH_LONG).show()
-            }
-        }
-    }, 10)
+    }
 }
 
 private fun readAssetFile(context: android.content.Context, fileName: String): String? {

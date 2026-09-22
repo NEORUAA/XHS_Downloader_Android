@@ -166,6 +166,18 @@ import top.yukonga.miuix.kmp.blur.LayerBackdrop
 import top.yukonga.miuix.kmp.icon.extended.File
 import top.yukonga.miuix.kmp.icon.extended.Link
 import top.yukonga.miuix.kmp.icon.extended.Close
+import top.yukonga.miuix.kmp.icon.extended.Pause
+import top.yukonga.miuix.kmp.icon.extended.Play
+import top.yukonga.miuix.kmp.icon.extended.Refresh
+import top.yukonga.miuix.kmp.icon.extended.Paste
+import top.yukonga.miuix.kmp.icon.extended.Copy
+import top.yukonga.miuix.kmp.icon.extended.Delete
+import top.yukonga.miuix.kmp.icon.extended.SelectAll
+import com.neoruaa.xhsdn.ui.ActionIconButton
+import com.neoruaa.xhsdn.data.TaskStatus
+import androidx.compose.foundation.lazy.staggeredgrid.LazyVerticalStaggeredGrid
+import androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridCells
+import androidx.compose.foundation.lazy.staggeredgrid.items
 import top.yukonga.miuix.kmp.icon.extended.Download
 import top.yukonga.miuix.kmp.icon.extended.Ok
 import top.yukonga.miuix.kmp.icon.basic.Search
@@ -235,6 +247,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         _autoDownloadIntentUrl.value = intent.getStringExtra("auto_download_url")
             ?: intent.dataString?.takeIf(UrlUtils::isXhsLink)
+            ?: intent.getStringExtra(Intent.EXTRA_TEXT)?.takeIf { intent.action == Intent.ACTION_SEND }
         intent.removeExtra("auto_download_url")
 
         if (Build.VERSION.SDK_INT >= 33) { // Android 13
@@ -245,7 +258,6 @@ class MainActivity : ComponentActivity() {
         }
 
         enableEdgeToEdge()
-        com.neoruaa.xhsdn.data.tasks.TaskManager.init(this)
         WindowCompat.setDecorFitsSystemWindows(window, false)
 
         setContent {
@@ -270,10 +282,12 @@ class MainActivity : ComponentActivity() {
             val autoUrl by _autoDownloadIntentUrl
             LaunchedEffect(autoUrl, appSettings.selectiveDownload, appSettings.xhsLinksEnabled) {
             autoUrl?.let { url ->
-                     if (url.isNotEmpty() && appSettings.xhsLinksEnabled) {
+                     settingsRepository.awaitReady()
+                     val snapshot = settingsRepository.currentSettings
+                     if (url.isNotEmpty() && snapshot.xhsLinksEnabled) {
                         viewModel.updateUrl(url)
-                        ensureStoragePermission { 
-                            if (appSettings.selectiveDownload) {
+                        ensureStoragePermission {
+                            if (snapshot.selectiveDownload) {
                                 viewModel.startSelectiveDownload { showToast(it) }
                             } else {
                                 viewModel.startDownload { showToast(it) }
@@ -474,15 +488,7 @@ class MainActivity : ComponentActivity() {
                                         // 先开始下载（创建任务）
                                         viewModel.startDownload { showToast(it) }
 
-                                        // 然后获取笔记文案并保存到刚创建的任务中
-                                        viewModel.copyDescription(
-                                            onResult = { _ ->
-                                                // 文案已保存到任务中
-                                            },
-                                            onError = { _ ->
-                                                // 即使获取文案失败，也不影响下载
-                                            }
-                                        )
+
                                     }
                                 } else {
                                     showToast(getString(R.string.clipboard_no_xhs_link))
@@ -546,7 +552,7 @@ class MainActivity : ComponentActivity() {
                         }
                     },
                     onDeleteTask = { task ->
-                        com.neoruaa.xhsdn.data.tasks.TaskManager.deleteTask(task.id)
+                        viewModel.deleteTask(task.id)
                     },
                     onContinueTask = { task -> 
                         ensureStoragePermission {
@@ -563,10 +569,14 @@ class MainActivity : ComponentActivity() {
                             showToast(getString(R.string.invalid_link_please_reenter))
                         }
                     },
+                    onCancelTask = { task -> viewModel.cancelTask(task.id) },
+                    onLoadMore = historyViewModel::loadMore,
+                    onSaveInfo = {
+                        viewModel.pasteLinkFromClipboard()
+                        ensureStoragePermission { viewModel.saveNoteInformation { showToast(it) } }
+                    },
                     onStopTask = { task ->
-                        if (viewModel.currentTaskId == task.id) {
-                            viewModel.cancelCurrentDownload()
-                        }
+                        viewModel.pauseTask(task.id)
                     },
                     onClearHistory = { viewModel.clearHistory() },
                     onManualInputDownload = { inputLink ->
@@ -577,15 +587,7 @@ class MainActivity : ComponentActivity() {
                             } else {
                                 viewModel.startDownload { showToast(it) }
 
-                                // 获取笔记文案
-                                viewModel.copyDescription(
-                                    onResult = { _ ->
-                                        // 文案已保存到任务中
-                                    },
-                                    onError = { _ ->
-                                        // 即使获取文案失败，也不影响下载
-                                    }
-                                )
+
                             }
                         }
                     },
@@ -614,43 +616,6 @@ class MainActivity : ComponentActivity() {
                     }
                 )
 
-                // 检测到"重试同一链接但解析数量不一致"时，提示是否导出诊断日志
-                val inconsistentRetry = uiState.inconsistentRetry
-                if (inconsistentRetry.show) {
-                    WindowDialog(
-                        title = stringResource(R.string.retry_inconsistent_dialog_title),
-                        summary = stringResource(
-                            R.string.retry_inconsistent_dialog_message,
-                            inconsistentRetry.previousCount,
-                            inconsistentRetry.currentCount
-                        ),
-                        show = true,
-                        onDismissRequest = { viewModel.dismissInconsistentRetryDialog() }
-                    ) {
-                        Row(
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            modifier = Modifier.padding(top = 8.dp)
-                        ) {
-                            TextButton(
-                                text = stringResource(R.string.cancel),
-                                onClick = { viewModel.dismissInconsistentRetryDialog() },
-                                modifier = Modifier.weight(1f)
-                            )
-                            Spacer(Modifier.width(12.dp))
-                            TextButton(
-                                text = stringResource(R.string.retry_inconsistent_save_button),
-                                onClick = {
-                                    viewModel.saveInconsistentRetryLogs(
-                                        onResult = { showToast(it) },
-                                        onError = { showToast(it) }
-                                    )
-                                },
-                                modifier = Modifier.weight(1f),
-                                colors = ButtonDefaults.textButtonColorsPrimary()
-                            )
-                        }
-                    }
-                                    }
                                 }
 
                                 AppRoute.Settings -> SettingsRoute(onBack = navigateBack)
@@ -681,6 +646,7 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
+        if (intent.action == Intent.ACTION_SEND) _autoDownloadIntentUrl.value = intent.getStringExtra(Intent.EXTRA_TEXT)
         intent.getStringExtra("auto_download_url")?.let {
             _autoDownloadIntentUrl.value = it
             intent.removeExtra("auto_download_url")
@@ -834,22 +800,8 @@ class MainActivity : ComponentActivity() {
         taskId: Long?,
         webViewUrl: String
     ) {
-        if (urls.isEmpty()) {
-            showToast(getString(R.string.no_accessible_urls_found))
-            return
-        }
-        val taskToUse = taskId ?: com.neoruaa.xhsdn.data.tasks.TaskManager.createTask(
-            noteUrl = webViewUrl,
-            noteTitle = null,
-            noteType = com.neoruaa.xhsdn.data.NoteType.UNKNOWN,
-            totalFiles = urls.size
-        ).also { newTaskId ->
-            com.neoruaa.xhsdn.data.tasks.TaskManager.updateTaskStatus(
-                newTaskId,
-                com.neoruaa.xhsdn.data.TaskStatus.DOWNLOADING
-            )
-        }
-        viewModel.onWebCrawlResult(urls, content, taskToUse)
+        viewModel.updateUrl(webViewUrl)
+        viewModel.onWebCrawlResult(emptyList(), null, taskId, content)
     }
 }
 
@@ -863,6 +815,8 @@ private fun MainScreen(
     onShowInputDialogChange: (Boolean) -> Unit,
     onDownload: () -> Unit,
     onCopyText: () -> Unit,
+    onSaveInfo: () -> Unit,
+    onLoadMore: () -> Unit,
     onOpenSettings: () -> Unit,
     onWebCrawlFromClipboard: () -> Unit,
     onClearHistory: () -> Unit,
@@ -871,6 +825,7 @@ private fun MainScreen(
     onBrowseUrl: (String) -> Unit,
     onRetryTask: (com.neoruaa.xhsdn.data.DownloadTask) -> Unit,
     onStopTask: (com.neoruaa.xhsdn.data.DownloadTask) -> Unit,
+    onCancelTask: (com.neoruaa.xhsdn.data.DownloadTask) -> Unit,
     onDeleteTask: (com.neoruaa.xhsdn.data.DownloadTask) -> Unit,
     onContinueTask: (com.neoruaa.xhsdn.data.DownloadTask) -> Unit,
     onWebCrawlTask: (com.neoruaa.xhsdn.data.DownloadTask) -> Unit,
@@ -1077,6 +1032,9 @@ private fun MainScreen(
                 onContinueTask = onContinueTask,
                 onWebCrawlTask = onWebCrawlTask,
                 onStopTask = onStopTask,
+                onCancelTask = onCancelTask,
+                onLoadMore = onLoadMore,
+                onSaveInfo = onSaveInfo,
                 onDeleteTask = onDeleteTask,
                 detectedXhsLink = detectedXhsLink,
                 onDismissPrompt = onDismissPrompt,
@@ -1110,115 +1068,31 @@ private fun SelectiveDownloadSheet(
     val selectiveState = uiState.selectiveDownload
     val canSave = selectiveState.phase == SelectiveDownloadPhase.Ready &&
         selectiveState.selectedPaths.isNotEmpty()
-    val unknownProgress = stringResource(R.string.selective_download_unknown_progress)
-
     WindowBottomSheet(
         show = selectiveState.show,
         title = stringResource(R.string.selective_download),
-        allowDismiss = false,
-        onDismissRequest = {},
+        allowDismiss = true,
+        onDismissRequest = onCancel,
         backgroundColor = MiuixTheme.colorScheme.surface,
-        startAction = {
-            TopAppBarIconButton(
-                imageVector = MiuixIcons.Close,
-                contentDescription = stringResource(R.string.cancel),
-                onClick = onCancel
-            )
-        },
-        endAction = {
-            TopAppBarIconButton(
-                imageVector = MiuixIcons.Download,
-                contentDescription = stringResource(R.string.download_button),
-                onClick = onSave,
-                enabled = canSave
-            )
-        }
+        startAction = { TopAppBarIconButton(imageVector = MiuixIcons.Close, contentDescription = stringResource(R.string.cancel), onClick = onCancel) },
+        endAction = { TopAppBarIconButton(imageVector = MiuixIcons.Regular.Download, contentDescription = stringResource(R.string.download_button), onClick = onSave, enabled = canSave) }
     ) {
-        LazyColumn(
-            modifier = Modifier
-                .fillMaxWidth()
-                .heightIn(max = 560.dp)
-                .animateContentSize(
-                    animationSpec = spring(
-                        dampingRatio = 0.82f,
-                        stiffness = 420f
-                    ),
-                    alignment = Alignment.TopCenter
-                )
-                .miuixVerticalScrollEffects(),
-            overscrollEffect = null,
-            verticalArrangement = Arrangement.spacedBy(10.dp)
+        Row(Modifier.fillMaxWidth().padding(bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text(stringResource(R.string.selective_download_ready, selectiveState.selectedPaths.size, selectiveState.items.size), modifier = Modifier.weight(1f))
+            ActionIconButton(imageVector = MiuixIcons.Regular.SelectAll, contentDescription = stringResource(R.string.download_select_all), onClick = {
+                val all = selectiveState.selectedPaths.size == selectiveState.items.size
+                selectiveState.items.filter { all || it.path !in selectiveState.selectedPaths }.forEach { onToggleItem(it.path) }
+            })
+        }
+        LazyVerticalStaggeredGrid(
+            columns = StaggeredGridCells.Fixed(2),
+            modifier = Modifier.fillMaxWidth().heightIn(max = 560.dp).miuixVerticalScrollEffects(),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalItemSpacing = 10.dp,
+            contentPadding = PaddingValues(bottom = 24.dp),
         ) {
-            item(key = "selective_download_status") {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(
-                        text = when (selectiveState.phase) {
-                            SelectiveDownloadPhase.Caching -> stringResource(R.string.selective_download_caching)
-                            SelectiveDownloadPhase.Ready -> stringResource(
-                                R.string.selective_download_ready,
-                                selectiveState.selectedPaths.size,
-                                selectiveState.items.size
-                            )
-                            SelectiveDownloadPhase.Saving -> ""
-                            SelectiveDownloadPhase.Error -> selectiveState.errorMessage ?: stringResource(R.string.selective_download_error)
-                            SelectiveDownloadPhase.Idle -> ""
-                        },
-                        fontWeight = FontWeight.Medium
-                    )
-                    if (selectiveState.phase == SelectiveDownloadPhase.Caching) {
-                        LinearProgressIndicator(
-                            progress = selectiveState.progress.coerceIn(0f, 1f),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(6.dp)
-                                .clip(RoundedCornerShape(3.dp))
-                        )
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Text(
-                                text = selectiveState.progressLabel.ifBlank { unknownProgress },
-                                fontSize = 12.sp,
-                                color = MiuixTheme.colorScheme.onSurfaceVariantSummary
-                            )
-                            Text(
-                                text = selectiveState.progressText,
-                                fontSize = 12.sp,
-                                color = MiuixTheme.colorScheme.onSurfaceVariantSummary
-                            )
-                        }
-                    }
-//                    if (selectiveState.status.isNotBlank() &&
-//                        selectiveState.phase != SelectiveDownloadPhase.Ready
-//                    ) {
-//                        Text(
-//                            text = selectiveState.status,
-//                            fontSize = 12.sp,
-//                            color = Color.Gray,
-//                            maxLines = 2,
-//                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
-//                        )
-//                    }
-                }
-            }
-
-            if (selectiveState.phase == SelectiveDownloadPhase.Ready && selectiveState.items.isNotEmpty()) {
-                item(key = "selective_download_media") {
-                    SelectableMediaWaterfall(
-                        items = selectiveState.items,
-                        selectedPaths = selectiveState.selectedPaths,
-                        onToggle = onToggleItem
-                    )
-                }
-            }
-
-            item(key = "selective_download_bottom_spacer") {
-                Spacer(
-                    modifier = Modifier
-                        .height(24.dp)
-                        .navigationBarsPadding()
-                )
+            items(selectiveState.items, key = { it.path }) { item ->
+                com.neoruaa.xhsdn.ui.SelectableMediaPreview(item = item, selected = item.path in selectiveState.selectedPaths, onToggle = { onToggleItem(item.path) })
             }
         }
     }
@@ -1236,6 +1110,8 @@ private fun HistoryPage(
     onDownload: () -> Unit,
     onManualInputDownload: (String) -> Unit,
     onCopyText: () -> Unit,
+    onSaveInfo: () -> Unit,
+    onLoadMore: () -> Unit,
     onWebCrawlFromClipboard: () -> Unit,
     onRequestClearHistory: () -> Unit,
     onMediaClick: (MediaItem) -> Unit,
@@ -1246,6 +1122,7 @@ private fun HistoryPage(
     onContinueTask: (com.neoruaa.xhsdn.data.DownloadTask) -> Unit,
     onWebCrawlTask: (com.neoruaa.xhsdn.data.DownloadTask) -> Unit,
     onStopTask: (com.neoruaa.xhsdn.data.DownloadTask) -> Unit,
+    onCancelTask: (com.neoruaa.xhsdn.data.DownloadTask) -> Unit,
     onDeleteTask: (com.neoruaa.xhsdn.data.DownloadTask) -> Unit,
     detectedXhsLink: String?,
     onDismissPrompt: () -> Unit,
@@ -1267,7 +1144,8 @@ private fun HistoryPage(
     val menuItems = listOf(
         stringResource(R.string.copy_description),
         stringResource(R.string.web_crawl_option),
-        stringResource(R.string.clear_history)
+        stringResource(R.string.clear_history),
+        stringResource(R.string.download_info_only),
     )
     var menuExpanded by remember { mutableStateOf(false) }
     var lastScrollQuery by rememberSaveable { mutableStateOf(historyUiState.query) }
@@ -1467,6 +1345,7 @@ private fun HistoryPage(
                                     onContinue = { onContinueTask(task) },
                                     onWebCrawl = { onWebCrawlTask(task) },
                                     onStop = { onStopTask(task) },
+                                    onCancel = { onCancelTask(task) },
                                     onDelete = { taskToDelete = task },
                                     onMediaClick = onMediaClick,
                                     onClick = {
@@ -1482,6 +1361,10 @@ private fun HistoryPage(
                         }
                     }
 
+                    if (historyUiState.canLoadMore) item(key = "history_load_more") {
+                        TextButton(text = stringResource(R.string.history_load_more), onClick = onLoadMore,
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp))
+                    }
                     item(key = "history_bottom_spacer") {
                         Spacer(
                             modifier = Modifier
@@ -1511,24 +1394,12 @@ private fun HistoryPage(
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxHeight(),
-                onClick = if (!uiState.isDownloading) {
-                    {
-                        if (manualInputLinks) {
-                            onShowInputDialogChange(true)
-                        } else {
-                            onDownload()
-                        }
-                    }
-                } else {
-                    null
+                onClick = {
+                    if (manualInputLinks) onShowInputDialogChange(true) else onDownload()
                 },
                 cornerRadius = 18.dp,
                 colors = CardDefaults.defaultColors(
-                    color = if (uiState.isDownloading) {
-                        MiuixTheme.colorScheme.disabledPrimaryButton
-                    } else {
-                        MiuixTheme.colorScheme.primary
-                    }
+                    color = MiuixTheme.colorScheme.primary
                 )
             ) {
                 Column(
@@ -1539,15 +1410,13 @@ private fun HistoryPage(
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(
-                            imageVector = if (manualInputLinks) MiuixIcons.Link else MiuixIcons.File,
-                            contentDescription = stringResource(R.string.github_link),
+                            imageVector = if (manualInputLinks) MiuixIcons.Regular.Link else MiuixIcons.Regular.Paste,
+                            contentDescription = null,
                             modifier = Modifier.padding(end = 8.dp),
                             tint = MiuixTheme.colorScheme.onPrimary
                         )
                         Text(
-                            text = if (uiState.isDownloading) {
-                                stringResource(R.string.downloading_files) + (activeTask?.noteTitle ?: activeTask?.noteUrl ?: " ")
-                            } else if (manualInputLinks) {
+                            text = if (manualInputLinks) {
                                 stringResource(R.string.manual_input_links)
                             } else {
                                 stringResource(R.string.start_download_from_clipboard)
@@ -1559,16 +1428,6 @@ private fun HistoryPage(
                         )
                     }
 
-//                    if (uiState.isDownloading) {
-//                        Spacer(modifier = Modifier.height(4.dp))
-//                        Text(
-//                            text = activeTask?.noteTitle ?: activeTask?.noteUrl ?: " ",
-//                            color = MiuixTheme.colorScheme.onPrimary.copy(alpha = 0.8f),
-//                            fontSize = 12.sp,
-//                            maxLines = 1,
-//                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
-//                        )
-//                    }
                 }
             }
 
@@ -1580,18 +1439,10 @@ private fun HistoryPage(
             ) {
                 Card(
                     modifier = Modifier.fillMaxSize(),
-                    onClick = if (!uiState.isDownloading) {
-                        { menuExpanded = !menuExpanded }
-                    } else {
-                        null
-                    },
+                    onClick = { menuExpanded = !menuExpanded },
                     cornerRadius = 999.dp,
                     colors = CardDefaults.defaultColors(
-                        color = if (uiState.isDownloading) {
-                            MiuixTheme.colorScheme.disabledPrimaryButton
-                        } else {
-                            MiuixTheme.colorScheme.primary
-                        }
+                        color = MiuixTheme.colorScheme.primary
                     )
                 ) {
                     Box(
@@ -1608,7 +1459,7 @@ private fun HistoryPage(
                 }
 
                 WindowListPopup(
-                    show = menuExpanded && !uiState.isDownloading,
+                    show = menuExpanded,
                     popupPositionProvider = rememberOffsetPopupPositionProvider(
                         base = ListPopupDefaults.ContextMenuPositionProvider,
                         y = (-8).dp
@@ -1628,6 +1479,7 @@ private fun HistoryPage(
                                         0 -> onCopyText()
                                         1 -> onWebCrawlFromClipboard()
                                         2 -> onRequestClearHistory()
+                                        3 -> onSaveInfo()
                                     }
                                 },
                                 index = index
@@ -1816,26 +1668,29 @@ private fun TaskCell(
     onContinue: () -> Unit,
     onWebCrawl: () -> Unit,
     onStop: () -> Unit,
+    onCancel: () -> Unit,
     onDelete: () -> Unit,
     onMediaClick: (MediaItem) -> Unit = {},
     onClick: (() -> Unit)? = null
 ) {
     val statusColor = when (task.status) {
-        com.neoruaa.xhsdn.data.TaskStatus.QUEUED -> Color(0xFF9E9E9E)       // 灰色
-        com.neoruaa.xhsdn.data.TaskStatus.DOWNLOADING -> Color(0xFF2196F3)  // 蓝色
-        com.neoruaa.xhsdn.data.TaskStatus.COMPLETED -> Color(0xFF56C75D)    // 绿色
-        com.neoruaa.xhsdn.data.TaskStatus.FAILED -> Color(0xFFF44336)       // 红色
-        com.neoruaa.xhsdn.data.TaskStatus.WAITING_FOR_USER -> Color(0xFFFF9800) // 橙色
+        TaskStatus.FAILED, TaskStatus.PARTIAL -> MiuixTheme.colorScheme.error
+        TaskStatus.COMPLETED, TaskStatus.SKIPPED -> MiuixTheme.colorScheme.primary
+        else -> MiuixTheme.colorScheme.onSurfaceVariantSummary
     }
-    
-    val statusText = when (task.status) {
-        com.neoruaa.xhsdn.data.TaskStatus.QUEUED -> stringResource(R.string.task_status_queued)
-        com.neoruaa.xhsdn.data.TaskStatus.DOWNLOADING -> stringResource(R.string.task_status_downloading)
-        com.neoruaa.xhsdn.data.TaskStatus.COMPLETED -> stringResource(R.string.task_status_completed)
-        com.neoruaa.xhsdn.data.TaskStatus.FAILED -> stringResource(R.string.task_status_failed)
-        com.neoruaa.xhsdn.data.TaskStatus.WAITING_FOR_USER -> stringResource(R.string.task_status_waiting_for_user)
-    }
-    
+    val statusText = stringResource(when (task.status) {
+        TaskStatus.QUEUED -> R.string.task_status_queued
+        TaskStatus.RESOLVING -> R.string.download_resolving
+        TaskStatus.DOWNLOADING -> R.string.task_status_downloading
+        TaskStatus.COMPLETED -> R.string.task_status_completed
+        TaskStatus.FAILED -> R.string.task_status_failed
+        TaskStatus.WAITING_FOR_USER -> R.string.download_select
+        TaskStatus.PAUSED -> R.string.download_paused
+        TaskStatus.PARTIAL -> R.string.download_partial
+        TaskStatus.CANCELLED -> R.string.download_cancelled
+        TaskStatus.SKIPPED -> R.string.download_skipped
+    })
+
     val typeText = when (// Check if this is a web crawl task (created from WebViewActivity)
         task.noteType) {
         com.neoruaa.xhsdn.data.NoteType.UNKNOWN if (UrlUtils.isXhsLink(task.noteUrl) ||
@@ -2005,94 +1860,28 @@ private fun TaskCell(
             Spacer(modifier = Modifier.height(12.dp))
         }
 
-        // 操作按钮行
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            val isDownloading = task.status == com.neoruaa.xhsdn.data.TaskStatus.DOWNLOADING ||
-                                task.status == com.neoruaa.xhsdn.data.TaskStatus.QUEUED
-
-            if (isDownloading) {
-                 Button(
-                     onClick = onStop,
-                     modifier = Modifier.weight(1f),
-                     colors = ButtonDefaults.buttonColorsPrimary()
-                 ) {
-                     Text(
-                         text = stringResource(R.string.common_stop),
-                         color = MiuixTheme.colorScheme.onPrimary
-                     )
-                 }
-            } else {
-
-                // 等待用户选择状态 (显示 坚持下载/网页爬取)
-                if (task.status == com.neoruaa.xhsdn.data.TaskStatus.WAITING_FOR_USER) {
-                    Column(modifier = Modifier.fillMaxWidth()) {
-                        // 提示语
-                        Text(
-                            text = stringResource(R.string.official_limitation_tip),
-                            fontSize = 12.sp,
-                            color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                            modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
-                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
-                        )
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            Button(
-                                onClick = onContinue,
-                                modifier = Modifier.weight(1f),
-                                colors = ButtonDefaults.buttonColorsPrimary()
-                            ) {
-                                Text(
-                                    text = stringResource(R.string.main_continue_download),
-                                    color = MiuixTheme.colorScheme.onPrimary
-                                )
-                            }
-                            Button(
-                                onClick = onWebCrawl,
-                                modifier = Modifier.weight(1f),
-                                colors = ButtonDefaults.buttonColors(
-                                    MiuixTheme.colorScheme.surface,
-                                    MiuixTheme.colorScheme.onSurface
-                                )
-                            ) {
-                                Text(stringResource(R.string.web_crawl_option), color = MiuixTheme.colorScheme.onSurface)
-                            }
-                        }
-                    }
-                } else {
-//                    // 复制链接按钮
-//                    TextButton(
-//                        text = "复制链接",
-//                        onClick = onCopyUrl,
-//                        modifier = Modifier.weight(1f)
-//                    )
-//
-//                    // 爬取按钮（通过网页爬取功能打开）
-//                    TextButton(
-//                        text = "网页爬取",
-//                        onClick = onWebCrawl,
-//                        modifier = Modifier.weight(1f)
-//                    )
-
-                    // 重试按钮（仅失败任务显示）
-                    if (task.status == com.neoruaa.xhsdn.data.TaskStatus.FAILED) {
-                        Button(
-                            onClick = onRetry,
-                            modifier = Modifier.weight(1f),
-                            colors = ButtonDefaults.buttonColorsPrimary()
-                        ) {
-                            Text(
-                                text = stringResource(R.string.retry),
-                                color = MiuixTheme.colorScheme.onPrimary
-                            )
-                        }
-                    }
-                }
+        task.errorMessage?.takeIf { it.isNotBlank() }?.let { message ->
+            Text(message, modifier = Modifier.padding(vertical = 8.dp), fontSize = 12.sp,
+                color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
+        }
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            if (task.isActive || task.status == TaskStatus.PAUSED) {
+                ActionIconButton(imageVector = MiuixIcons.Regular.Close, contentDescription = stringResource(R.string.download_cancel), onClick = onCancel)
             }
+            if (task.status in setOf(TaskStatus.QUEUED, TaskStatus.RESOLVING, TaskStatus.DOWNLOADING)) {
+                ActionIconButton(imageVector = MiuixIcons.Regular.Pause, contentDescription = stringResource(R.string.download_pause), onClick = onStop)
+            }
+            if (task.status in setOf(TaskStatus.PAUSED, TaskStatus.WAITING_FOR_USER)) {
+                ActionIconButton(imageVector = if (task.status == TaskStatus.WAITING_FOR_USER) MiuixIcons.Regular.SelectAll else MiuixIcons.Regular.Play,
+                    contentDescription = stringResource(if (task.status == TaskStatus.WAITING_FOR_USER) R.string.download_select else R.string.download_resume), onClick = onContinue)
+            }
+            if (task.status in setOf(TaskStatus.FAILED, TaskStatus.PARTIAL, TaskStatus.CANCELLED)) {
+                ActionIconButton(imageVector = MiuixIcons.Regular.Refresh, contentDescription = stringResource(R.string.retry), onClick = onRetry)
+                ActionIconButton(imageVector = MiuixIcons.Regular.Link, contentDescription = stringResource(R.string.web_crawl_option), onClick = onWebCrawl)
+            }
+            Spacer(Modifier.weight(1f))
+            ActionIconButton(imageVector = MiuixIcons.Regular.Copy, contentDescription = stringResource(R.string.common_copy_link), onClick = onCopyUrl)
+            ActionIconButton(imageVector = MiuixIcons.Regular.Delete, contentDescription = stringResource(R.string.delete_content_description), onClick = onDelete)
         }
 
     }

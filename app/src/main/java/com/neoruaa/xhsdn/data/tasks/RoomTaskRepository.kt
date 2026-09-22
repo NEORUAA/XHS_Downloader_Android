@@ -15,6 +15,12 @@ class RoomTaskRepository(
     private val dao: TaskDao = database.taskDao()
 ) : TaskRepository {
 
+    override fun observeTask(id: Long) = dao.observeTask(id).map { it?.toModel() }
+    override fun observePendingTasks() = dao.observePendingTasks().map { rows -> rows.map(TaskWithFiles::toModel) }
+    override fun observePage(query: String, filter: Int, limit: Int) = dao.observePage(query, filter, limit).map { rows -> rows.map(TaskWithFiles::toModel) }
+    override fun observeCounts() = dao.observeCounts()
+    override suspend fun clearFinishedTasks() = dao.clearFinishedTasks()
+
     override fun observeTasks(): Flow<List<DownloadTask>> = dao.observeTasks().map { rows ->
         rows.map(TaskWithFiles::toModel)
     }

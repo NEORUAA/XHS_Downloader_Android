@@ -1,0 +1,96 @@
+package com.neoruaa.xhsdn.domain.download
+
+import androidx.test.core.app.ActivityScenario
+import androidx.test.core.app.ApplicationProvider
+import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.neoruaa.xhsdn.MainActivity
+import com.neoruaa.xhsdn.XHSApplication
+import com.neoruaa.xhsdn.core.model.ResolvedMedia
+import com.neoruaa.xhsdn.core.model.ResolvedNote
+import com.neoruaa.xhsdn.data.NoteType
+import com.neoruaa.xhsdn.data.TaskStatus
+import com.neoruaa.xhsdn.data.settings.AppSettings
+import com.neoruaa.xhsdn.data.settings.DownloadJson
+import com.neoruaa.xhsdn.data.tasks.DownloadSessionEntity
+import com.neoruaa.xhsdn.utils.deleteStoredMedia
+import java.net.ServerSocket
+import java.util.concurrent.CopyOnWriteArrayList
+import java.util.concurrent.atomic.AtomicBoolean
+import kotlin.concurrent.thread
+import kotlinx.coroutines.*
+import kotlinx.coroutines.flow.first
+import kotlinx.serialization.encodeToString
+import org.junit.Assert.*
+import org.junit.Test
+import org.junit.runner.RunWith
+
+@RunWith(AndroidJUnit4::class)
+class DownloadQueueTest {
+    @Test fun selectionDefersFullTransferAndPausedTaskResumesItsRange() = runBlocking {
+        val app = ApplicationProvider.getApplicationContext<XHSApplication>()
+        val container = app.appContainer
+        container.initialization.await()
+        val server = ServerSocket(0)
+        val running = AtomicBoolean(true)
+        val requests = CopyOnWriteArrayList<Pair<String, String?>>()
+        val bytes = ByteArray(96 * 1024) { (it % 253).toByte() }.apply { this[0] = 0xff.toByte(); this[1] = 0xd8.toByte(); this[2] = 0xff.toByte() }
+        val serverThread = thread(isDaemon = true) {
+            while (running.get()) {
+                val socket = runCatching { server.accept() }.getOrNull() ?: break
+                thread(isDaemon = true) {
+                    socket.use { connection -> runCatching {
+                        val input = connection.getInputStream().bufferedReader()
+                        val path = input.readLine().split(' ')[1]
+                        val headers = generateSequence { input.readLine()?.takeIf(String::isNotEmpty) }.toList()
+                        val range = headers.firstOrNull { it.startsWith("Range:", true) }?.substringAfter(':')?.trim()
+                        requests.add(path to range)
+                        val start = range?.substringAfter("bytes=")?.substringBefore('-')?.toIntOrNull() ?: 0
+                        val output = connection.getOutputStream()
+                        val status = if (range != null) "206 Partial Content" else "200 OK"
+                        val contentRange = if (range != null) "Content-Range: bytes $start-${bytes.lastIndex}/${bytes.size}\r\n" else ""
+                        output.write(("HTTP/1.1 $status\r\nContent-Length: ${bytes.size - start}\r\nETag: \"fixture-v1\"\r\n$contentRange" +
+                            "Content-Type: image/jpeg\r\nConnection: close\r\n\r\n").toByteArray())
+                        for (offset in start until bytes.size step 2048) {
+                            output.write(bytes, offset, minOf(2048, bytes.size - offset)); output.flush()
+                            Thread.sleep(35)
+                        }
+                    } }
+                }
+            }
+        }
+        var taskId: Long? = null
+        val scenario = ActivityScenario.launch(MainActivity::class.java)
+        try {
+            val id = container.taskRepository.createTask("https://www.xiaohongshu.com/explore/fixture", "Queue fixture", NoteType.IMAGE, 2)
+            taskId = id
+            val note = ResolvedNote("https://www.xiaohongshu.com/explore/fixture", "Queue fixture", "Fixture", null, null, null, noteId = "fixture_${System.nanoTime()}",
+                items = listOf(ResolvedMedia.Image("http://127.0.0.1:${server.localPort}/selected", id = "selected"),
+                    ResolvedMedia.Image("http://127.0.0.1:${server.localPort}/unselected", id = "unselected")))
+            container.taskDatabase.downloadSessionDao().saveSession(DownloadSessionEntity(id, DownloadJson.encodeToString(AppSettings()),
+                resolvedJson = DownloadJson.encodeToString(note), requireSelection = true))
+            container.downloadQueue.drain()
+            assertEquals(TaskStatus.WAITING_FOR_USER, container.taskRepository.getTaskById(id)?.status)
+            assertTrue(requests.isEmpty())
+            container.downloadQueue.select(id, setOf("selected"))
+            withTimeout(10_000) { while (requests.isEmpty()) delay(25) }
+            delay(250)
+            container.downloadQueue.pause(id)
+            assertEquals(TaskStatus.PAUSED, container.taskRepository.getTaskById(id)?.status)
+            container.downloadQueue.resume(id)
+            val completed = withTimeout(20_000) { container.taskRepository.observeTask(id).first { it?.isCompleted == true } }!!
+            assertEquals(completed.errorMessage, TaskStatus.COMPLETED, completed.status)
+            assertEquals(1, completed.totalFiles)
+            assertEquals(1, completed.mediaRefs.size)
+            assertTrue(requests.all { it.first == "/selected" })
+            assertTrue(requests.any { it.second?.startsWith("bytes=") == true })
+        } finally {
+            taskId?.let { id ->
+                container.downloadQueue.cancel(id)
+                container.taskRepository.getTaskById(id)?.mediaRefs?.forEach { app.deleteStoredMedia(it) }
+                container.downloadQueue.delete(id)
+            }
+            scenario.close()
+            running.set(false); server.close(); serverThread.join(1000)
+        }
+    }
+}

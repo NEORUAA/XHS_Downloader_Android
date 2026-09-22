@@ -92,10 +92,10 @@ class TaskDatabaseMigrationTest {
     }
 
     @Test
-    fun migrationOneToTwoPreservesLegacyFileRecord() = runBlocking {
+    fun migrationOneToThreePreservesLegacyFileRecord() = runBlocking {
         val database = Room.databaseBuilder(context, TaskDatabase::class.java, databaseName)
             .setDriver(AndroidSQLiteDriver())
-            .addMigrations(TASK_DATABASE_MIGRATION_1_2)
+            .addMigrations(TASK_DATABASE_MIGRATION_1_2, TASK_DATABASE_MIGRATION_2_3)
             .build()
         try {
             val task = database.taskDao().getTask(1L)
@@ -110,6 +110,31 @@ class TaskDatabaseMigrationTest {
         } finally {
             database.close()
         }
+    }
+
+    @Test
+    fun migrationTwoToThreeRetainsSessionsWhenTaskIsUpdated() = runBlocking {
+        AndroidSQLiteDriver().open(databaseFile.absolutePath).use { connection ->
+            TASK_DATABASE_MIGRATION_1_2.migrate(connection)
+            connection.exec("PRAGMA user_version = 2")
+        }
+        val database = Room.databaseBuilder(context, TaskDatabase::class.java, databaseName)
+            .setDriver(AndroidSQLiteDriver()).addMigrations(TASK_DATABASE_MIGRATION_2_3).build()
+        try {
+            val repository = RoomTaskRepository(database)
+            val sessions = database.downloadSessionDao()
+            sessions.saveSession(DownloadSessionEntity(1, "{}"))
+            sessions.saveResource(DownloadResourceEntity(1, "media", "record", "COMPLETED"))
+            repository.addMediaRef(1, com.neoruaa.xhsdn.data.storage.StoredMediaRef.fromLegacyPath("/new.jpg"))
+            assertEquals("{}", sessions.session(1)?.settingsJson)
+            assertEquals(1, sessions.resources(1).size)
+            repository.updateTaskStatus(1, com.neoruaa.xhsdn.data.TaskStatus.DOWNLOADING)
+            sessions.recoverInterrupted()
+            assertEquals(com.neoruaa.xhsdn.data.TaskStatus.PAUSED, repository.getTaskById(1)?.status)
+            repository.deleteTask(1)
+            assertNull(sessions.session(1))
+            assertEquals(0, sessions.resources(1).size)
+        } finally { database.close() }
     }
 
     private fun SQLiteConnection.exec(sql: String) {

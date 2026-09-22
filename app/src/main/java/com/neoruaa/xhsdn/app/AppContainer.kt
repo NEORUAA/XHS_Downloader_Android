@@ -5,18 +5,13 @@ import androidx.room3.Room
 import androidx.sqlite.driver.AndroidSQLiteDriver
 import com.neoruaa.xhsdn.data.settings.DataStoreSettingsRepository
 import com.neoruaa.xhsdn.data.settings.SettingsRepository
-import com.neoruaa.xhsdn.data.media.AndroidResolvedMediaSink
-import com.neoruaa.xhsdn.data.xhs.DefaultXhsContentRepository
-import com.neoruaa.xhsdn.data.xhs.OkHttpXhsPageSource
-import com.neoruaa.xhsdn.data.xhs.XhsContentRepository
 import com.neoruaa.xhsdn.data.tasks.LegacyTaskHistoryImporter
 import com.neoruaa.xhsdn.data.tasks.RoomTaskRepository
 import com.neoruaa.xhsdn.data.tasks.TaskDatabase
 import com.neoruaa.xhsdn.data.tasks.TaskDatabaseConstants
 import com.neoruaa.xhsdn.data.tasks.TaskRepository
 import com.neoruaa.xhsdn.data.tasks.TASK_DATABASE_MIGRATION_1_2
-import com.neoruaa.xhsdn.domain.download.DownloadCoordinator
-import com.neoruaa.xhsdn.domain.download.RepositoryDownloadCoordinator
+import com.neoruaa.xhsdn.data.tasks.TASK_DATABASE_MIGRATION_2_3
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CancellationException
@@ -43,7 +38,7 @@ class AppContainer(context: Context) {
             TaskDatabaseConstants.DATABASE_NAME
         )
             .setDriver(AndroidSQLiteDriver())
-            .addMigrations(TASK_DATABASE_MIGRATION_1_2)
+            .addMigrations(TASK_DATABASE_MIGRATION_1_2, TASK_DATABASE_MIGRATION_2_3)
             .build()
     }
 
@@ -55,20 +50,9 @@ class AppContainer(context: Context) {
         DataStoreSettingsRepository(appContext, scope)
     }
 
-    val xhsContentRepository: XhsContentRepository by lazy {
-        val pageSource = OkHttpXhsPageSource(com.neoruaa.xhsdn.FileDownloader.getSharedHttpClient())
-        DefaultXhsContentRepository(
-            fetchHtml = pageSource::fetchHtml,
-            resolveShortUrl = pageSource::resolveShortUrl
-        )
-    }
-
-    val downloadCoordinator: DownloadCoordinator by lazy {
-        RepositoryDownloadCoordinator(
-            contentRepository = xhsContentRepository,
-            mediaSink = AndroidResolvedMediaSink(appContext)
-        )
-    }
+    val credentials by lazy { com.neoruaa.xhsdn.data.network.SessionCredentials(appContext) }
+    val network by lazy { com.neoruaa.xhsdn.data.network.XhsNetwork(credentials) }
+    val downloadQueue by lazy { com.neoruaa.xhsdn.domain.download.DownloadQueue(appContext, this) }
 
     private val initializationStarted = AtomicBoolean(false)
     private val initializationCompletion = CompletableDeferred<Unit>()
@@ -83,6 +67,7 @@ class AppContainer(context: Context) {
         initializationJob = scope.launch {
             try {
                 LegacyTaskHistoryImporter(appContext, taskDatabase).importIfNeeded()
+                taskDatabase.downloadSessionDao().recoverInterrupted()
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Throwable) {

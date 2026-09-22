@@ -4,7 +4,6 @@ import android.app.Activity
 import android.app.Application
 import android.os.Bundle
 import com.neoruaa.xhsdn.app.AppContainer
-import com.neoruaa.xhsdn.data.tasks.TaskManager
 
 class XHSApplication : Application() {
     lateinit var appContainer: AppContainer
@@ -14,12 +13,6 @@ class XHSApplication : Application() {
         super.onCreate()
         appContainer = AppContainer(this)
         appContainer.startInitialization()
-        TaskManager.attach(
-            this,
-            appContainer.taskRepository,
-            appContainer.scope,
-            appContainer.initialization
-        )
         registerActivityLifecycleCallbacks(object : ActivityLifecycleCallbacks {
             override fun onActivityCreated(activity: Activity, savedInstanceState: Bundle?) = Unit
             override fun onActivityStarted(activity: Activity) = Unit

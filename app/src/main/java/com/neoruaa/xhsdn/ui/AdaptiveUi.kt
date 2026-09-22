@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.displayCutout
 import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.union
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
@@ -158,7 +159,8 @@ fun ActionIconButton(
         Icon(
             imageVector = imageVector,
             contentDescription = contentDescription,
-            tint = tint
+            tint = tint,
+            modifier = Modifier.size(20.dp)
         )
     }
 }

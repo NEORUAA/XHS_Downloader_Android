@@ -146,6 +146,7 @@ import com.neoruaa.xhsdn.feature.history.HistoryFilter
 import com.neoruaa.xhsdn.feature.history.HistoryUiState
 import com.neoruaa.xhsdn.feature.history.HistoryViewModel
 import com.neoruaa.xhsdn.data.settings.SettingsRepository
+import com.neoruaa.xhsdn.data.xhs.XhsUrlParser
 import top.yukonga.miuix.kmp.basic.DropdownItem
 import top.yukonga.miuix.kmp.basic.DropdownImpl
 import top.yukonga.miuix.kmp.basic.ListPopupColumn
@@ -496,30 +497,21 @@ class MainActivity : ComponentActivity() {
                             }
                         }
                     },
-                    onCopyText = { 
-                        // 先读取剪贴板
-                        val clipboard = getSystemService(CLIPBOARD_SERVICE) as android.content.ClipboardManager
-                        val clipText = clipboard.primaryClip?.getItemAt(0)?.text?.toString() ?: ""
-                        if (clipText.isNotEmpty()) {
-                            viewModel.updateUrl(clipText)
+                    onCopyText = { inputLink ->
+                        viewModel.updateUrl(inputLink)
+                        ensureStoragePermission {
+                            viewModel.copyDescription({ showToast(getString(R.string.copied_description)) }, { showToast(it) })
                         }
-                        ensureStoragePermission { viewModel.copyDescription({ showToast(getString(R.string.copied_description)) }, { showToast(it) }) } 
                     },
                     onOpenSettings = { navigateTo(AppRoute.Settings) },
-                    onWebCrawlFromClipboard = {
-                        // 先读取剪贴板
-                        val clipboard = getSystemService(CLIPBOARD_SERVICE) as android.content.ClipboardManager
-                        val clipText = clipboard.primaryClip?.getItemAt(0)?.text?.toString() ?: ""
-                        if (clipText.isNotEmpty()) {
-                            // Clean the URL using the same method as other places
-                            val cleanUrl = UrlUtils.extractFirstUrl(clipText)
-                            if (cleanUrl != null) {
-                                viewModel.resetWebCrawlFlag()
-                                navigateTo(AppRoute.WebView(cleanUrl))
-                                detectedXhsLink = null
-                            } else {
-                                showToast(getString(R.string.invalid_link_please_reenter))
-                            }
+                    onWebCrawl = { inputLink ->
+                        val cleanUrl = UrlUtils.extractFirstUrl(inputLink)
+                        if (cleanUrl != null) {
+                            viewModel.resetWebCrawlFlag()
+                            navigateTo(AppRoute.WebView(cleanUrl))
+                            detectedXhsLink = null
+                        } else {
+                            showToast(getString(R.string.invalid_link_please_reenter))
                         }
                     },
                     onMediaClick = { openFile(it) },
@@ -571,8 +563,8 @@ class MainActivity : ComponentActivity() {
                     },
                     onCancelTask = { task -> viewModel.cancelTask(task.id) },
                     onLoadMore = historyViewModel::loadMore,
-                    onSaveInfo = {
-                        viewModel.pasteLinkFromClipboard()
+                    onSaveInfo = { inputLink ->
+                        viewModel.updateUrl(inputLink)
                         ensureStoragePermission { viewModel.saveNoteInformation { showToast(it) } }
                     },
                     onStopTask = { task ->
@@ -825,11 +817,11 @@ private fun MainScreen(
     showInputDialog: Boolean = false,
     onShowInputDialogChange: (Boolean) -> Unit,
     onDownload: () -> Unit,
-    onCopyText: () -> Unit,
-    onSaveInfo: () -> Unit,
+    onCopyText: (String) -> Unit,
+    onSaveInfo: (String) -> Unit,
     onLoadMore: () -> Unit,
     onOpenSettings: () -> Unit,
-    onWebCrawlFromClipboard: () -> Unit,
+    onWebCrawl: (String) -> Unit,
     onClearHistory: () -> Unit,
     onMediaClick: (MediaItem) -> Unit,
     onCopyUrl: (String) -> Unit,
@@ -1032,7 +1024,7 @@ private fun MainScreen(
                 onDownload = onDownload,
                 onManualInputDownload = onManualInputDownload,
                 onCopyText = onCopyText,
-                onWebCrawlFromClipboard = onWebCrawlFromClipboard,
+                onWebCrawl = onWebCrawl,
                 onRequestClearHistory = { showClearHistoryDialog = true },
                 onMediaClick = onMediaClick,
                 onCopyUrl = onCopyUrl,
@@ -1107,6 +1099,13 @@ private fun SelectiveDownloadSheet(
     }
 }
 
+private enum class LinkInputAction(val labelRes: Int) {
+    DOWNLOAD(R.string.download_button),
+    COPY_TEXT(R.string.copy_description),
+    WEB_CRAWL(R.string.web_crawl_option),
+    SAVE_INFO(R.string.download_info_only)
+}
+
 @Composable
 private fun HistoryPage(
     uiState: MainUiState,
@@ -1118,10 +1117,10 @@ private fun HistoryPage(
     statusListState: androidx.compose.foundation.lazy.LazyListState,
     onDownload: () -> Unit,
     onManualInputDownload: (String) -> Unit,
-    onCopyText: () -> Unit,
-    onSaveInfo: () -> Unit,
+    onCopyText: (String) -> Unit,
+    onSaveInfo: (String) -> Unit,
     onLoadMore: () -> Unit,
-    onWebCrawlFromClipboard: () -> Unit,
+    onWebCrawl: (String) -> Unit,
     onRequestClearHistory: () -> Unit,
     onMediaClick: (MediaItem) -> Unit,
     onCopyUrl: (String) -> Unit,
@@ -1150,13 +1149,12 @@ private fun HistoryPage(
     val activeTask = tasks.firstOrNull {
         it.status == com.neoruaa.xhsdn.data.TaskStatus.DOWNLOADING || it.status == com.neoruaa.xhsdn.data.TaskStatus.QUEUED
     }
-    val menuItems = listOf(
-        stringResource(R.string.copy_description),
-        stringResource(R.string.web_crawl_option),
-        stringResource(R.string.clear_history),
-        stringResource(R.string.download_info_only),
-    )
+    val linkActions = listOf(LinkInputAction.COPY_TEXT, LinkInputAction.WEB_CRAWL, LinkInputAction.SAVE_INFO)
+    val menuItems = linkActions.map { stringResource(it.labelRes) } + stringResource(R.string.clear_history)
     var menuExpanded by remember { mutableStateOf(false) }
+    var pendingMenuIndex by remember { mutableStateOf<Int?>(null) }
+    var inputAction by remember { mutableStateOf(LinkInputAction.DOWNLOAD) }
+    var submittedLink by remember { mutableStateOf<String?>(null) }
     var lastScrollQuery by rememberSaveable { mutableStateOf(historyUiState.query) }
     var lastScrollFilterOrdinal by rememberSaveable {
         mutableStateOf(historyUiState.selectedFilter.ordinal)
@@ -1402,7 +1400,10 @@ private fun HistoryPage(
                     .weight(1f)
                     .fillMaxHeight(),
                 onClick = {
-                    if (manualInputLinks) onShowInputDialogChange(true) else onDownload()
+                    if (manualInputLinks) {
+                        inputAction = LinkInputAction.DOWNLOAD
+                        onShowInputDialogChange(true)
+                    } else onDownload()
                 },
                 cornerRadius = 18.dp,
                 colors = CardDefaults.defaultColors(
@@ -1472,22 +1473,35 @@ private fun HistoryPage(
                         y = (-8).dp
                     ),
                     alignment = PopupPositionProvider.Align.BottomEnd,
-                    onDismissRequest = { menuExpanded = false }
+                    onDismissRequest = { menuExpanded = false },
+                    onDismissFinished = {
+                        val selectedIndex = pendingMenuIndex
+                        pendingMenuIndex = null
+                        selectedIndex?.let { index ->
+                            if (index in linkActions.indices) {
+                                inputAction = linkActions[index]
+                                onShowInputDialogChange(true)
+                            } else {
+                                onRequestClearHistory()
+                            }
+                        }
+                    }
                 ) {
                     ListPopupColumn {
                         menuItems.forEachIndexed { index, item ->
                             DropdownImpl(
-                                text = item,
+                                item = DropdownItem(
+                                    text = item,
+                                    icon = if (index == linkActions.size) {
+                                        { Icon(MiuixIcons.Regular.Delete, contentDescription = null, modifier = it) }
+                                    } else null
+                                ),
                                 optionSize = menuItems.size,
                                 isSelected = false,
+                                hasSubmenu = index in linkActions.indices,
                                 onSelectedIndexChange = {
+                                    pendingMenuIndex = index
                                     menuExpanded = false
-                                    when (index) {
-                                        0 -> onCopyText()
-                                        1 -> onWebCrawlFromClipboard()
-                                        2 -> onRequestClearHistory()
-                                        3 -> onSaveInfo()
-                                    }
                                 },
                                 index = index
                             )
@@ -1598,25 +1612,43 @@ private fun HistoryPage(
         // Keep the dialog composed until miuix finishes its exit animation.
         val context = LocalContext.current
         val manualInputTitle = stringResource(R.string.manual_input_links)
-        val enterXhsUrl = stringResource(R.string.enter_xhs_url)
+        val inputSummary = stringResource(
+            if (inputAction == LinkInputAction.WEB_CRAWL) R.string.webview_enter_url else R.string.enter_xhs_url
+        )
         val cancelText = stringResource(R.string.cancel)
-        val downloadButtonText = stringResource(R.string.download_button)
+        val confirmText = stringResource(inputAction.labelRes)
         val pleaseEnterUrl = stringResource(R.string.please_enter_url)
+        val invalidLink = stringResource(R.string.invalid_link_please_reenter)
 
         var inputLink by remember { mutableStateOf("") }
 
         WindowDialog(
             title = manualInputTitle,
             show = showInputDialog,
-            summary = enterXhsUrl,
+            summary = inputSummary,
             onDismissRequest = { onShowInputDialogChange(false) },
-            onDismissFinished = { inputLink = "" }
+            onDismissFinished = {
+                val link = submittedLink
+                submittedLink = null
+                inputLink = ""
+                // Navigation may remove this page, so dispatch only after the dialog closes.
+                link?.let {
+                    when (inputAction) {
+                        LinkInputAction.DOWNLOAD -> onManualInputDownload(it)
+                        LinkInputAction.COPY_TEXT -> onCopyText(it)
+                        LinkInputAction.WEB_CRAWL -> onWebCrawl(it)
+                        LinkInputAction.SAVE_INFO -> onSaveInfo(it)
+                    }
+                }
+            }
         ) {
             Column {
                 TextField(
                     value = inputLink,
                     onValueChange = { inputLink = it },
-                    label = stringResource(R.string.main_url_example),
+                    label = stringResource(
+                        if (inputAction == LinkInputAction.WEB_CRAWL) R.string.enter_url_hint else R.string.main_url_example
+                    ),
                     useLabelAsPlaceholder = true,
                     modifier = Modifier.fillMaxWidth(),
                 )
@@ -1633,15 +1665,21 @@ private fun HistoryPage(
                     )
                     Spacer(Modifier.width(12.dp))
                     TextButton(
-                        text = downloadButtonText,
+                        text = confirmText,
                         onClick = {
-                            if (inputLink.isNotEmpty()) {
-                                // 执行手动输入下载
-                                onManualInputDownload(inputLink)
-
-                                onShowInputDialogChange(false)
+                            val input = inputLink.trim()
+                            val hasLink = if (inputAction == LinkInputAction.WEB_CRAWL) {
+                                UrlUtils.extractFirstUrl(input) != null
                             } else {
-                                Toast.makeText(context, pleaseEnterUrl, Toast.LENGTH_SHORT).show()
+                                XhsUrlParser.extractLinks(input).isNotEmpty()
+                            }
+                            when {
+                                input.isEmpty() -> Toast.makeText(context, pleaseEnterUrl, Toast.LENGTH_SHORT).show()
+                                !hasLink -> Toast.makeText(context, invalidLink, Toast.LENGTH_SHORT).show()
+                                else -> {
+                                    submittedLink = input
+                                    onShowInputDialogChange(false)
+                                }
                             }
                         },
                         modifier = Modifier.weight(1f),

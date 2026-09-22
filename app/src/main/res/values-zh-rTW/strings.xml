@@ -350,6 +350,6 @@
     <string name="settings_format_md">Markdown</string>
     <string name="settings_author_identity">%1$s · %2$s</string>
     <string name="download_result_summary">已儲存 %1$d/%2$d；失敗 %3$d</string>
-    <string name="common_not_modified">不修改</string>
+    <string name="common_reset_input">還原原值</string>
     <string name="settings_quality_compatibility">相容性優先（H.264）</string>
 </resources>

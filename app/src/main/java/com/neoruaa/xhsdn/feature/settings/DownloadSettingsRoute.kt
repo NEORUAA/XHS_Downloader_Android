@@ -38,6 +38,7 @@ import top.yukonga.miuix.kmp.icon.extended.Back
 import top.yukonga.miuix.kmp.icon.extended.Link
 import top.yukonga.miuix.kmp.icon.extended.FileDownloads
 import top.yukonga.miuix.kmp.icon.extended.Ok
+import top.yukonga.miuix.kmp.icon.extended.Refresh
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.window.WindowDialog
 
@@ -60,11 +61,18 @@ internal fun DownloadSettingsRoute(section: Int, onBack: () -> Unit, onOpenBrows
     var showEdit by rememberSaveable { mutableStateOf(false) }
     // Do not persist credential text in saved instance state.
     var input by remember { mutableStateOf("") }
+    var initialInput by remember { mutableStateOf("") }
     var sessionRevision by remember { mutableIntStateOf(0) }
     val sessionStates by produceState<Map<String, Boolean>>(emptyMap(), sessionRevision) {
         value = withContext(Dispatchers.IO) { SessionCredentials.HOSTS.associateWith { container.credentials.get(it).isNotBlank() } }
     }
     fun message(id: Int) { Toast.makeText(context, resources.getString(id), Toast.LENGTH_SHORT).show() }
+    fun openEditor(key: String, value: String) {
+        initialInput = value
+        input = value
+        edit = key
+        showEdit = true
+    }
     fun update(transform: (DownloadOptions) -> DownloadOptions) {
         scope.launch {
             try { repository.update { state ->
@@ -134,8 +142,8 @@ internal fun DownloadSettingsRoute(section: Int, onBack: () -> Unit, onOpenBrows
                         endActions = { ActionIconButton(MiuixIcons.Regular.FileDownloads, stringResource(R.string.settings_export_csv), { exportCsv.launch("xhs-download-records.csv") }) })
                     "timeout", "retries" -> ArrowPreference(title = stringResource(if (row == "timeout") R.string.settings_timeout else R.string.settings_retries),
                         summary = (if (row == "timeout") options.timeoutSeconds else options.maxRetries).toString(),
-                        onClick = { input = (if (row == "timeout") options.timeoutSeconds else options.maxRetries).toString(); edit = row; showEdit = true })
-                    "proxy" -> ArrowPreference(title = stringResource(R.string.settings_proxy), summary = options.proxy.ifBlank { stringResource(R.string.settings_proxy_hint) }, onClick = { input = options.proxy; edit = row; showEdit = true })
+                        onClick = { openEditor(row, (if (row == "timeout") options.timeoutSeconds else options.maxRetries).toString()) })
+                    "proxy" -> ArrowPreference(title = stringResource(R.string.settings_proxy), summary = options.proxy.ifBlank { stringResource(R.string.settings_proxy_hint) }, onClick = { openEditor(row, options.proxy) })
                     "proxy_media" -> OptionSwitch(R.string.settings_proxy_media, checked = options.proxyDownload) { update { it.copy(proxyDownload = !it.proxyDownload) } }
                     "web_session" -> OptionSwitch(R.string.settings_web_session, checked = options.useWebSession) { update { it.copy(useWebSession = !it.useWebSession) } }
                     "login" -> BasicComponent(title = stringResource(R.string.settings_open_login), onClick = onOpenBrowser,
@@ -144,7 +152,7 @@ internal fun DownloadSettingsRoute(section: Int, onBack: () -> Unit, onOpenBrows
                         val host = row.substringAfter(':')
                         ArrowPreference(title = stringResource(R.string.settings_cookie, host),
                             summary = stringResource(if (sessionStates[host] == true) R.string.settings_session_saved else R.string.settings_session_empty),
-                            onClick = { input = ""; edit = row; showEdit = true })
+                            onClick = { openEditor(row, "") })
                     }
                 }
             }
@@ -160,7 +168,7 @@ internal fun DownloadSettingsRoute(section: Int, onBack: () -> Unit, onOpenBrows
                 item("authors_hint") { Text(stringResource(if (authors.isEmpty()) R.string.settings_author_empty else R.string.settings_author_remarks_hint), modifier = Modifier.padding(horizontal = 24.dp).padding(bottom = 12.dp), color = MiuixTheme.colorScheme.onSurfaceVariantSummary) }
                 groupedCardItems(authors, key = { "author_${it.id}" }) { author ->
                     ArrowPreference(title = author.remark.ifBlank { author.nickname }, summary = stringResource(R.string.settings_author_identity, author.nickname, author.id),
-                        onClick = { input = author.remark; edit = "author:${author.id}"; showEdit = true })
+                        onClick = { openEditor("author:${author.id}", author.remark) })
                 }
             }
             item("bottom") { Spacer(Modifier.height(24.dp).navigationBarsPadding()) }
@@ -216,14 +224,21 @@ internal fun DownloadSettingsRoute(section: Int, onBack: () -> Unit, onOpenBrows
             summary = summary,
             show = showEdit,
             onDismissRequest = { showEdit = false },
-            onDismissFinished = { input = ""; edit = null }
+            onDismissFinished = { input = ""; initialInput = ""; edit = null }
         ) {
             Column(Modifier.heightIn(max = 500.dp)) {
                 TextField(value = input, onValueChange = { input = it }, singleLine = true,
                     visualTransformation = if (cookie) PasswordVisualTransformation() else VisualTransformation.None,
+                    trailingIcon = {
+                        ActionIconButton(
+                            imageVector = MiuixIcons.Regular.Refresh,
+                            contentDescription = stringResource(R.string.common_reset_input),
+                            onClick = { input = initialInput },
+                            modifier = Modifier.padding(end = 8.dp)
+                        )
+                    },
                     modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp))
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    TextButton(stringResource(R.string.common_not_modified), { showEdit = false }, Modifier.weight(1f))
                     TextButton(stringResource(R.string.cancel), { showEdit = false }, Modifier.weight(1f))
                     TextButton(stringResource(R.string.apply), {
                         val value = input.trim()

@@ -350,6 +350,6 @@
     <string name="settings_format_md">Markdown</string>
     <string name="settings_author_identity">%1$s · %2$s</string>
     <string name="download_result_summary">Saved %1$d/%2$d; failed %3$d</string>
-    <string name="common_not_modified">Unchanged</string>
+    <string name="common_reset_input">Restore original value</string>
     <string name="settings_quality_compatibility">Compatibility (H.264 first)</string>
 </resources>

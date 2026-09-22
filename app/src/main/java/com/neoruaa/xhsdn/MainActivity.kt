@@ -146,6 +146,7 @@ import com.neoruaa.xhsdn.feature.history.HistoryFilter
 import com.neoruaa.xhsdn.feature.history.HistoryUiState
 import com.neoruaa.xhsdn.feature.history.HistoryViewModel
 import com.neoruaa.xhsdn.data.settings.SettingsRepository
+import top.yukonga.miuix.kmp.basic.DropdownItem
 import top.yukonga.miuix.kmp.basic.DropdownImpl
 import top.yukonga.miuix.kmp.basic.ListPopupColumn
 import top.yukonga.miuix.kmp.basic.ListPopupDefaults
@@ -1677,6 +1678,8 @@ private fun TaskCell(
         TaskStatus.COMPLETED, TaskStatus.SKIPPED -> MiuixTheme.colorScheme.primary
         else -> MiuixTheme.colorScheme.onSurfaceVariantSummary
     }
+    var showActions by remember(task.id) { mutableStateOf(false) }
+    var deleteAfterMenuDismiss by remember(task.id) { mutableStateOf(false) }
     val statusText = stringResource(when (task.status) {
         TaskStatus.QUEUED -> R.string.task_status_queued
         TaskStatus.RESOLVING -> R.string.download_resolving
@@ -1715,7 +1718,8 @@ private fun TaskCell(
             )
             .combinedClickable(
                 onClick = { onClick?.invoke() },
-                onLongClick = onDelete
+                onLongClickLabel = stringResource(R.string.more_options),
+                onLongClick = { showActions = true }
             )
             .padding(12.dp)
     ) {
@@ -1855,32 +1859,65 @@ private fun TaskCell(
             }
         }
 
-        if (task.status != com.neoruaa.xhsdn.data.TaskStatus.COMPLETED) {
-            Spacer(modifier = Modifier.height(12.dp))
-        }
-
         task.errorMessage?.takeIf { it.isNotBlank() }?.let { message ->
             Text(message, modifier = Modifier.padding(vertical = 8.dp), fontSize = 12.sp,
                 color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
         }
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            if (task.isActive || task.status == TaskStatus.PAUSED) {
-                ActionIconButton(imageVector = MiuixIcons.Regular.Close, contentDescription = stringResource(R.string.download_cancel), onClick = onCancel)
+        if (task.status != TaskStatus.COMPLETED && task.status != TaskStatus.SKIPPED) {
+            Spacer(Modifier.height(12.dp))
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (task.isActive || task.status == TaskStatus.PAUSED) {
+                    ActionIconButton(imageVector = MiuixIcons.Regular.Close, contentDescription = stringResource(R.string.download_cancel), onClick = onCancel)
+                }
+                if (task.status in setOf(TaskStatus.QUEUED, TaskStatus.RESOLVING, TaskStatus.DOWNLOADING)) {
+                    ActionIconButton(imageVector = MiuixIcons.Regular.Pause, contentDescription = stringResource(R.string.download_pause), onClick = onStop)
+                }
+                if (task.status in setOf(TaskStatus.PAUSED, TaskStatus.WAITING_FOR_USER)) {
+                    ActionIconButton(imageVector = if (task.status == TaskStatus.WAITING_FOR_USER) MiuixIcons.Regular.SelectAll else MiuixIcons.Regular.Play,
+                        contentDescription = stringResource(if (task.status == TaskStatus.WAITING_FOR_USER) R.string.download_select else R.string.download_resume), onClick = onContinue)
+                }
+                if (task.status in setOf(TaskStatus.FAILED, TaskStatus.PARTIAL, TaskStatus.CANCELLED)) {
+                    ActionIconButton(imageVector = MiuixIcons.Regular.Refresh, contentDescription = stringResource(R.string.retry), onClick = onRetry)
+                    ActionIconButton(imageVector = MiuixIcons.Regular.Link, contentDescription = stringResource(R.string.web_crawl_option), onClick = onWebCrawl)
+                }
             }
-            if (task.status in setOf(TaskStatus.QUEUED, TaskStatus.RESOLVING, TaskStatus.DOWNLOADING)) {
-                ActionIconButton(imageVector = MiuixIcons.Regular.Pause, contentDescription = stringResource(R.string.download_pause), onClick = onStop)
+        }
+        WindowListPopup(
+            show = showActions,
+            popupPositionProvider = ListPopupDefaults.ContextMenuPositionProvider,
+            alignment = PopupPositionProvider.Align.End,
+            onDismissRequest = { showActions = false },
+            onDismissFinished = {
+                if (deleteAfterMenuDismiss) {
+                    deleteAfterMenuDismiss = false
+                    onDelete()
+                }
             }
-            if (task.status in setOf(TaskStatus.PAUSED, TaskStatus.WAITING_FOR_USER)) {
-                ActionIconButton(imageVector = if (task.status == TaskStatus.WAITING_FOR_USER) MiuixIcons.Regular.SelectAll else MiuixIcons.Regular.Play,
-                    contentDescription = stringResource(if (task.status == TaskStatus.WAITING_FOR_USER) R.string.download_select else R.string.download_resume), onClick = onContinue)
+        ) {
+            ListPopupColumn {
+                val actions = listOf(
+                    DropdownItem(
+                        text = stringResource(R.string.common_copy_link),
+                        icon = { Icon(MiuixIcons.Regular.Copy, contentDescription = null, modifier = it) }
+                    ),
+                    DropdownItem(
+                        text = stringResource(R.string.delete_content_description),
+                        icon = { Icon(MiuixIcons.Regular.Delete, contentDescription = null, modifier = it) }
+                    )
+                )
+                actions.forEachIndexed { index, action ->
+                    DropdownImpl(
+                        item = action,
+                        optionSize = actions.size,
+                        isSelected = false,
+                        index = index,
+                        onSelectedIndexChange = {
+                            showActions = false
+                            if (index == 0) onCopyUrl() else deleteAfterMenuDismiss = true
+                        }
+                    )
+                }
             }
-            if (task.status in setOf(TaskStatus.FAILED, TaskStatus.PARTIAL, TaskStatus.CANCELLED)) {
-                ActionIconButton(imageVector = MiuixIcons.Regular.Refresh, contentDescription = stringResource(R.string.retry), onClick = onRetry)
-                ActionIconButton(imageVector = MiuixIcons.Regular.Link, contentDescription = stringResource(R.string.web_crawl_option), onClick = onWebCrawl)
-            }
-            Spacer(Modifier.weight(1f))
-            ActionIconButton(imageVector = MiuixIcons.Regular.Copy, contentDescription = stringResource(R.string.common_copy_link), onClick = onCopyUrl)
-            ActionIconButton(imageVector = MiuixIcons.Regular.Delete, contentDescription = stringResource(R.string.delete_content_description), onClick = onDelete)
         }
 
     }

@@ -53,14 +53,13 @@ class DefaultXhsContentRepository(
             throw XhsResolveException(DownloadFailure.Network(error), error)
         } ?: throw XhsResolveException(DownloadFailure.RequiresWebView)
         val parsed = try {
-            parser.parse(html)
+            parser.parse(html, XhsUrlParser.extractPostId(canonicalUrl), canonicalUrl)
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (error: Throwable) {
             throw XhsResolveException(DownloadFailure.Parsing(error), error)
         }
-        if (parsed.mediaUrls.isEmpty()) throw XhsResolveException(DownloadFailure.NoMedia)
-        parsed.toResolvedNote(canonicalUrl)
+        parsed.resolved ?: throw XhsResolveException(DownloadFailure.RequiresWebView)
     }
 }
 

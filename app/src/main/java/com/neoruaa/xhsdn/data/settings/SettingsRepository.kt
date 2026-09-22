@@ -8,9 +8,11 @@ interface SettingsRepository {
     /** Latest value for synchronous download and notification paths. */
     val currentSettings: AppSettings
 
+    suspend fun awaitReady() {}
+
     suspend fun update(transform: (AppSettings) -> AppSettings)
 
-    suspend fun setCreateLivePhotos(enabled: Boolean) = update { it.copy(createLivePhotos = enabled) }
+    suspend fun setCreateLivePhotos(enabled: Boolean) = update { it.copy(createLivePhotos = enabled, downloadOptions = it.downloadOptions.copy(livePhotoMode = if (enabled) LivePhotoMode.MERGED else LivePhotoMode.SEPARATE)) }
 
     suspend fun setUseCustomNamingFormat(enabled: Boolean) =
         update { it.copy(useCustomNamingFormat = enabled) }

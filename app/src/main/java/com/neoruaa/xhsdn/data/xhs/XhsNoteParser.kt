@@ -1,132 +1,146 @@
 package com.neoruaa.xhsdn.data.xhs
 
+import com.neoruaa.xhsdn.core.model.MediaCandidate
+import com.neoruaa.xhsdn.core.model.ResolvedMedia
+import com.neoruaa.xhsdn.core.model.ResolvedNote
 import org.json.JSONArray
-import org.json.JSONException
 import org.json.JSONObject
+import org.json.JSONException
 import java.util.ArrayDeque
 
-/** Immutable media item returned by [XhsNoteParser]. */
-data class XhsMedia(
-    val url: String,
-    val isVideo: Boolean,
-)
-
-/** A confirmed image/video pair representing one Live Photo. */
-data class XhsLivePhoto(
-    val imageUrl: String,
-    val videoUrl: String,
-)
-
-/** Metadata used by the naming layer and by history previews. */
-data class XhsNoteMetadata(
-    val userName: String?,
-    val userId: String?,
-    val title: String?,
-    val publishTime: String?,
-) {
+/** Compatibility views for callers migrating to the immutable note model. */
+data class XhsMedia(val url: String, val isVideo: Boolean)
+data class XhsLivePhoto(val imageUrl: String, val videoUrl: String)
+data class XhsNoteMetadata(val userName: String?, val userId: String?, val title: String?, val publishTime: String?) {
     fun hasRequiredFields(): Boolean = !userName.isNullOrBlank() && !userId.isNullOrBlank()
 }
-
-/** Result of parsing one HTML response. */
 data class ParsedXhsNote(
     val mediaUrls: List<String>,
     val livePhotos: List<XhsLivePhoto>,
     val description: String?,
     val metadata: XhsNoteMetadata?,
     val containsVideo: Boolean,
-    /** Original CDN URL for transformed media, used for download fallbacks. */
     val originalUrlByTransformed: Map<String, String> = emptyMap(),
+    val resolved: ResolvedNote? = null,
 )
 
-/**
- * Extracts note state from the HTML returned by xiaohongshu.com.
- *
- * XHS has used several state layouts over time. This parser deliberately
- * handles the known layouts first and then performs a bounded deep scan for a
- * note-shaped object, keeping malformed/huge pages from causing unbounded
- * work on the download thread.
- */
 class XhsNoteParser(
     private val urlTransformer: (String) -> String = { it },
     private val logError: (String) -> Unit = {},
 ) {
-    companion object {
-        private val imageUrlPattern = Regex(
-            "https?://[\\w\\-._~:/?#\\[\\]@!$&'()*+,;=%]+\\.(jpg|jpeg|png|gif|mp4|avi|mov|webm|wmv|flv|f4v|swf|mpg|mpeg|asf|3gp|3g2|mkv|webp|heic|heif)",
-            RegexOption.IGNORE_CASE,
-        )
-        private val imageTagPattern = Regex("<img[^>]+src\\s*=\\s*['\"]([^'\"]+)['\"][^>]*>", RegexOption.IGNORE_CASE)
-        private val controlCharacters = Regex("[\\p{Cntrl}]")
-    }
-
-    fun parse(html: String?): ParsedXhsNote {
-        if (html.isNullOrBlank()) return ParsedXhsNote(emptyList(), emptyList(), null, null, false)
-
-        val rawMedia = mutableListOf<String>()
-        val pairs = mutableListOf<RawPair>()
+    fun parse(html: String?, expectedNoteId: String? = null, canonicalUrl: String = ""): ParsedXhsNote {
+        if (html.isNullOrBlank()) return empty()
         val notes = parseInitialStateRootFromHtml(html)?.let(::findNoteObjects).orEmpty()
-        if (notes.isNotEmpty()) {
-            notes.forEach { note -> rawMedia += extractMediaUrlsFromNote(note, pairs) }
-        } else {
-            rawMedia += extractUrlsFromHtml(html)
+            .filter(::isLikelyNoteObject)
+        val selected = if (expectedNoteId != null) {
+            notes.firstOrNull { it.optString("noteId") == expectedNoteId }
+                ?: notes.singleOrNull()?.takeIf { it.optString("noteId").isBlank() }
+        } else notes.singleOrNull()
+        if (selected == null) {
+            // Legacy extraction remains available, but the repository requires a real note.
+            if (notes.isNotEmpty()) return empty()
+            val urls = Regex("https?://[^\\s\\\"<>]+?\\.(?:jpg|jpeg|png|gif|webp|mp4|mov)(?:\\?[^\\s\\\"<>]*)?", RegexOption.IGNORE_CASE)
+                .findAll(html).map { it.value }.distinct().toList()
+            return empty().copy(mediaUrls = urls, containsVideo = urls.any { it.contains(".mp4") || it.contains(".mov") })
         }
-
-        val originalMedia = rawMedia.toList()
-        val originalUrlByTransformed = linkedMapOf<String, String>()
-        val transformedPairs = pairs.map { pair ->
-            val image = urlTransformer(pair.imageUrl)
-            originalUrlByTransformed[image] = pair.imageUrl
-            val video = pair.videoUrl?.let { originalVideo ->
-                urlTransformer(originalVideo).also { transformedVideo ->
-                    originalUrlByTransformed[transformedVideo] = originalVideo
-                }
-            }
-            TransformedPair(image, video, pair.isLivePhoto)
-        }
-
-        val finalMedia = mutableListOf<String>()
-        val livePhotos = mutableListOf<XhsLivePhoto>()
-        transformedPairs.forEach { pair ->
-            finalMedia += pair.imageUrl
-            if (pair.isLivePhoto && pair.videoUrl != null) {
-                livePhotos += XhsLivePhoto(pair.imageUrl, pair.videoUrl)
-                finalMedia += pair.videoUrl
-            }
-        }
-        originalMedia.forEach { if (it !in finalMedia) finalMedia += it }
-
-        val firstNote = notes.firstOrNull()
-        val description = firstNote?.let(::extractNoteDescription)
-        val metadata = firstNote?.let(::buildMetadata)
+        val note = parseNote(selected, canonicalUrl, expectedNoteId)
+        val urls = note.orderedMedia.flatMap { media -> when (media) {
+            is ResolvedMedia.LivePhoto -> listOf(media.image.sourceUrl, media.video.sourceUrl)
+            else -> listOf(media.sourceUrl)
+        } }
+        val originals = note.orderedMedia.flatMap { media -> when (media) {
+            is ResolvedMedia.Image -> listOf(media.sourceUrl to media.originalUrl)
+            is ResolvedMedia.Video -> listOf(media.sourceUrl to media.originalUrl)
+            is ResolvedMedia.LivePhoto -> listOf(media.image.sourceUrl to media.image.originalUrl, media.video.sourceUrl to media.video.originalUrl)
+        } }.toMap()
         return ParsedXhsNote(
-            mediaUrls = finalMedia.distinct(),
-            livePhotos = livePhotos,
-            description = description,
-            metadata = metadata,
-            containsVideo = finalMedia.any(::isVideoUrl),
-            originalUrlByTransformed = originalUrlByTransformed,
+            urls, note.livePhotos.map { XhsLivePhoto(it.image.sourceUrl, it.video.sourceUrl) }, note.description,
+            XhsNoteMetadata(note.authorName, note.authorId, note.title, note.publishTime),
+            note.videos.isNotEmpty() || note.livePhotos.isNotEmpty(), originals, note,
         )
     }
 
-    fun description(html: String?): String? {
-        if (html.isNullOrBlank()) return null
-        val root = parseInitialStateRootFromHtml(html) ?: return null
-        return findNoteObjects(root).asSequence()
-            .mapNotNull(::extractNoteDescription)
-            .firstOrNull { it.isNotBlank() }
+    fun description(html: String?): String? = parse(html).description
+
+    fun parseNote(note: JSONObject, canonicalUrl: String, expectedNoteId: String? = null): ResolvedNote {
+        val noteId = note.optString("noteId").ifBlank { expectedNoteId.orEmpty() }
+        require(expectedNoteId == null || noteId == expectedNoteId) { "Note identity mismatch" }
+        val imageList = note.optJSONArray("imageList") ?: note.optJSONArray("images") ?: JSONArray()
+        val mainVideo = note.optJSONObject("video")
+        val type = note.optString("type").ifBlank { if (mainVideo != null && imageList.length() <= 1 && imageList.optJSONObject(0)?.optJSONObject("stream") == null) "video" else "normal" }
+        val isVideoNote = type == "video" && imageList.length() <= 1
+        val items = mutableListOf<ResolvedMedia>()
+        for (index in 0 until imageList.length()) {
+            val item = imageList.optJSONObject(index) ?: continue
+            val original = item.optString("urlDefault").ifBlank { item.optString("url") }.ifBlank {
+                val info = item.optJSONArray("infoList") ?: JSONArray()
+                (0 until info.length()).mapNotNull { info.optJSONObject(it)?.optString("url") }.firstOrNull { it.isNotBlank() }.orEmpty()
+            }.ifBlank { item.optString("traceId").takeIf(String::isNotBlank)?.let { "https://sns-img-qc.xhscdn.com/$it" }.orEmpty() }
+            if (!isHttp(original)) continue
+            val image = ResolvedMedia.Image(
+                sourceUrl = urlTransformer(original), originalUrl = original,
+                id = "$noteId:${if (isVideoNote) "cover" else "image"}:${index + 1}",
+                previewUrl = original, cover = isVideoNote,
+                width = item.optInt("width"), height = item.optInt("height"),
+            )
+            val streams = candidates(item.optJSONObject("stream"))
+            if (!isVideoNote && streams.isNotEmpty()) {
+                items += ResolvedMedia.LivePhoto(image, ResolvedMedia.Video(
+                    streams.first().url, id = "$noteId:live:${index + 1}", previewUrl = original, candidates = streams,
+                ))
+            } else items += image
+        }
+        if (mainVideo != null && (isVideoNote || !note.has("type"))) {
+            val streams = mutableListOf<MediaCandidate>()
+            mainVideo.optJSONObject("consumer")?.optString("originVideoKey")?.takeIf(String::isNotBlank)?.let {
+                streams += MediaCandidate("https://sns-video-bd.xhscdn.com/$it", original = true)
+            }
+            streams += candidates(mainVideo.optJSONObject("media")?.optJSONObject("stream"))
+            val distinct = streams.distinctBy { it.url }
+            if (distinct.isNotEmpty()) items += ResolvedMedia.Video(
+                distinct.first().url, id = "$noteId:video", previewUrl = items.firstOrNull()?.previewUrl.orEmpty(), candidates = distinct,
+            )
+        }
+        val user = note.optJSONObject("user") ?: note.optJSONObject("user_info") ?: JSONObject()
+        val title = note.optString("title").takeIf(String::isNotBlank)
+        val body = note.optString("desc").ifBlank { note.optString("description") }
+        val tags = note.optJSONArray("tagList") ?: JSONArray()
+        val published = note.optLong("time").takeIf { it > 0 }
+        val interact = note.optJSONObject("interactInfo") ?: JSONObject()
+        return ResolvedNote(
+            canonicalUrl = canonicalUrl, noteId = noteId, type = type,
+            title = title, body = body, description = listOfNotNull(title, body.takeIf(String::isNotBlank)).joinToString("\n").takeIf(String::isNotBlank),
+            authorName = listOf("nickname", "nickName", "name", "userName").firstNotNullOfOrNull { user.optString(it).takeIf(String::isNotBlank) },
+            authorId = listOf("userId", "user_id", "id", "redId").firstNotNullOfOrNull { user.optString(it).takeIf(String::isNotBlank) },
+            publishTime = published?.toString() ?: note.optString("timeText").takeIf(String::isNotBlank),
+            publishedAt = published, updatedAt = note.optLong("lastUpdateTime").takeIf { it > 0 },
+            tags = (0 until tags.length()).mapNotNull { tags.optJSONObject(it)?.optString("name")?.takeIf(String::isNotBlank) },
+            interactions = listOf("likedCount", "collectedCount", "commentCount", "shareCount").associateWith { interact.optString(it, "") },
+            images = items.filterIsInstance<ResolvedMedia.Image>(), videos = items.filterIsInstance<ResolvedMedia.Video>(),
+            livePhotos = items.filterIsInstance<ResolvedMedia.LivePhoto>(), items = items,
+        )
     }
 
-    private data class RawPair(
-        val imageUrl: String,
-        val videoUrl: String?,
-        val isLivePhoto: Boolean,
-    )
+    private fun candidates(stream: JSONObject?): List<MediaCandidate> = buildList {
+        stream?.keys()?.forEach { codec ->
+            val array = stream.optJSONArray(codec) ?: return@forEach
+            for (index in 0 until array.length()) {
+                val item = array.optJSONObject(index)
+                if (item == null) {
+                    array.optString(index).takeIf(::isHttp)?.let { add(MediaCandidate(it, codec = codec)) }
+                    continue
+                }
+                val backups = item.optJSONArray("backupUrls") ?: JSONArray()
+                val urls = (0 until backups.length()).map { backups.optString(it) } + listOf(item.optString("masterUrl"), item.optString("url"))
+                urls.filter(::isHttp).distinct().forEach { url -> add(MediaCandidate(
+                    url, item.optInt("width"), item.optInt("height"), item.optLong("videoBitrate"), item.optLong("size"), codec,
+                )) }
+            }
+        }
+    }.distinctBy { it.url }
 
-    private data class TransformedPair(
-        val imageUrl: String,
-        val videoUrl: String?,
-        val isLivePhoto: Boolean,
-    )
+    private fun isHttp(value: String): Boolean = value.startsWith("https://") || value.startsWith("http://")
+    private fun empty() = ParsedXhsNote(emptyList(), emptyList(), null, null, false)
 
     private fun parseInitialStateRootFromHtml(html: String): JSONObject? {
         val start = html.indexOf("window.__INITIAL_STATE__")
@@ -137,7 +151,7 @@ class XhsNoteParser(
         var objectLiteral = extractFirstJsObjectLiteral(script.substring(equals + 1).trim())
             ?: script.substring(equals + 1).trim()
         objectLiteral = objectLiteral.trim().removeSuffix(";").trim()
-        objectLiteral = replaceJsUndefinedWithNull(objectLiteral)
+        objectLiteral = normalizeStateLiteral(objectLiteral)
         return try {
             JSONObject(objectLiteral)
         } catch (error: JSONException) {
@@ -179,41 +193,37 @@ class XhsNoteParser(
         return null
     }
 
-    private fun replaceJsUndefinedWithNull(input: String): String {
-        if (!input.contains("undefined")) return input
+    private fun normalizeStateLiteral(input: String): String {
         val out = StringBuilder(input.length)
-        var inString = false
-        var quote = '\u0000'
+        var quote: Char? = null
         var escaped = false
         var index = 0
         while (index < input.length) {
-            val char = input[index]
-            if (inString) {
-                out.append(char)
+            val c = input[index]
+            if (quote != null) {
+                if (c.code < 32) {
+                    out.append("\\u%04x".format(c.code))
+                } else out.append(c)
                 if (escaped) escaped = false
-                else if (char == '\\') escaped = true
-                else if (char == quote) inString = false
+                else if (c == '\\') escaped = true
+                else if (c == quote) quote = null
                 index++
                 continue
             }
-            if (char == '\'' || char == '"') {
-                inString = true
-                quote = char
-                out.append(char)
+            if (c == '"' || c == '\'') quote = c
+            val replacement = when {
+                input.startsWith("undefined", index) && !isJsIdentifierChar(input.getOrNull(index - 1)) &&
+                    !isJsIdentifierChar(input.getOrNull(index + 9)) -> "undefined" to "null"
+                input.startsWith("new Map([])", index) -> "new Map([])" to "[]"
+                else -> null
+            }
+            if (replacement != null) {
+                out.append(replacement.second)
+                index += replacement.first.length
+            } else {
+                if (c.code >= 32 || c in "\n\r\t") out.append(c)
                 index++
-                continue
             }
-            if (input.startsWith("undefined", index)) {
-                val previous = input.getOrNull(index - 1)
-                val next = input.getOrNull(index + "undefined".length)
-                if (!isJsIdentifierChar(previous) && !isJsIdentifierChar(next)) {
-                    out.append("null")
-                    index += "undefined".length
-                    continue
-                }
-            }
-            out.append(char)
-            index++
         }
         return out.toString()
     }
@@ -253,7 +263,7 @@ class XhsNoteParser(
                 val stack = ArrayDeque<Any>()
                 stack.add(root)
                 var visited = 0
-                while (stack.isNotEmpty() && visited < 50_000 && notes.size < 5) {
+                while (stack.isNotEmpty() && visited < 50_000 && notes.size < 50) {
                     val current = stack.removeLast()
                     visited++
                     when (current) {
@@ -282,6 +292,7 @@ class XhsNoteParser(
 
     private fun isLikelyNoteObject(obj: JSONObject): Boolean {
         return try {
+            if (obj.has("noteId") && (obj.has("title") || obj.has("desc"))) return true
             val imageArray = obj.optJSONArray("imageList") ?: obj.optJSONArray("images")
             val image = imageArray?.optJSONObject(0)
             image?.let { it.has("urlDefault") || it.has("url") || it.has("traceId") || it.has("infoList") } == true ||
@@ -291,130 +302,4 @@ class XhsNoteParser(
         }
     }
 
-    private fun extractMediaUrlsFromNote(note: JSONObject, pairs: MutableList<RawPair>): List<String> {
-        val media = mutableListOf<String>()
-        try {
-            note.optJSONObject("video")?.let { video ->
-                val consumerKey = video.optJSONObject("consumer")?.optString("originVideoKey").orEmpty()
-                if (consumerKey.isNotBlank()) {
-                    media += "https://sns-video-bd.xhscdn.com/$consumerKey"
-                } else {
-                    val h265 = video.optJSONObject("media")?.optJSONObject("stream")?.optJSONArray("h265")
-                    if (h265 != null) {
-                        for (index in 0 until h265.length()) {
-                            val value = h265.opt(index)
-                            val url = when (value) {
-                                is String -> value
-                                is JSONObject -> value.optString("url").ifBlank { value.optString("masterUrl") }
-                                else -> ""
-                            }
-                            if (url.startsWith("http")) media += url
-                        }
-                    }
-                }
-            }
-
-            val imageList = note.optJSONArray("imageList") ?: note.optJSONArray("images") ?:
-                note.optJSONObject("image")?.let { JSONArray().put(it) }
-            if (imageList != null) {
-                for (index in 0 until imageList.length()) {
-                    val image = imageList.optJSONObject(index) ?: continue
-                    val imageUrl = image.optString("urlDefault").ifBlank {
-                        image.optString("url").ifBlank {
-                            image.optString("traceId").takeIf { it.isNotBlank() }?.let { "https://sns-img-qc.xhscdn.com/$it" }
-                                ?: image.optJSONArray("infoList")?.let { info ->
-                                    (0 until info.length()).asSequence().mapNotNull { info.optJSONObject(it)?.optString("url") }
-                                        .firstOrNull { it.isNotBlank() }
-                                }.orEmpty()
-                        }
-                    }
-                    if (imageUrl.isBlank()) continue
-                    val h264 = image.optJSONObject("stream")?.optJSONArray("h264")?.optJSONObject(0)
-                    val liveVideo = h264?.optString("masterUrl").orEmpty().ifBlank { h264?.optString("url").orEmpty() }
-                    pairs += RawPair(imageUrl, liveVideo.ifBlank { null }, liveVideo.isNotBlank())
-                }
-            } else {
-                note.keys().forEach { key ->
-                    val value = note.optString(key)
-                    if (value.contains("xhscdn.com") || value.contains(".mp4") || value.contains(".jpg") || value.contains(".png")) {
-                        media += value
-                    }
-                }
-            }
-        } catch (error: JSONException) {
-            logError("Unable to extract note media: ${error.message}")
-        }
-        return media
-    }
-
-    private fun extractUrlsFromHtml(html: String): List<String> {
-        val urls = linkedSetOf<String>()
-        imageTagPattern.findAll(html).forEach { match ->
-            match.groupValues.getOrNull(1)?.takeIf(::isValidMediaUrl)?.let(urls::add)
-        }
-        imageUrlPattern.findAll(html).forEach { match ->
-            match.value.takeIf(::isValidMediaUrl)?.let(urls::add)
-        }
-        return urls.toList()
-    }
-
-    private fun isValidMediaUrl(url: String): Boolean {
-        val normalized = url.lowercase()
-        return normalized.contains(".jpg") || normalized.contains(".jpeg") || normalized.contains(".png") ||
-            normalized.contains(".gif") || normalized.contains(".mp4") || normalized.contains(".webm") ||
-            normalized.contains("xhscdn.com") || normalized.contains("xiaohongshu.com")
-    }
-
-    private fun isVideoUrl(url: String): Boolean {
-        val normalized = url.lowercase()
-        return normalized.contains(".mp4") || normalized.contains(".mov") || normalized.contains(".avi") ||
-            normalized.contains(".webm") || normalized.contains("video") || normalized.contains("masterurl") ||
-            normalized.contains("stream") || normalized.contains("sns-video") || normalized.contains("/spectrum/")
-    }
-
-    private fun extractNoteDescription(note: JSONObject): String? {
-        val title = note.optString("title")
-        val description = note.optString("desc")
-        return (title + description).takeIf { it.isNotBlank() }
-    }
-
-    private fun buildMetadata(note: JSONObject): XhsNoteMetadata? {
-        val user = note.optJSONObject("user") ?: note.optJSONObject("user_info")
-        val username = firstNonBlank(
-            user?.optString("nickname"), user?.optString("name"), user?.optString("userName"),
-            user?.optString("nickName"), note.optString("author"), note.optString("userName"),
-        )
-        val userId = firstNonBlank(
-            user?.optString("redId"), user?.optString("red_id"), user?.optString("userId"),
-            user?.optString("userid"), user?.optString("user_id"), user?.optString("id"),
-            note.optString("userId"), note.optString("uid"), note.optString("user_id"),
-        )
-        if (username.isNullOrBlank() || userId.isNullOrBlank()) return null
-
-        val title = firstNonBlank(note.optString("title"), note.optString("desc"), note.optString("description"), note.optString("noteId"))
-        val publishTime = firstNonBlank(
-            note.optString("time"), note.optString("timeText"), note.optString("displayTime"),
-            note.optString("publishTime"), note.optString("publish_time"), note.optString("createTime"),
-        )
-        return XhsNoteMetadata(
-            userName = sanitize(username, 40),
-            userId = sanitize(userId, 40),
-            title = sanitize(title, 80),
-            publishTime = sanitize(publishTime, 60),
-        ).takeIf(XhsNoteMetadata::hasRequiredFields)
-    }
-
-    private fun firstNonBlank(vararg values: String?): String? = values.firstOrNull { !it.isNullOrBlank() }?.trim()
-
-    private fun sanitize(value: String?, maxLength: Int): String? {
-        if (value.isNullOrBlank()) return null
-        val normalized = value
-            .replace(Regex("[\\/:*?\"<>|]"), "_")
-            .replace(controlCharacters, "")
-            .trim()
-            .replace(Regex("\\s+"), "_")
-            .replace(Regex("_+"), "_")
-            .trim('_')
-        return normalized.take(maxLength).takeIf { it.isNotBlank() }
-    }
 }

@@ -38,9 +38,9 @@ class XhsUrlParserTest {
     }
 
     @Test
-    fun preservesShortUrlWhenResolutionFailsAndExtractsShortId() {
+    fun preservesShortUrlWithoutMistakingSlugForNoteId() {
         val shortUrl = "http://xhslink.cn/o/5tNOqVGqSNG"
         assertEquals(listOf(shortUrl), XhsUrlParser.extractLinks(shortUrl))
-        assertEquals("5tNOqVGqSNG", XhsUrlParser.extractPostId(shortUrl))
+        assertEquals(null, XhsUrlParser.extractPostId(shortUrl))
     }
 }

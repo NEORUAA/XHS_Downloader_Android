@@ -41,7 +41,17 @@ class AndroidStorageSink(context: Context) : StorageSink, StoredMediaReader {
         mimeType: String,
         sizeBytes: Long,
         writer: StorageStreamWriter,
+    ): StoredMediaRef = storeArchived(destination, displayName, mimeType, sizeBytes, emptyList(), writer)
+
+    fun storeArchived(
+        destination: StorageDestination,
+        displayName: String,
+        mimeType: String,
+        sizeBytes: Long,
+        folders: List<String>,
+        writer: StorageStreamWriter,
     ): StoredMediaRef {
+        val segments = folders.map(::sanitizeDisplayName).filter { it.isNotBlank() && it != "." && it != ".." }
         val safeName = sanitizeDisplayName(displayName)
         require(safeName.isNotBlank()) { "Storage display name must not be blank" }
         val safeMimeType = mimeType.ifBlank { "application/octet-stream" }
@@ -51,15 +61,16 @@ class AndroidStorageSink(context: Context) : StorageSink, StoredMediaReader {
             when (destination) {
                 StorageDestination.DefaultMediaStore ->
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                        storeMediaStore(safeName, safeMimeType, writer)
+                        storeMediaStore(safeName, safeMimeType, segments, writer)
                     } else {
-                        storeLegacyFile(safeName, safeMimeType, sizeBytes, writer)
+                        storeLegacyFile(safeName, safeMimeType, sizeBytes, segments, writer)
                     }
 
                 is StorageDestination.CustomTree -> storeCustomTree(
                     destination,
                     safeName,
                     safeMimeType,
+                    segments,
                     writer,
                 )
             }
@@ -77,9 +88,11 @@ class AndroidStorageSink(context: Context) : StorageSink, StoredMediaReader {
     private fun storeMediaStore(
         displayName: String,
         mimeType: String,
+        folders: List<String>,
         writer: StorageStreamWriter,
     ): StoredMediaRef {
-        val (collection, relativePath) = mediaStoreTarget(mimeType)
+        val (collection, basePath) = mediaStoreTarget(mimeType)
+        val relativePath = basePath + folders.joinToString("/", postfix = if (folders.isEmpty()) "" else "/")
         val uniqueName = uniqueMediaStoreName(collection, relativePath, displayName)
         val values = ContentValues().apply {
             put(MediaStore.MediaColumns.DISPLAY_NAME, uniqueName)
@@ -120,6 +133,7 @@ class AndroidStorageSink(context: Context) : StorageSink, StoredMediaReader {
         displayName: String,
         mimeType: String,
         sizeBytes: Long,
+        folders: List<String>,
         writer: StorageStreamWriter,
     ): StoredMediaRef {
         val rootDirectory = when {
@@ -129,12 +143,12 @@ class AndroidStorageSink(context: Context) : StorageSink, StoredMediaReader {
         }
         var directory = File(
             Environment.getExternalStoragePublicDirectory(rootDirectory),
-            "xhsdn",
+            (listOf("xhsdn") + folders).joinToString("/"),
         )
         if (!directory.exists() && !directory.mkdirs()) {
             directory = File(
                 appContext.getExternalFilesDir(rootDirectory) ?: appContext.filesDir,
-                "xhsdn",
+                (listOf("xhsdn") + folders).joinToString("/"),
             )
             if (!directory.exists() && !directory.mkdirs()) {
                 throw IOException("Unable to create legacy storage directory")
@@ -164,10 +178,11 @@ class AndroidStorageSink(context: Context) : StorageSink, StoredMediaReader {
         destination: StorageDestination.CustomTree,
         displayName: String,
         mimeType: String,
+        folders: List<String>,
         writer: StorageStreamWriter,
     ): StoredMediaRef {
         val treeUri = Uri.parse(destination.treeUri)
-        val session = customTreeSession(treeUri)
+        val session = customTreeSession(treeUri, folders)
         return when (destination.existingFilePolicy) {
             ExistingFilePolicy.COEXIST -> storeCustomTreeCoexisting(
                 session = session,
@@ -199,14 +214,31 @@ class AndroidStorageSink(context: Context) : StorageSink, StoredMediaReader {
         }
     }
 
-    private fun customTreeSession(treeUri: Uri): CustomTreeSession =
-        customTreeSessions.getOrPut(treeUri.toString()) {
-            CustomTreeSession(
-                treeUri = treeUri,
-                parentDocumentUri = validateCustomTree(treeUri),
-                rawDirectory = resolveRawDirectory(treeUri),
-            )
+    private fun customTreeSession(treeUri: Uri, folders: List<String>): CustomTreeSession =
+        customTreeSessions.getOrPut(treeUri.toString() + "/" + folders.joinToString("/")) {
+            var parent = validateCustomTree(treeUri)
+            var raw = resolveRawDirectory(treeUri)
+            for (folder in folders) {
+                val existing = queryTreeDocuments(treeUri, DocumentsContract.getDocumentId(parent))[folder]
+                parent = existing ?: DocumentsContract.createDocument(
+                    resolver, parent, DocumentsContract.Document.MIME_TYPE_DIR, folder,
+                ) ?: throw StorageAccessException("Unable to create archive directory")
+                raw = raw?.let { File(it, folder) }
+            }
+            CustomTreeSession(treeUri, parent, raw)
         }
+
+    /** Timestamp updates are best effort: document providers may not support them. */
+    fun writeTimestamp(ref: StoredMediaRef, timestamp: Long): Boolean = runCatching {
+        if (ref.legacyPath != null) return@runCatching File(ref.legacyPath).setLastModified(timestamp)
+        val values = ContentValues().apply {
+            put(MediaStore.MediaColumns.DATE_MODIFIED, timestamp / 1000)
+            if (ref.mimeType.startsWith("image/") || ref.mimeType.startsWith("video/")) {
+                put(MediaStore.Images.ImageColumns.DATE_TAKEN, timestamp)
+            }
+        }
+        resolver.update(ref.androidUri, values, null, null) > 0
+    }.getOrDefault(false)
 
     private fun storeCustomTreeCoexisting(
         session: CustomTreeSession,
@@ -264,7 +296,7 @@ class AndroidStorageSink(context: Context) : StorageSink, StoredMediaReader {
         mimeType: String,
         writer: StorageStreamWriter,
     ): StoredMediaRef {
-        val documents = session.documents ?: queryTreeDocuments(session.treeUri).also {
+        val documents = session.documents ?: queryTreeDocuments(session.treeUri, DocumentsContract.getDocumentId(session.parentDocumentUri)).also {
             session.documents = it
         }
         val backupName = recoveryBackupName(displayName)
@@ -274,7 +306,7 @@ class AndroidStorageSink(context: Context) : StorageSink, StoredMediaReader {
             mimeType = mimeType,
             writer = writer,
         )
-        val lock = replacementLock("${session.treeUri}\u0000$displayName")
+        val lock = replacementLock("${session.parentDocumentUri}\u0000$displayName")
         val finalUri = synchronized(lock) {
             replaceStagedDocumentUsingSaf(
                 stagedUri = staged.uri,
@@ -516,8 +548,7 @@ class AndroidStorageSink(context: Context) : StorageSink, StoredMediaReader {
         }.getOrDefault(false)
     }
 
-    private fun queryTreeDocuments(treeUri: Uri): MutableMap<String, Uri> {
-        val treeId = DocumentsContract.getTreeDocumentId(treeUri)
+    private fun queryTreeDocuments(treeUri: Uri, treeId: String = DocumentsContract.getTreeDocumentId(treeUri)): MutableMap<String, Uri> {
         val childrenUri = DocumentsContract.buildChildDocumentsUriUsingTree(treeUri, treeId)
         return try {
             resolver.query(

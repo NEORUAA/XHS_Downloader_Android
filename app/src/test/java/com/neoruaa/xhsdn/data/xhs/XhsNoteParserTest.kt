@@ -23,7 +23,7 @@ class XhsNoteParserTest {
         val parsed = parser.parse(html)
 
         assertEquals(emptyList<String>(), parseErrors)
-        assertEquals("TitleDescription", parsed.description)
+        assertEquals("Title\nDescription", parsed.description)
         assertEquals("Alice", parsed.metadata?.userName)
         assertEquals("alice-id", parsed.metadata?.userId)
         assertTrue(parsed.containsVideo)

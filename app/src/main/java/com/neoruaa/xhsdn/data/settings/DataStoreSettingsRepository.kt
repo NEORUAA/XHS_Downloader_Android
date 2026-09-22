@@ -14,8 +14,11 @@ import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStoreFile
 import com.neoruaa.xhsdn.NamingFormat
 import java.io.IOException
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.decodeFromString
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.map
@@ -68,16 +71,17 @@ class DataStoreSettingsRepository(
         .map(::toSettings)
         .onEach { currentSettings = it }
 
-    init {
-        scope.launch {
-            migrateLegacyPreferences()
-        }
+    private val ready = scope.launch { migrateLegacyPreferences() }
+
+    override suspend fun awaitReady() {
+        ready.join()
+        currentSettings = toSettings(dataStore.data.first())
     }
 
     override suspend fun update(transform: (AppSettings) -> AppSettings) {
-        val updated = transform(currentSettings).normalize()
-        currentSettings = updated
         dataStore.edit { preferences ->
+            val updated = transform(toSettings(preferences)).normalize()
+            preferences[DOWNLOAD_OPTIONS] = DownloadJson.encodeToString(updated.downloadOptions)
             preferences[CREATE_LIVE_PHOTOS] = updated.createLivePhotos
             preferences[USE_CUSTOM_NAMING_FORMAT] = updated.useCustomNamingFormat
             preferences[CUSTOM_NAMING_TEMPLATE] = updated.customNamingTemplate
@@ -99,6 +103,7 @@ class DataStoreSettingsRepository(
             }
             preferences[CHECK_EXISTING_FILES_BEFORE_SAVE] = updated.checkExistingFilesBeforeSave
             preferences[USE_METADATA_FILE_NAMES] = updated.useMetadataFileNames
+            currentSettings = updated
         }
     }
 
@@ -141,6 +146,13 @@ class DataStoreSettingsRepository(
             if (!preferences.contains(CHECK_EXISTING_FILES_BEFORE_SAVE)) {
                 preferences[CHECK_EXISTING_FILES_BEFORE_SAVE] = true
             }
+            if (!preferences.contains(DOWNLOAD_OPTIONS)) {
+                val wasInstalled = (preferences[MIGRATION_VERSION] ?: 0) > 0 || legacyPreferences.all.isNotEmpty()
+                preferences[DOWNLOAD_OPTIONS] = DownloadJson.encodeToString(DownloadOptions(
+                    videoCoverDownload = wasInstalled,
+                    livePhotoMode = if (preferences[CREATE_LIVE_PHOTOS] != false) LivePhotoMode.MERGED else LivePhotoMode.SEPARATE,
+                ))
+            }
             preferences[MIGRATION_VERSION] = MIGRATION_VERSION_CURRENT
         }
     }
@@ -153,6 +165,9 @@ class DataStoreSettingsRepository(
             ?.trim()
             ?.ifBlank { null }
         return AppSettings(
+            downloadOptions = preferences[DOWNLOAD_OPTIONS]?.let {
+                runCatching { DownloadJson.decodeFromString<DownloadOptions>(it) }.getOrNull()
+            } ?: DownloadOptions(),
             createLivePhotos = preferences[CREATE_LIVE_PHOTOS]
                 ?: legacyBoolean("create_live_photos", true),
             useCustomNamingFormat = preferences[USE_CUSTOM_NAMING_FORMAT]
@@ -230,8 +245,9 @@ class DataStoreSettingsRepository(
     companion object {
         const val LEGACY_PREFS_NAME = "XHSDownloaderPrefs"
         const val DATASTORE_FILE_NAME = "xhs_settings.preferences_pb"
-        private const val MIGRATION_VERSION_CURRENT = 3
+        private const val MIGRATION_VERSION_CURRENT = 4
 
+        private val DOWNLOAD_OPTIONS = stringPreferencesKey("download_options_v1")
         private val MIGRATION_VERSION = intPreferencesKey("legacy_migration_version")
         private val CREATE_LIVE_PHOTOS = booleanPreferencesKey("create_live_photos")
         private val USE_CUSTOM_NAMING_FORMAT = booleanPreferencesKey("use_custom_naming_format")

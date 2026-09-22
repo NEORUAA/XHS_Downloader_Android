@@ -1,73 +1,41 @@
 package com.neoruaa.xhsdn.data.xhs
 
-/**
- * URL extraction for text copied from Xiaohongshu's share sheet.
- *
- * The share sheet often wraps a URL in Chinese punctuation or adds a short
- * piece of explanatory text. Keeping extraction independent from networking
- * makes it deterministic in tests; callers may provide a short-link resolver
- * when they need canonical URLs.
- */
+import java.net.URI
+
 object XhsUrlParser {
-    private val explorePattern = Regex("(?:https?://)?www\\.xiaohongshu\\.com/explore/\\S+")
-    private val userPattern = Regex("(?:https?://)?www\\.xiaohongshu\\.com/user/profile/[a-z0-9]+/\\S+")
-    private val sharePattern = Regex("(?:https?://)?www\\.xiaohongshu\\.com/discovery/item/\\S+")
-    private val shortPattern = Regex(
-        "(?:https?://)?xhslink\\.(?:com|cn)/[^\\s\\\"<>\\\\\\^`{|}，。；！？、【】《》]+"
+    private val links = Regex(
+        "(?:https?://)?(?:www\\.)?(?:xiaohongshu\\.com|rednote\\.com|xhslink\\.(?:com|cn))/[^\\s\\\"<>\\\\^`{|}，。；！？、【】《》]+",
+        RegexOption.IGNORE_CASE,
     )
-    private val idPattern = Regex("(?:explore|item)/([a-zA-Z0-9_-]+)(?:/)?(?:\\?.*)?$")
-    private val userIdPattern = Regex("user/profile/[a-z0-9]+/([a-zA-Z0-9_-]+)(?:/)?(?:\\?.*)?$")
+    private val hosts = setOf("xiaohongshu.com", "www.xiaohongshu.com", "rednote.com", "www.rednote.com", "xhslink.com", "xhslink.cn")
 
-    /**
-     * Extract all supported URLs while preserving their input order.
-     *
-     * A short URL is resolved synchronously when a resolver is supplied. If
-     * resolution fails, the original short URL is retained so the caller can
-     * still report a useful error or retry later.
-     */
-    fun extractLinks(input: String?, resolveShortUrl: (String) -> String? = { null }): List<String> {
-        if (input.isNullOrBlank()) return emptyList()
+    fun extractLinks(input: String?, resolveShortUrl: (String) -> String? = { null }): List<String> =
+        links.findAll(input.orEmpty()).mapNotNull { match ->
+            val preceding = input?.getOrNull(match.range.first - 1)
+            if (preceding != null && (preceding in 'a'..'z' || preceding in 'A'..'Z' || preceding in '0'..'9' || preceding in "._-")) return@mapNotNull null
+            val raw = match.value.trimEnd(')', ']', '}', '.', ',', ';', '!', '，', '。', '）', '】')
+            val url = if (raw.startsWith("http", true)) raw else "https://$raw"
+            if (!isSupportedUrl(url)) null else if (isShortUrl(url)) resolveShortUrl(url) ?: url else url
+        }.toList()
 
-        return buildList {
-            input.split(Regex("\\s+")).forEach { part ->
-                if (part.isBlank()) return@forEach
+    fun isSupportedUrl(url: String?): Boolean = runCatching {
+        val uri = URI(url ?: return false)
+        uri.scheme in setOf("http", "https") && uri.host?.lowercase() in hosts && uri.userInfo == null
+    }.getOrDefault(false)
 
-                val shortMatch = shortPattern.find(part)
-                if (shortMatch != null) {
-                    val shortUrl = shortMatch.value
-                    add(resolveShortUrl(shortUrl) ?: shortUrl)
-                    return@forEach
-                }
+    fun isShortUrl(url: String): Boolean = runCatching {
+        URI(url).host?.lowercase() in setOf("xhslink.com", "xhslink.cn")
+    }.getOrDefault(false)
 
-                val shareMatch = sharePattern.find(part)
-                if (shareMatch != null) {
-                    add(shareMatch.value)
-                    return@forEach
-                }
-
-                val exploreMatch = explorePattern.find(part)
-                if (exploreMatch != null) {
-                    add(exploreMatch.value)
-                    return@forEach
-                }
-
-                userPattern.find(part)?.let { add(it.value) }
-            }
-        }
-    }
-
-    /** Extracts a note id from explore, discovery/item, user and short URLs. */
-    fun extractPostId(url: String?): String? {
-        if (url.isNullOrBlank()) return null
-        idPattern.find(url)?.groupValues?.getOrNull(1)?.let { return it }
-        userIdPattern.find(url)?.groupValues?.getOrNull(1)?.let { return it }
-
-        if (url.contains("xhslink.com/") || url.contains("xhslink.cn/")) {
-            val parts = url.split('/')
-            val last = parts.lastOrNull().orEmpty().substringBefore('?')
-            if (last.isNotEmpty() && last != "o") return last
-            parts.dropLast(1).lastOrNull()?.substringBefore('?')?.takeIf { it.isNotEmpty() }?.let { return it }
-        }
-        return null
-    }
+    fun extractPostId(url: String?): String? = runCatching {
+        val normalized = url?.let { if (it.startsWith("http")) it else "https://$it" } ?: return null
+        if (!isSupportedUrl(normalized) || isShortUrl(normalized)) return null
+        val segments = URI(normalized).path.trim('/').split('/')
+        when {
+            segments.size == 2 && segments[0] == "explore" -> segments[1]
+            segments.size == 3 && segments.take(2) == listOf("discovery", "item") -> segments[2]
+            segments.size == 4 && segments.take(2) == listOf("user", "profile") -> segments[3]
+            else -> null
+        }?.takeIf { it.matches(Regex("[A-Za-z0-9_-]+")) }
+    }.getOrNull()
 }

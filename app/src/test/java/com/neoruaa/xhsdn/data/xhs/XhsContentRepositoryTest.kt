@@ -25,7 +25,7 @@ class XhsContentRepositoryTest {
 
         assertEquals("https://www.xiaohongshu.com/explore/n1", note.canonicalUrl)
         assertEquals("Title", note.title)
-        assertEquals("TitleDescription", note.description)
+        assertEquals("Title\nDescription", note.description)
         assertEquals("Alice", note.authorName)
         assertEquals(1, note.images.size)
         assertEquals(1, note.videos.size)

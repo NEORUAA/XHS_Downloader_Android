@@ -2,7 +2,9 @@ package com.neoruaa.xhsdn.data.settings
 
 import com.neoruaa.xhsdn.NamingFormat
 
+@kotlinx.serialization.Serializable
 data class AppSettings(
+    val downloadOptions: DownloadOptions = DownloadOptions(),
     val createLivePhotos: Boolean = true,
     val useCustomNamingFormat: Boolean = false,
     val customNamingTemplate: String = NamingFormat.DEFAULT_TEMPLATE,

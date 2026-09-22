@@ -4,6 +4,7 @@ import android.net.Uri
 import java.io.File
 
 /** Stable description of a successfully persisted media item. */
+@kotlinx.serialization.Serializable
 data class StoredMediaRef(
     /** Persistable location string; parsed into [Uri] only at Android I/O boundaries. */
     val uri: String,

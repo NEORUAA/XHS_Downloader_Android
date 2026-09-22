@@ -5,10 +5,13 @@ import androidx.datastore.preferences.preferencesDataStoreFile
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.neoruaa.xhsdn.NamingFormat
+import com.neoruaa.xhsdn.IsolatedTestContext
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
@@ -22,12 +25,12 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class DataStoreSettingsRepositoryTest {
-    private lateinit var context: Context
+    private lateinit var context: IsolatedTestContext
     private lateinit var scope: CoroutineScope
 
     @Before
     fun setUp() {
-        context = ApplicationProvider.getApplicationContext()
+        context = IsolatedTestContext(ApplicationProvider.getApplicationContext())
         context.getSharedPreferences(DataStoreSettingsRepository.LEGACY_PREFS_NAME, Context.MODE_PRIVATE)
             .edit()
             .clear()
@@ -38,11 +41,8 @@ class DataStoreSettingsRepositoryTest {
 
     @After
     fun tearDown() {
-        scope.cancel()
-        context.getSharedPreferences(DataStoreSettingsRepository.LEGACY_PREFS_NAME, Context.MODE_PRIVATE)
-            .edit()
-            .clear()
-            .commit()
+        runBlocking { scope.coroutineContext[Job]?.cancelAndJoin() }
+        context.dispose()
     }
 
     @Test
@@ -56,6 +56,7 @@ class DataStoreSettingsRepositoryTest {
             .commit()
 
         val repository = DataStoreSettingsRepository(context, scope)
+        repository.awaitReady()
         val migrated = withTimeout(5_000) { repository.settings.first() }
         assertFalse(migrated.createLivePhotos)
         assertTrue(migrated.useCustomNamingFormat)

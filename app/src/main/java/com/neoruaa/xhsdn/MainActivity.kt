@@ -245,10 +245,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        _autoDownloadIntentUrl.value = intent.getStringExtra("auto_download_url")
-            ?: intent.dataString?.takeIf(UrlUtils::isXhsLink)
-            ?: intent.getStringExtra(Intent.EXTRA_TEXT)?.takeIf { intent.action == Intent.ACTION_SEND }
-        intent.removeExtra("auto_download_url")
+        _autoDownloadIntentUrl.value = consumeDownloadIntent(intent)
 
         if (Build.VERSION.SDK_INT >= 33) { // Android 13
             val permission = Manifest.permission.POST_NOTIFICATIONS
@@ -439,7 +436,9 @@ class MainActivity : ComponentActivity() {
                 val requestedRoute = pendingRoute.value
                 LaunchedEffect(requestedRoute) {
                     requestedRoute?.let {
-                        navigateTo(it)
+                        if (it == AppRoute.Main) {
+                            while (backStack.size > 1) backStack.removeLastOrNull()
+                        } else navigateTo(it)
                         pendingRoute.value = null
                     }
                 }
@@ -648,14 +647,23 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        if (intent.action == Intent.ACTION_SEND) _autoDownloadIntentUrl.value = intent.getStringExtra(Intent.EXTRA_TEXT)
-        intent.getStringExtra("auto_download_url")?.let {
+        consumeDownloadIntent(intent)?.let {
+            pendingRoute.value = AppRoute.Main
             _autoDownloadIntentUrl.value = it
+        }
+    }
+
+    private fun consumeDownloadIntent(intent: Intent): String? {
+        val link = intent.getStringExtra("auto_download_url")
+            ?: intent.dataString?.takeIf(UrlUtils::isXhsLink)
+            ?: intent.getStringExtra(Intent.EXTRA_TEXT)?.takeIf { intent.action == Intent.ACTION_SEND }
+        if (link != null) {
+            // Configuration recreation must not resubmit a consumed share.
             intent.removeExtra("auto_download_url")
+            intent.removeExtra(Intent.EXTRA_TEXT)
+            intent.setDataAndType(null, intent.type)
         }
-        intent.dataString?.takeIf(UrlUtils::isXhsLink)?.let {
-            _autoDownloadIntentUrl.value = it
-        }
+        return link
     }
 
     private fun showToast(message: String) {

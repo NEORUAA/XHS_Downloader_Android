@@ -3,6 +3,8 @@ package com.neoruaa.xhsdn.data.network
 import com.sun.net.httpserver.HttpServer
 import java.net.InetSocketAddress
 import java.nio.file.Files
+import java.io.File
+import org.json.JSONObject
 import kotlinx.coroutines.runBlocking
 import okhttp3.OkHttpClient
 import org.junit.Assert.*
@@ -73,5 +75,60 @@ class ResumableTransferTest {
         assertNull(ResumableTransfer.parseRange("bytes 10-2/100"))
         assertNull(ResumableTransfer.parseRange("bytes 0-999999999999999999999999/100"))
         assertEquals(ResumableTransfer.Companion.ByteRange(5, 9, 10), ResumableTransfer.parseRange("bytes 5-9/10"))
+    }
+
+    @Test fun fullResponseReplacesPartialFileWhenServerIgnoresRange() = runBlocking {
+        checkpointResponse(200, "\"v2\"", null) { transfer, client, url, calls ->
+            val result = transfer.fetch(client, 1, "media", listOf(url), 0)
+            assertArrayEquals(bytes, result.file.readBytes())
+            assertEquals(1, calls())
+        }
+    }
+
+    @Test fun rejectsPartialResponseWithChangedValidator() = runBlocking {
+        checkpointResponse(206, "\"v2\"", "bytes 1024-4095/4096") { transfer, client, url, _ ->
+            val failure = runCatching { transfer.fetch(client, 1, "media", listOf(url), 0) }.exceptionOrNull()
+            assertEquals(TransferException.Reason.RANGE, (failure as TransferException).reason)
+        }
+    }
+
+    @Test fun accepts416OnlyWhenCompletedLengthAndValidatorMatch() = runBlocking {
+        checkpointResponse(416, "\"v1\"", "bytes */4096", bytes.size) { transfer, client, url, calls ->
+            repeat(2) {
+                assertArrayEquals(bytes, transfer.fetch(client, 1, "media", listOf(url), 0).file.readBytes())
+            }
+            assertEquals(1, calls())
+        }
+        checkpointResponse(416, "\"v2\"", "bytes */4096", bytes.size) { transfer, client, url, _ ->
+            val failure = runCatching { transfer.fetch(client, 1, "media", listOf(url), 0) }.exceptionOrNull()
+            assertEquals(TransferException.Reason.RANGE, (failure as TransferException).reason)
+        }
+    }
+
+    private suspend fun checkpointResponse(
+        code: Int, etag: String, contentRange: String?, savedLength: Int = 1024,
+        check: suspend (ResumableTransfer, OkHttpClient, String, () -> Int) -> Unit,
+    ) {
+        val directory = Files.createTempDirectory("checkpoint-test").toFile()
+        val server = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
+        var calls = 0
+        server.createContext("/media") { exchange ->
+            calls++
+            exchange.responseHeaders.add("ETag", etag)
+            contentRange?.let { exchange.responseHeaders.add("Content-Range", it) }
+            val start = if (code == 206) savedLength else 0
+            exchange.sendResponseHeaders(code, if (code == 416) -1 else (bytes.size - start).toLong())
+            exchange.responseBody.use { if (code != 416) it.write(bytes, start, bytes.size - start) }
+        }
+        server.start()
+        try {
+            val url = "http://127.0.0.1:${server.address.port}/media"
+            val task = File(directory, "1").apply { mkdirs() }
+            val key = ResumableTransfer.fingerprint("media")
+            File(task, "$key.part").writeBytes(bytes.copyOf(savedLength))
+            File(task, "$key.json").writeText(JSONObject().put("identity", ResumableTransfer.fingerprint(url))
+                .put("etag", "\"v1\"").put("total", bytes.size).put("complete", false).toString())
+            check(ResumableTransfer(directory), OkHttpClient(), url) { calls }
+        } finally { server.stop(0); directory.deleteRecursively() }
     }
 }

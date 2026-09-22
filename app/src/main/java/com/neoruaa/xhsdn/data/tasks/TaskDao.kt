@@ -24,14 +24,14 @@ interface TaskDao {
 
     @Transaction
     @Query("""SELECT t.* FROM download_tasks t LEFT JOIN download_sessions s ON t.id = s.task_id
-        WHERE (:filter = 0 OR (:filter = 1 AND t.status IN ('WAITING_FOR_USER','PAUSED')) OR (:filter = 2 AND t.status IN ('FAILED','PARTIAL')))
+        WHERE (:filter = 0 OR (:filter = 1 AND t.status IN ('QUEUED','RESOLVING','DOWNLOADING','WAITING_FOR_USER','PAUSED')) OR (:filter = 2 AND t.status IN ('FAILED','PARTIAL')))
         AND (:query = '' OR instr(lower(t.note_url), lower(:query)) > 0 OR instr(lower(COALESCE(t.note_title,'')), lower(:query)) > 0
         OR instr(lower(COALESCE(t.note_content,'')), lower(:query)) > 0 OR instr(lower(COALESCE(s.note_id,'')), lower(:query)) > 0
         OR instr(lower(COALESCE(s.author_name,'')), lower(:query)) > 0)
         ORDER BY t.created_at DESC, t.id DESC LIMIT :limit""")
     fun observePage(query: String, filter: Int, limit: Int): Flow<List<TaskWithFiles>>
 
-    @Query("""SELECT COUNT(*) AS total, COALESCE(SUM(status IN ('WAITING_FOR_USER','PAUSED')),0) AS waiting,
+    @Query("""SELECT COUNT(*) AS total, COALESCE(SUM(status IN ('QUEUED','RESOLVING','DOWNLOADING','WAITING_FOR_USER','PAUSED')),0) AS waiting,
         COALESCE(SUM(status IN ('FAILED','PARTIAL')),0) AS failed FROM download_tasks""")
     fun observeCounts(): Flow<TaskCounts>
 

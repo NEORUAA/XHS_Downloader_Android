@@ -89,7 +89,7 @@ class ResumableTransfer(private val root: File) {
             continuation.invokeOnCancellation { call.cancel() }
             call.enqueue(object : Callback {
                 override fun onFailure(call: Call, e: IOException) {
-                    if (continuation.isActive) continuation.resumeWith(Result.failure(e))
+                    if (continuation.isActive) continuation.resumeWith(Result.failure(TransferException(TransferException.Reason.NETWORK).apply { initCause(e) }))
                 }
                 override fun onResponse(call: Call, response: Response) {
                     val result = runCatching {
@@ -148,7 +148,9 @@ class ResumableTransfer(private val root: File) {
                                     var lastProgress = 0L
                                     while (true) {
                                         if (!continuation.isActive) throw CancellationException("Transfer cancelled")
-                                        val count = input.read(buffer)
+                                        val count = try { input.read(buffer) } catch (error: IOException) {
+                                            throw TransferException(TransferException.Reason.NETWORK).apply { initCause(error) }
+                                        }
                                         if (count < 0) break
                                         output.write(buffer, 0, count)
                                         written += count

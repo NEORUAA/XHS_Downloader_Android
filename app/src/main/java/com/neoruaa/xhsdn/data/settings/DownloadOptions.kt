@@ -8,7 +8,7 @@ val DownloadJson = Json { ignoreUnknownKeys = true; encodeDefaults = true }
 @Serializable
 enum class ImageFormat { AUTO, JPEG, PNG, WEBP, HEIC, AVIF }
 @Serializable
-enum class VideoPreference { RESOLUTION, BITRATE, SIZE }
+enum class VideoPreference { RESOLUTION, BITRATE, SIZE, COMPATIBILITY }
 @Serializable
 enum class LivePhotoMode { MERGED, SEPARATE, STILL }
 @Serializable

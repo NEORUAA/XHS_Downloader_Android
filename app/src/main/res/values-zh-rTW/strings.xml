@@ -303,7 +303,7 @@
     <string name="settings_quality_resolution">解析度</string>
     <string name="settings_quality_bitrate">位元速率</string>
     <string name="settings_quality_size">檔案大小</string>
-    <string name="settings_video_hint">先嘗試原始影片，再依優先順序嘗試其他畫質與備用位址。</string>
+    <string name="settings_video_hint">相容性優先嘗試 H.264；其他模式先嘗試原始影片，再依優先級嘗試其他規格與備用網址。</string>
     <string name="settings_download_images">下載圖片</string>
     <string name="settings_download_videos">下載影片</string>
     <string name="settings_download_cover">儲存影片封面</string>
@@ -351,4 +351,5 @@
     <string name="settings_author_identity">%1$s · %2$s</string>
     <string name="download_result_summary">已儲存 %1$d/%2$d；失敗 %3$d</string>
     <string name="common_not_modified">不修改</string>
+    <string name="settings_quality_compatibility">相容性優先（H.264）</string>
 </resources>

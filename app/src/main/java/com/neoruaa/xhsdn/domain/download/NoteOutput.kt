@@ -34,9 +34,11 @@ object NoteOutput {
     }
 
     fun videoUrls(video: ResolvedMedia.Video, preference: VideoPreference): List<String> =
-        video.candidates.sortedWith(compareByDescending<com.neoruaa.xhsdn.core.model.MediaCandidate> { it.original }
+        video.candidates.sortedWith(compareByDescending<com.neoruaa.xhsdn.core.model.MediaCandidate> {
+            if (preference == VideoPreference.COMPATIBILITY) it.codec.lowercase(Locale.ROOT) in setOf("h264", "avc", "avc1") else it.original
+        }
             .thenByDescending { when (preference) {
-                VideoPreference.RESOLUTION -> it.height.toLong() * it.width
+                VideoPreference.RESOLUTION, VideoPreference.COMPATIBILITY -> it.height.toLong() * it.width
                 VideoPreference.BITRATE -> it.bitrate
                 VideoPreference.SIZE -> it.size
             } }).map { it.url }.plus(video.sourceUrl).distinct()

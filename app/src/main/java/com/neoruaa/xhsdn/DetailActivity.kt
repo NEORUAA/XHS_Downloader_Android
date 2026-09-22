@@ -284,6 +284,8 @@ internal fun DetailRoute(
     onOpenWebView: (String) -> Unit
 ) {
     val context = LocalContext.current
+    val resources = androidx.compose.ui.platform.LocalResources.current
+    val detailTitle = stringResource(R.string.download_detail_title)
     val taskId = remember(route.taskId) { route.taskId.toLongOrNull() }
     val repository = remember(context) { (context.applicationContext as XHSApplication).appContainer.taskRepository }
     val task by remember(taskId) { taskId?.let(repository::observeTask) ?: flowOf(null) }.collectAsStateWithLifecycle(initialValue = null)
@@ -293,7 +295,7 @@ internal fun DetailRoute(
         mutableStateOf(
             DetailUiState(
                 mediaItems = initialMediaItems,
-                taskTitle = context.getString(R.string.download_detail_title),
+                taskTitle = detailTitle,
                 isDownloading = false,
                 noteContent = route.noteContent
             )
@@ -317,7 +319,7 @@ internal fun DetailRoute(
             } else {
                 Toast.makeText(
                     context,
-                    context.getString(R.string.delete_file_failed, mediaItem.media.displayName),
+                    resources.getString(R.string.delete_file_failed, mediaItem.media.displayName),
                     Toast.LENGTH_SHORT
                 ).show()
             }

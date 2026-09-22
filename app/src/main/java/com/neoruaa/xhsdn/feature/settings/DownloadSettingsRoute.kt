@@ -36,6 +36,7 @@ import top.yukonga.miuix.kmp.basic.*
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Back
 import top.yukonga.miuix.kmp.icon.extended.Link
+import top.yukonga.miuix.kmp.icon.extended.FileDownloads
 import top.yukonga.miuix.kmp.icon.extended.Ok
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.window.WindowDialog
@@ -43,6 +44,7 @@ import top.yukonga.miuix.kmp.window.WindowDialog
 @Composable
 internal fun DownloadSettingsRoute(section: Int, onBack: () -> Unit, onOpenBrowser: () -> Unit) {
     val context = LocalContext.current
+    val resources = androidx.compose.ui.platform.LocalResources.current
     val container = remember(context) { (context.applicationContext as XHSApplication).appContainer }
     val repository = container.settingsRepository
     val settings by repository.settings.collectAsStateWithLifecycle(repository.currentSettings)
@@ -60,7 +62,7 @@ internal fun DownloadSettingsRoute(section: Int, onBack: () -> Unit, onOpenBrows
     val sessionStates by produceState<Map<String, Boolean>>(emptyMap(), sessionRevision) {
         value = withContext(Dispatchers.IO) { SessionCredentials.HOSTS.associateWith { container.credentials.get(it).isNotBlank() } }
     }
-    fun message(id: Int) { Toast.makeText(context, context.getString(id), Toast.LENGTH_SHORT).show() }
+    fun message(id: Int) { Toast.makeText(context, resources.getString(id), Toast.LENGTH_SHORT).show() }
     fun update(transform: (DownloadOptions) -> DownloadOptions) {
         scope.launch {
             try { repository.update { state ->
@@ -117,8 +119,10 @@ internal fun DownloadSettingsRoute(section: Int, onBack: () -> Unit, onOpenBrows
                     "note_archive" -> OptionSwitch(R.string.settings_note_archive, checked = options.noteArchive) { update { it.copy(noteArchive = !it.noteArchive) } }
                     "note_format" -> ArrowPreference(title = stringResource(R.string.settings_note_format), summary = stringResource(noteLabels[options.noteFormat.ordinal]), onClick = { choice = row })
                     "publish_time" -> OptionSwitch(R.string.settings_publish_time, R.string.settings_publish_time_hint, options.writePublishTime) { update { it.copy(writePublishTime = !it.writePublishTime) } }
-                    "export_json" -> BasicComponent(title = stringResource(R.string.settings_export_json), summary = stringResource(R.string.settings_export_hint), onClick = { exportJson.launch("xhs-download-records.json") })
-                    "export_csv" -> BasicComponent(title = stringResource(R.string.settings_export_csv), onClick = { exportCsv.launch("xhs-download-records.csv") })
+                    "export_json" -> BasicComponent(title = stringResource(R.string.settings_export_json), summary = stringResource(R.string.settings_export_hint), onClick = { exportJson.launch("xhs-download-records.json") },
+                        endActions = { ActionIconButton(MiuixIcons.Regular.FileDownloads, stringResource(R.string.settings_export_json), { exportJson.launch("xhs-download-records.json") }) })
+                    "export_csv" -> BasicComponent(title = stringResource(R.string.settings_export_csv), onClick = { exportCsv.launch("xhs-download-records.csv") },
+                        endActions = { ActionIconButton(MiuixIcons.Regular.FileDownloads, stringResource(R.string.settings_export_csv), { exportCsv.launch("xhs-download-records.csv") }) })
                     "timeout", "retries" -> ArrowPreference(title = stringResource(if (row == "timeout") R.string.settings_timeout else R.string.settings_retries),
                         summary = (if (row == "timeout") options.timeoutSeconds else options.maxRetries).toString(),
                         onClick = { input = (if (row == "timeout") options.timeoutSeconds else options.maxRetries).toString(); edit = row })
@@ -244,6 +248,6 @@ private fun OptionSwitch(title: Int, summary: Int? = null, checked: Boolean, onT
 }
 
 private val imageLabels = listOf(R.string.settings_image_auto, R.string.settings_format_jpeg, R.string.settings_format_png, R.string.settings_format_webp, R.string.settings_format_heic, R.string.settings_format_avif)
-private val videoLabels = listOf(R.string.settings_quality_resolution, R.string.settings_quality_bitrate, R.string.settings_quality_size)
+private val videoLabels = listOf(R.string.settings_quality_resolution, R.string.settings_quality_bitrate, R.string.settings_quality_size, R.string.settings_quality_compatibility)
 private val liveLabels = listOf(R.string.settings_live_merged, R.string.settings_live_separate, R.string.settings_live_still)
 private val noteLabels = listOf(R.string.settings_format_none, R.string.settings_format_txt, R.string.settings_format_md, R.string.settings_format_both)

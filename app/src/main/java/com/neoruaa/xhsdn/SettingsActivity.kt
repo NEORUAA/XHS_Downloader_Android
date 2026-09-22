@@ -526,6 +526,7 @@ class SettingsActivity : ComponentActivity() {
 @Composable
 internal fun SettingsRoute(onBack: () -> Unit, onOpenAdvanced: ((Int) -> Unit)? = null) {
     val context = LocalContext.current
+    val resources = androidx.compose.ui.platform.LocalResources.current
     val repository = remember(context) {
         (context.applicationContext as XHSApplication).appContainer.settingsRepository
     }
@@ -541,7 +542,7 @@ internal fun SettingsRoute(onBack: () -> Unit, onOpenAdvanced: ((Int) -> Unit)? 
     val pendingCheckExistingFilesChange = remember { mutableStateOf<Boolean?>(null) }
 
     fun showMessage(messageResId: Int) {
-        Toast.makeText(context, context.getString(messageResId), Toast.LENGTH_SHORT).show()
+        Toast.makeText(context, resources.getString(messageResId), Toast.LENGTH_SHORT).show()
     }
 
     val storageTreeLauncher = rememberLauncherForActivityResult(

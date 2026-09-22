@@ -6,6 +6,7 @@ import androidx.sqlite.driver.AndroidSQLiteDriver
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.neoruaa.xhsdn.data.DownloadTask
+import com.neoruaa.xhsdn.IsolatedTestContext
 import com.neoruaa.xhsdn.data.NoteType
 import com.neoruaa.xhsdn.data.TaskStatus
 import kotlinx.coroutines.flow.first
@@ -21,13 +22,12 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class LegacyTaskHistoryImporterTest {
-    private lateinit var context: Context
+    private lateinit var context: IsolatedTestContext
     private lateinit var database: TaskDatabase
 
     @Before
     fun setUp() {
-        context = ApplicationProvider.getApplicationContext()
-        legacyPreferences().edit().clear().commit()
+        context = IsolatedTestContext(ApplicationProvider.getApplicationContext())
         database = Room.inMemoryDatabaseBuilder(context, TaskDatabase::class.java)
             .setDriver(AndroidSQLiteDriver())
             .build()
@@ -36,7 +36,7 @@ class LegacyTaskHistoryImporterTest {
     @After
     fun tearDown() {
         database.close()
-        legacyPreferences().edit().clear().commit()
+        context.dispose()
     }
 
     @Test

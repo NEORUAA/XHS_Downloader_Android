@@ -298,7 +298,7 @@ class DownloadQueue(private val context: Context, private val container: AppCont
                                     val output = File(context.cacheDir, "merged_${id}_${index}.jpg")
                                     try {
                                         if (still != null && motion != null && options.livePhotoMode == LivePhotoMode.MERGED && LivePhotoCreator.createLivePhoto(still.file, motion.file, output, null)) {
-                                            save(output, MediaFileType("jpg", "image/jpeg"), "main")
+                                            save(output, MediaFileType("jpg", "image/jpeg"), "live")
                                         } else {
                                             if (still != null && motion != null && options.livePhotoMode == LivePhotoMode.MERGED) notes.add(context.getString(R.string.download_warning_live))
                                             still?.let { save(it.file, it.type, "main") }

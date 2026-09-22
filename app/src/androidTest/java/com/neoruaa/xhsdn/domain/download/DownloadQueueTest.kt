@@ -46,6 +46,10 @@ class DownloadQueueTest {
                         requests.add(path to range)
                         val start = range?.substringAfter("bytes=")?.substringBefore('-')?.toIntOrNull() ?: 0
                         val output = connection.getOutputStream()
+                        if (path == "/blocked") {
+                            output.write("HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\nConnection: close\r\n\r\n".toByteArray())
+                            return@runCatching
+                        }
                         val status = if (range != null) "206 Partial Content" else "200 OK"
                         val contentRange = if (range != null) "Content-Range: bytes $start-${bytes.lastIndex}/${bytes.size}\r\n" else ""
                         output.write(("HTTP/1.1 $status\r\nContent-Length: ${bytes.size - start}\r\nETag: \"fixture-v1\"\r\n$contentRange" +
@@ -98,6 +102,40 @@ class DownloadQueueTest {
             val beforeSkip = requests.size
             assertEquals(TaskStatus.SKIPPED, repeatTask(true).status)
             assertEquals(beforeSkip, requests.size)
+
+            suspend fun outputTask(note: ResolvedNote, options: com.neoruaa.xhsdn.data.settings.DownloadOptions): com.neoruaa.xhsdn.data.DownloadTask {
+                val next = container.taskRepository.createTask(note.canonicalUrl, "Output fixture", NoteType.IMAGE, note.mediaCount)
+                taskIds += next
+                container.taskDatabase.downloadSessionDao().saveSession(DownloadSessionEntity(next,
+                    DownloadJson.encodeToString(AppSettings(downloadOptions = options)), resolvedJson = DownloadJson.encodeToString(note)))
+                container.downloadQueue.wake()
+                return withTimeout(20_000) { container.taskRepository.observeTask(next).first { it?.isCompleted == true } }!!
+            }
+            val blocked = ResolvedMedia.Video("http://127.0.0.1:${server.localPort}/blocked", id = "blocked")
+            val partialNote = note.copy(items = listOf(note.items.first(), blocked))
+            val partial = outputTask(partialNote, com.neoruaa.xhsdn.data.settings.DownloadOptions(maxRetries = 0))
+            assertEquals(TaskStatus.PARTIAL, partial.status)
+            assertEquals(1, partial.completedFiles)
+            assertEquals(1, partial.failedFiles)
+            assertEquals(1, partial.mediaRefs.size)
+            val selectedRequests = requests.count { it.first == "/selected" }
+            container.downloadQueue.resume(partial.id)
+            withTimeout(20_000) { container.taskRepository.observeTask(partial.id).first { it?.status == TaskStatus.PARTIAL } }
+            assertEquals(selectedRequests, requests.count { it.first == "/selected" })
+
+            val livePartial = outputTask(note.copy(items = listOf(ResolvedMedia.LivePhoto(note.items.first() as ResolvedMedia.Image, blocked))),
+                com.neoruaa.xhsdn.data.settings.DownloadOptions(maxRetries = 0))
+            assertEquals(TaskStatus.PARTIAL, livePartial.status)
+            assertEquals(1, livePartial.mediaRefs.size)
+
+            val text = outputTask(note.copy(items = emptyList(), body = "Line one\nLine two"),
+                com.neoruaa.xhsdn.data.settings.DownloadOptions(noteFormat = com.neoruaa.xhsdn.data.settings.NoteFormat.BOTH, noteArchive = true))
+            assertEquals(TaskStatus.COMPLETED, text.status)
+            assertEquals(setOf("txt", "md"), text.mediaRefs.map { it.displayName.substringAfterLast('.') }.toSet())
+            text.mediaRefs.forEach { ref ->
+                val content = com.neoruaa.xhsdn.data.storage.AndroidStorageSink(app).open(ref)!!.bufferedReader().use { it.readText() }
+                assertTrue(content.contains("Line one\nLine two"))
+            }
 
         } finally {
             taskIds.forEach { id ->

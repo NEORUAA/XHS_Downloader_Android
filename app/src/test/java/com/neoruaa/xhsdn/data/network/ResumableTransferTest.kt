@@ -4,6 +4,7 @@ import com.sun.net.httpserver.HttpServer
 import java.net.InetSocketAddress
 import java.nio.file.Files
 import java.io.File
+import java.util.concurrent.atomic.AtomicLong
 import org.json.JSONObject
 import kotlinx.coroutines.runBlocking
 import okhttp3.OkHttpClient
@@ -40,12 +41,18 @@ class ResumableTransferTest {
             val transfer = ResumableTransfer(directory)
             val url = "http://127.0.0.1:${server.address.port}/media"
             val client = OkHttpClient()
-            assertTrue(runCatching { transfer.fetch(client, 1, "media", listOf(url), 0) }.isFailure)
-            val saved = transfer.fetch(client, 1, "media", listOf(url), 0)
+            val received = AtomicLong()
+            val record: (Long) -> Unit = { received.addAndGet(it) }
+            assertTrue(runCatching { transfer.fetch(client, 1, "media", listOf(url), 0, onBytesReceived = record) }.isFailure)
+            val saved = transfer.fetch(client, 1, "media", listOf(url), 0, onBytesReceived = record)
             assertEquals("bytes=1024-", range)
             assertEquals("\"v1\"", ifRange)
             assertArrayEquals(bytes, saved.file.readBytes())
             assertEquals("jpg", saved.type.extension)
+            assertEquals(bytes.size.toLong(), received.get())
+            transfer.fetch(client, 1, "media", listOf(url), 0, onBytesReceived = record)
+            assertEquals("Cached bytes must not count as network traffic", bytes.size.toLong(), received.get())
+            assertEquals(2, calls)
         } finally { server.stop(0); directory.deleteRecursively() }
     }
 
@@ -79,8 +86,10 @@ class ResumableTransferTest {
 
     @Test fun fullResponseReplacesPartialFileWhenServerIgnoresRange() = runBlocking {
         checkpointResponse(200, "\"v2\"", null) { transfer, client, url, calls ->
-            val result = transfer.fetch(client, 1, "media", listOf(url), 0)
+            val received = AtomicLong()
+            val result = transfer.fetch(client, 1, "media", listOf(url), 0, onBytesReceived = { received.addAndGet(it) })
             assertArrayEquals(bytes, result.file.readBytes())
+            assertEquals("A restarted response counts only its received bytes", bytes.size.toLong(), received.get())
             assertEquals(1, calls())
         }
     }
@@ -103,6 +112,24 @@ class ResumableTransferTest {
             val failure = runCatching { transfer.fetch(client, 1, "media", listOf(url), 0) }.exceptionOrNull()
             assertEquals(TransferException.Reason.RANGE, (failure as TransferException).reason)
         }
+    }
+
+    @Test fun countsChunkedResponseBytesWithoutContentLength() = runBlocking {
+        val directory = Files.createTempDirectory("chunked-test").toFile()
+        val server = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
+        server.createContext("/media") { exchange ->
+            exchange.sendResponseHeaders(200, 0)
+            exchange.responseBody.use { it.write(bytes) }
+        }
+        server.start()
+        try {
+            val received = AtomicLong()
+            val result = ResumableTransfer(directory).fetch(OkHttpClient(), 1, "media",
+                listOf("http://127.0.0.1:${server.address.port}/media"), 0,
+                onBytesReceived = { received.addAndGet(it) })
+            assertArrayEquals(bytes, result.file.readBytes())
+            assertEquals(bytes.size.toLong(), received.get())
+        } finally { server.stop(0); directory.deleteRecursively() }
     }
 
     private suspend fun checkpointResponse(

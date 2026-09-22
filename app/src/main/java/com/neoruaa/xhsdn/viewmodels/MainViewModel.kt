@@ -84,6 +84,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val tasks = container.taskRepository
     private val _uiState = MutableStateFlow(MainUiState())
     val uiState: StateFlow<MainUiState> = _uiState.asStateFlow()
+    val downloadSpeeds: StateFlow<Map<Long, Long>> = queue.downloadSpeeds
     var currentTaskId: Long = 0
         private set
     private val autoSelections = MutableStateFlow<Set<Long>>(emptySet())

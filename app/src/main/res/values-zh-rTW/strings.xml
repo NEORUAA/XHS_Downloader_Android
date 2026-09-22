@@ -175,6 +175,7 @@
     <string name="task_status_waiting_for_user">等待選擇</string>
     <string name="progress_format">%1$d%%</string>
     <string name="progress_speed_format">%1$s｜%2$s</string>
+    <string name="task_download_speed">%1$s/s</string>
 
     <!-- Additional UI texts -->
     <string name="app_full_name">小紅書下載器</string>

@@ -99,6 +99,9 @@ import androidx.navigation3.runtime.rememberNavBackStack
 import androidx.navigation3.ui.NavDisplay
 import androidx.navigation3.ui.NavDisplayTransitionEffects
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -468,6 +471,7 @@ class MainActivity : ComponentActivity() {
                                     MainScreen(
                     uiState = uiState,
                     historyUiState = historyUiState,
+                    downloadSpeeds = viewModel.downloadSpeeds,
                     manualInputLinks = manualInputLinks,
                     showInputDialog = showInputDialog,
                     onShowInputDialogChange = { showInputDialog = it },
@@ -813,6 +817,7 @@ class MainActivity : ComponentActivity() {
 private fun MainScreen(
     uiState: MainUiState,
     historyUiState: HistoryUiState,
+    downloadSpeeds: StateFlow<Map<Long, Long>>,
     manualInputLinks: Boolean = false,
     showInputDialog: Boolean = false,
     onShowInputDialogChange: (Boolean) -> Unit,
@@ -1017,6 +1022,7 @@ private fun MainScreen(
             HistoryPage(
                 uiState = uiState,
                 historyUiState = historyUiState,
+                downloadSpeeds = downloadSpeeds,
                 manualInputLinks = manualInputLinks,
                 showInputDialog = showInputDialog,
                 onShowInputDialogChange = onShowInputDialogChange,
@@ -1110,6 +1116,7 @@ private enum class LinkInputAction(val labelRes: Int) {
 private fun HistoryPage(
     uiState: MainUiState,
     historyUiState: HistoryUiState,
+    downloadSpeeds: StateFlow<Map<Long, Long>>,
     modifier: Modifier = Modifier,
     manualInputLinks: Boolean = false,
     showInputDialog: Boolean = false,
@@ -1335,6 +1342,7 @@ private fun HistoryPage(
                             ) {
                                 TaskCell(
                                     task = task,
+                                    downloadSpeeds = downloadSpeeds,
                                     // 只有正在下载的任务才使用 uiState.mediaItems
                                     mediaItems = if (task.mediaRefs.isNotEmpty()) {
                                         task.mediaRefs.map(::MediaItem)
@@ -1698,6 +1706,7 @@ private fun HistoryPage(
 @Composable
 private fun TaskCell(
     task: com.neoruaa.xhsdn.data.DownloadTask,
+    downloadSpeeds: StateFlow<Map<Long, Long>>,
     modifier: Modifier = Modifier,
     mediaItems: List<MediaItem> = emptyList(),
     onCopyUrl: () -> Unit,
@@ -1907,7 +1916,9 @@ private fun TaskCell(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                if (statusMessage != null) {
+                if (task.status == TaskStatus.DOWNLOADING) {
+                    TaskDownloadSpeed(task.id, downloadSpeeds, Modifier.weight(1f))
+                } else if (statusMessage != null) {
                     Text(
                         text = statusMessage,
                         modifier = Modifier.weight(1f),
@@ -1987,6 +1998,24 @@ private fun TaskCell(
 private fun formatTime(timestamp: Long): String {
     val sdf = java.text.SimpleDateFormat("MM-dd HH:mm", java.util.Locale.getDefault())
     return sdf.format(java.util.Date(timestamp))
+}
+
+@Composable
+private fun TaskDownloadSpeed(
+    taskId: Long,
+    downloadSpeeds: StateFlow<Map<Long, Long>>,
+    modifier: Modifier = Modifier
+) {
+    val bytesPerSecond by remember(taskId, downloadSpeeds) {
+        downloadSpeeds.map { it[taskId] ?: 0L }.distinctUntilChanged()
+    }.collectAsStateWithLifecycle(initialValue = 0L)
+    Text(
+        text = stringResource(R.string.task_download_speed,
+            android.text.format.Formatter.formatShortFileSize(LocalContext.current, bytesPerSecond)),
+        modifier = modifier,
+        fontSize = 12.sp,
+        color = MiuixTheme.colorScheme.onSurfaceVariantSummary
+    )
 }
 
 @Composable

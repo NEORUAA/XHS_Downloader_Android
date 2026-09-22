@@ -3,6 +3,7 @@ package com.neoruaa.xhsdn.domain.download
 import androidx.test.core.app.ActivityScenario
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.platform.app.InstrumentationRegistry
 import com.neoruaa.xhsdn.MainActivity
 import com.neoruaa.xhsdn.XHSApplication
 import com.neoruaa.xhsdn.core.model.ResolvedMedia
@@ -33,7 +34,7 @@ class DownloadQueueTest {
         val server = ServerSocket(0)
         val running = AtomicBoolean(true)
         val requests = CopyOnWriteArrayList<Pair<String, String?>>()
-        val bytes = ByteArray(96 * 1024) { (it % 253).toByte() }.apply { this[0] = 0xff.toByte(); this[1] = 0xd8.toByte(); this[2] = 0xff.toByte() }
+        val bytes = ByteArray(192 * 1024) { (it % 253).toByte() }.apply { this[0] = 0xff.toByte(); this[1] = 0xd8.toByte(); this[2] = 0xff.toByte() }
         val serverThread = thread(isDaemon = true) {
             while (running.get()) {
                 val socket = runCatching { server.accept() }.getOrNull() ?: break
@@ -77,10 +78,26 @@ class DownloadQueueTest {
             assertTrue(requests.isEmpty())
             container.downloadQueue.select(id, setOf("selected"))
             withTimeout(10_000) { while (requests.isEmpty()) delay(25) }
-            delay(250)
+            val speed = withTimeout(10_000) { container.downloadQueue.downloadSpeeds.first { (it[id] ?: 0) > 0 } }
+            assertTrue(speed.getValue(id) > 0)
+            val automation = InstrumentationRegistry.getInstrumentation().uiAutomation
+            fun speedVisible(node: android.view.accessibility.AccessibilityNodeInfo?): Boolean {
+                if (node == null) return false
+                if (node.text?.toString()?.matches(Regex(".*[1-9].*/s")) == true) return true
+                return (0 until node.childCount).any { speedVisible(node.getChild(it)) }
+            }
+            withTimeout(5_000) { while (!speedVisible(automation.rootInActiveWindow)) delay(50) }
+            val screenshot = automation.takeScreenshot()
+            assertNotNull(screenshot)
+            java.io.File(app.cacheDir, "download-speed-ui.png").outputStream().use {
+                screenshot.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it)
+            }
+            screenshot.recycle()
             container.downloadQueue.pause(id)
             assertEquals(TaskStatus.PAUSED, container.taskRepository.getTaskById(id)?.status)
+            assertFalse(container.downloadQueue.downloadSpeeds.value.containsKey(id))
             container.downloadQueue.resume(id)
+            withTimeout(10_000) { container.downloadQueue.downloadSpeeds.first { (it[id] ?: 0) > 0 } }
             val completed = withTimeout(20_000) { container.taskRepository.observeTask(id).first { it?.isCompleted == true } }!!
             assertEquals(completed.errorMessage, TaskStatus.COMPLETED, completed.status)
             assertEquals("Shared caption", completed.noteTitle)
@@ -88,6 +105,7 @@ class DownloadQueueTest {
             assertEquals(1, completed.mediaRefs.size)
             assertTrue(requests.all { it.first == "/selected" })
             assertTrue(requests.any { it.second?.startsWith("bytes=") == true })
+            withTimeout(5_000) { container.downloadQueue.downloadSpeeds.first { id !in it } }
             suspend fun repeatTask(skip: Boolean): com.neoruaa.xhsdn.data.DownloadTask {
                 val next = container.taskRepository.createTask(note.canonicalUrl, "Queue fixture", NoteType.IMAGE, 1)
                 taskIds += next

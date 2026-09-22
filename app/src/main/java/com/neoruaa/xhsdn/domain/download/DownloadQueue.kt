@@ -38,6 +38,8 @@ class DownloadQueue(private val context: Context, private val container: AppCont
     val activeTask: StateFlow<Long?> = _activeTask.asStateFlow()
     private val _progress = MutableStateFlow<Map<Long, Float>>(emptyMap())
     val progress: StateFlow<Map<Long, Float>> = _progress.asStateFlow()
+    private val _downloadSpeeds = MutableStateFlow<Map<Long, Long>>(emptyMap())
+    val downloadSpeeds: StateFlow<Map<Long, Long>> = _downloadSpeeds.asStateFlow()
 
     suspend fun enqueue(input: String, selection: Boolean = false, infoOnly: Boolean = false): List<Long> {
         container.initialization.await()
@@ -202,6 +204,8 @@ class DownloadQueue(private val context: Context, private val container: AppCont
             val remark = note.authorId?.let { sessions.author(it)?.remark }.orEmpty()
             val folders = NoteOutput.folders(note, options, remark)
             val client = container.network.client(options, media = true)
+            val speedTracker = DownloadSpeedTracker()
+            _downloadSpeeds.update { it + (id to 0L) }
             val progressLock = Mutex()
             val fractions = java.util.concurrent.ConcurrentHashMap<String, Float>()
             var complete = 0
@@ -244,13 +248,21 @@ class DownloadQueue(private val context: Context, private val container: AppCont
             }
             val semaphore = Semaphore(4)
             coroutineScope {
-                val ticker = launch { while (isActive) { delay(250); publish() } }
+                val ticker = launch {
+                    while (isActive) {
+                        delay(250)
+                        speedTracker.sampleBytesPerSecond()?.let { speed ->
+                            _downloadSpeeds.update { it + (id to speed) }
+                        }
+                        publish()
+                    }
+                }
                 val workers = media.mapIndexed { index, item -> launch {
                     semaphore.withPermit {
                         runResource(item.id) {
                             val refs = mutableListOf<StoredMediaRef>()
                             val notes = mutableListOf<String>()
-                            suspend fun fetch(partId: String, urls: List<String>): TransferredMedia = transfer.fetch(client, id, partId, urls, options.maxRetries) { bytes, length ->
+                            suspend fun fetch(partId: String, urls: List<String>): TransferredMedia = transfer.fetch(client, id, partId, urls, options.maxRetries, onBytesReceived = speedTracker::recordBytes) { bytes, length ->
                                 fractions[item.id] = if (length > 0) (bytes.toFloat() / length).coerceIn(0f, 0.98f) else 0f
                             }
                             suspend fun save(file: File, type: MediaFileType, suffix: String) {
@@ -315,6 +327,7 @@ class DownloadQueue(private val context: Context, private val container: AppCont
                 } }
                 try { workers.joinAll() } finally { ticker.cancelAndJoin() }
             }
+            _downloadSpeeds.update { it - id }
             for (markdown in formats) runResource(if (markdown) "note:md" else "note:txt") {
                 val extension = if (markdown) "md" else "txt"
                 val bytes = NoteOutput.text(note, markdown).toByteArray()
@@ -333,7 +346,10 @@ class DownloadQueue(private val context: Context, private val container: AppCont
         } catch (error: Exception) {
             tasks.updateTaskStatus(id, TaskStatus.FAILED, errorMessage(error))
             debug(errorMessage(error))
-        } finally { _progress.update { it - id } }
+        } finally {
+            _progress.update { it - id }
+            _downloadSpeeds.update { it - id }
+        }
     }
 
     private fun debug(message: String) {

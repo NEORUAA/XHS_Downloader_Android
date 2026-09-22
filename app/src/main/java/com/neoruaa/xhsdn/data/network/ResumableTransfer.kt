@@ -31,6 +31,7 @@ class ResumableTransfer(private val root: File) {
         mediaId: String,
         urls: List<String>,
         maxRetries: Int,
+        onBytesReceived: (Long) -> Unit = {},
         progress: (Long, Long) -> Unit = { _, _ -> },
     ): TransferredMedia = withContext(Dispatchers.IO) {
         val directory = File(root, taskId.toString()).apply { mkdirs() }
@@ -43,7 +44,7 @@ class ResumableTransfer(private val root: File) {
             for (attempt in 0..maxRetries.coerceIn(0, 10)) {
                 coroutineContext.ensureActive()
                 try {
-                    return@withContext transfer(client, url, partial, metadata, progress)
+                    return@withContext transfer(client, url, partial, metadata, onBytesReceived, progress)
                 } catch (cancelled: CancellationException) {
                     throw cancelled
                 } catch (error: IOException) {
@@ -62,6 +63,7 @@ class ResumableTransfer(private val root: File) {
         url: String,
         file: File,
         metadata: File,
+        onBytesReceived: (Long) -> Unit,
         progress: (Long, Long) -> Unit,
     ): TransferredMedia {
         val identity = fingerprint(url)
@@ -152,6 +154,7 @@ class ResumableTransfer(private val root: File) {
                                             throw TransferException(TransferException.Reason.NETWORK).apply { initCause(error) }
                                         }
                                         if (count < 0) break
+                                        onBytesReceived(count.toLong())
                                         output.write(buffer, 0, count)
                                         written += count
                                         val now = System.nanoTime()

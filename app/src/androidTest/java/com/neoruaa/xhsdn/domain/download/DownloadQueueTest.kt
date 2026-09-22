@@ -65,7 +65,7 @@ class DownloadQueueTest {
         val taskIds = mutableListOf<Long>()
         val scenario = ActivityScenario.launch(MainActivity::class.java)
         try {
-            val id = container.taskRepository.createTask("https://www.xiaohongshu.com/explore/fixture", "Queue fixture", NoteType.IMAGE, 2)
+            val id = container.taskRepository.createTask("https://www.xiaohongshu.com/explore/fixture", "Shared caption", NoteType.IMAGE, 2)
             taskIds += id
             val note = ResolvedNote("https://www.xiaohongshu.com/explore/fixture", "Queue fixture", "Fixture", null, null, null, noteId = "fixture_${System.nanoTime()}",
                 items = listOf(ResolvedMedia.Image("http://127.0.0.1:${server.localPort}/selected", id = "selected"),
@@ -83,6 +83,7 @@ class DownloadQueueTest {
             container.downloadQueue.resume(id)
             val completed = withTimeout(20_000) { container.taskRepository.observeTask(id).first { it?.isCompleted == true } }!!
             assertEquals(completed.errorMessage, TaskStatus.COMPLETED, completed.status)
+            assertEquals("Shared caption", completed.noteTitle)
             assertEquals(1, completed.totalFiles)
             assertEquals(1, completed.mediaRefs.size)
             assertTrue(requests.all { it.first == "/selected" })

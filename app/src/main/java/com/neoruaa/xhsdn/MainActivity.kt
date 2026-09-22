@@ -599,7 +599,7 @@ class MainActivity : ComponentActivity() {
                         navigateTo(
                             AppRoute.Detail(
                                 taskId = task.id.toString(),
-                                taskTitle = task.noteTitle ?: task.noteUrl,
+                                taskTitle = task.displayTitle,
                                 filePaths = task.filePaths,
                                 noteContent = task.noteContent,
                                 noteUrl = task.noteUrl
@@ -1801,7 +1801,7 @@ private fun TaskCell(
 
             // 标题（最多两行）
             Text(
-                text = task.noteTitle ?: task.noteUrl,
+                text = task.displayTitle,
                 fontSize = MiuixTheme.textStyles.body2.fontSize,
                 fontWeight = FontWeight.Medium,
                 maxLines = 2,

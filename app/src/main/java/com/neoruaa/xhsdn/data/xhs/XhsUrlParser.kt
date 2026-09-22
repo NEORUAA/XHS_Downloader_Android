@@ -23,6 +23,15 @@ object XhsUrlParser {
         uri.scheme?.lowercase() in setOf("http", "https") && uri.host?.lowercase() in hosts && uri.userInfo == null
     }.getOrDefault(false)
 
+    fun extractShareTitle(input: String): String? {
+        // Do not assign one caption to unrelated notes in a batch.
+        val url = extractLinks(input).distinct().singleOrNull() ?: return null
+        val start = input.indexOf(url).takeIf { it >= 0 }
+            ?: input.indexOf(url.removePrefix("https://")).takeIf { it >= 0 }
+            ?: return null
+        return input.take(start).trim().takeIf(String::isNotEmpty)
+    }
+
     fun isShortUrl(url: String): Boolean = runCatching {
         URI(url).host?.lowercase() in setOf("xhslink.com", "xhslink.cn")
     }.getOrDefault(false)

@@ -49,6 +49,11 @@ data class DownloadTask(
     val mediaRefs: List<StoredMediaRef> = emptyList(), // Persisted media locations
     val noteContent: String? = null // 笔记内容
 ) {
+    val displayTitle: String
+        get() = noteTitle?.replace("[话题]", "")?.trim()?.takeIf(String::isNotEmpty)
+            ?: noteContent?.lineSequence()?.map { it.replace("[话题]", "").trim() }?.firstOrNull(String::isNotEmpty)
+            ?: noteUrl
+
     /** Compatibility view for legacy callers while media locations migrate to stable URIs. */
     val filePaths: List<String>
         get() = mediaRefs.map(StoredMediaRef::path)

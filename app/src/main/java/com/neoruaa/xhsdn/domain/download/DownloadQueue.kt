@@ -44,10 +44,11 @@ class DownloadQueue(private val context: Context, private val container: AppCont
         container.settingsRepository.awaitReady()
         val urls = XhsUrlParser.extractLinks(input).distinct()
         if (urls.isEmpty()) throw XhsResolveException(DownloadFailure.InvalidInput)
+        val shareTitle = XhsUrlParser.extractShareTitle(input)
         val snapshot = DownloadJson.encodeToString(container.settingsRepository.currentSettings)
         val ids = urls.map { url ->
             container.taskDatabase.withWriteTransaction {
-                val id = tasks.createTask(url, null, NoteType.UNKNOWN, 0)
+                val id = tasks.createTask(url, shareTitle, NoteType.UNKNOWN, 0)
                 sessions.saveSession(DownloadSessionEntity(id, snapshot, requireSelection = selection, infoOnly = infoOnly))
                 id
             }
@@ -177,7 +178,7 @@ class DownloadQueue(private val context: Context, private val container: AppCont
                 sessions.saveAuthor(NoteAuthorEntity(authorId, note.authorName.orEmpty(), author?.remark.orEmpty()))
             }
             var media = NoteOutput.eligible(note, options)
-            tasks.updateTask(id) { it.copy(noteTitle = note.title, noteContent = note.description,
+            tasks.updateTask(id) { it.copy(noteTitle = it.noteTitle?.takeIf(String::isNotBlank) ?: note.title, noteContent = note.description,
                 noteType = if (note.type == "video") NoteType.VIDEO else NoteType.IMAGE, totalFiles = media.size) }
             if (session.requireSelection && session.selectedJson == null && !session.infoOnly) {
                 tasks.updateTaskStatus(id, TaskStatus.WAITING_FOR_USER)

@@ -5,6 +5,21 @@ import org.junit.Test
 
 class XhsUrlParserTest {
     @Test
+    fun keepsCaptionBeforeTheLinkWithoutSharingInstructions() {
+        assertEquals("Shared caption", XhsUrlParser.extractShareTitle(
+            "Shared caption\nhttps://xhslink.cn/o/abc Open the app to view this note"
+        ))
+        assertEquals("Shared caption", XhsUrlParser.extractShareTitle("Shared caption xhslink.cn/o/abc"))
+    }
+
+    @Test
+    fun doesNotUseLinksOrBatchDescriptionsAsTitles() {
+        assertEquals(null, XhsUrlParser.extractShareTitle("https://xhslink.cn/o/abc"))
+        assertEquals(null, XhsUrlParser.extractShareTitle("Caption without a link"))
+        assertEquals(null, XhsUrlParser.extractShareTitle("First https://xhslink.cn/o/abc\nSecond https://xhslink.cn/o/def"))
+    }
+
+    @Test
     fun extractsComCnAndShareTextInOrder() {
         val input = "复制文字 https://xhslink.cn/o/cn123，另一个 https://xhslink.com/o/com456"
         val links = XhsUrlParser.extractLinks(input) { short ->

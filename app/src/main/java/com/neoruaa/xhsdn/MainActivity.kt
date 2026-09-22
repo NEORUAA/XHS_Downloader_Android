@@ -618,7 +618,9 @@ class MainActivity : ComponentActivity() {
 
                                 }
 
-                                AppRoute.Settings -> SettingsRoute(onBack = navigateBack)
+                                AppRoute.Settings -> SettingsRoute(onBack = navigateBack, onOpenAdvanced = { navigateTo(AppRoute.DownloadSettings(it)) })
+                                is AppRoute.DownloadSettings -> com.neoruaa.xhsdn.feature.settings.DownloadSettingsRoute(
+                                    appRoute.section, onBack = navigateBack, onOpenBrowser = { navigateTo(AppRoute.WebView("https://www.xiaohongshu.com")) })
 
                                 is AppRoute.Detail -> DetailRoute(
                                     route = appRoute,

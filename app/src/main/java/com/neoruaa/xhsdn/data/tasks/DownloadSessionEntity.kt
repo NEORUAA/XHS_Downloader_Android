@@ -40,6 +40,12 @@ data class NoteAuthorEntity(
 
 @Dao
 interface DownloadSessionDao {
+    @Query("""SELECT t.id AS taskId, s.note_id AS noteId, s.author_name AS author, COALESCE(t.note_title,'') AS title,
+        r.media_id AS mediaId, r.state AS state, t.created_at AS createdAt
+        FROM download_resources r JOIN download_sessions s ON r.task_id = s.task_id JOIN download_tasks t ON t.id = r.task_id
+        WHERE r.state IN ('COMPLETED','SKIPPED') AND r.media_id NOT LIKE '%:output:%'
+        ORDER BY t.id, r.media_id LIMIT :limit OFFSET :offset""")
+    suspend fun exportPage(limit: Int, offset: Int): List<DownloadRecord>
     @Upsert suspend fun saveSession(session: DownloadSessionEntity)
     @Query("SELECT * FROM download_sessions WHERE task_id = :id") suspend fun session(id: Long): DownloadSessionEntity?
     @Upsert suspend fun saveResource(resource: DownloadResourceEntity)

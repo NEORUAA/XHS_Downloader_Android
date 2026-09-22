@@ -61,15 +61,27 @@ class DownloadQueue(private val context: Context, private val container: AppCont
     }
 
     suspend fun drain() = drainLock.withLock {
-        container.initialization.await()
-        while (currentCoroutineContext().isActive) {
-            val job = controlLock.withLock {
-                val id = sessions.nextQueued() ?: return@withLock null
-                _activeTask.value = id
-                container.scope.launch { execute(id) }.also { activeJob = it }
-            } ?: break
-            job.join()
-            controlLock.withLock { if (activeJob === job) { activeJob = null; _activeTask.value = null } }
+        try {
+            coroutineScope {
+                container.initialization.await()
+                while (currentCoroutineContext().isActive) {
+                    val job = controlLock.withLock pick@ {
+                        val id = sessions.nextQueued() ?: return@pick null
+                        _activeTask.value = id
+                        launch { execute(id) }.also { activeJob = it }
+                    } ?: break
+                    job.join()
+                    controlLock.withLock { if (activeJob === job) { activeJob = null; _activeTask.value = null } }
+                }
+            }
+        } finally {
+            withContext(NonCancellable) {
+                controlLock.withLock {
+                    activeJob?.cancelAndJoin()
+                    activeJob = null
+                    _activeTask.value = null
+                }
+            }
         }
     }
 
@@ -152,6 +164,7 @@ class DownloadQueue(private val context: Context, private val container: AppCont
             val options = settings.downloadOptions
             val task = tasks.getTaskById(id) ?: return
             tasks.updateTaskStatus(id, TaskStatus.RESOLVING)
+            debug(context.getString(R.string.download_resolving))
             val note = session.resolvedJson?.let { DownloadJson.decodeFromString<ResolvedNote>(it) } ?: run {
                 val source = OkHttpXhsPageSource(container.network.client(options, media = false))
                 DefaultXhsContentRepository(source::fetchHtml, source::resolveShortUrl).resolve(task.noteUrl).also {
@@ -205,7 +218,7 @@ class DownloadQueue(private val context: Context, private val container: AppCont
                 }
             }
             suspend fun runResource(mediaId: String, action: suspend () -> Pair<List<StoredMediaRef>, List<String>>) {
-                val key = ResumableTransfer.fingerprint("${note.noteId}|$mediaId|${session.settingsJson}|${folders.joinToString("/")}")
+                val key = NoteOutput.recordKey(note.noteId, mediaId, settings, folders)
                 val existing = sessions.resources(id).firstOrNull { it.mediaId == mediaId && it.state in setOf("COMPLETED", "SKIPPED") }
                 val previous = existing ?: if (options.skipExisting) sessions.completedResources(key).firstOrNull { refsExist(it.refsJson) } else null
                 try {
@@ -311,13 +324,22 @@ class DownloadQueue(private val context: Context, private val container: AppCont
             val status = when { failed > 0 && (complete > 0 || hasSavedFiles) -> TaskStatus.PARTIAL; failed > 0 -> TaskStatus.FAILED; skipped == total -> TaskStatus.SKIPPED; else -> TaskStatus.COMPLETED }
             tasks.updateTask(id) { it.copy(status = status, completedFiles = complete, failedFiles = failed, currentFileProgress = 0f,
                 completedAt = System.currentTimeMillis(), errorMessage = warnings.joinToString("\n").ifBlank { null }) }
+            debug(context.getString(R.string.download_result_summary, complete, total, failed))
             if (failed == 0) transfer.clear(id)
         } catch (cancelled: CancellationException) {
             withContext(NonCancellable) { tasks.updateTaskStatus(id, TaskStatus.PAUSED) }
             throw cancelled
         } catch (error: Exception) {
             tasks.updateTaskStatus(id, TaskStatus.FAILED, errorMessage(error))
+            debug(errorMessage(error))
         } finally { _progress.update { it - id } }
+    }
+
+    private fun debug(message: String) {
+        // Notification permission must never change the outcome of a download.
+        runCatching { com.neoruaa.xhsdn.utils.NotificationHelper.showOrUpdateDebugNotification(
+            context, context.getString(R.string.download_queue_title), message, important = false,
+        ) }
     }
 
     private fun refsExist(json: String): Boolean = runCatching {

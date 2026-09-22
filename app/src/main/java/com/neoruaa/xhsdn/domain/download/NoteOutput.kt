@@ -4,6 +4,8 @@ import com.neoruaa.xhsdn.core.model.ResolvedMedia
 import com.neoruaa.xhsdn.core.model.ResolvedNote
 import com.neoruaa.xhsdn.data.settings.*
 import java.net.URI
+import kotlinx.serialization.encodeToString
+import com.neoruaa.xhsdn.data.network.ResumableTransfer
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -60,6 +62,16 @@ object NoteOutput {
         val template = if (settings.useCustomNamingFormat) settings.customNamingTemplate else "{postId}"
         val base = Regex("\\{([a-zA-Z_]+)\\}").replace(template) { values[it.groupValues[1]].orEmpty() }
         return safePart(base, note.noteId.ifBlank { "note" }) + "_${(index + 1).toString().padStart(2, '0')}.$extension"
+    }
+
+    fun recordKey(noteId: String, mediaId: String, settings: AppSettings, folders: List<String>): String {
+        val options = settings.downloadOptions
+        val identity = listOf(noteId, mediaId, settings.customStorageTreeUri.orEmpty(),
+            if (settings.useCustomNamingFormat) settings.customNamingTemplate else "{postId}",
+            options.imageFormat.name, options.videoPreference.name, options.livePhotoMode.name,
+            options.imageDownload.toString(), options.videoDownload.toString(), options.videoCoverDownload.toString(),
+            options.writePublishTime.toString()) + folders
+        return ResumableTransfer.fingerprint(DownloadJson.encodeToString(identity))
     }
 
     fun folders(note: ResolvedNote, options: DownloadOptions, remark: String): List<String> = buildList {

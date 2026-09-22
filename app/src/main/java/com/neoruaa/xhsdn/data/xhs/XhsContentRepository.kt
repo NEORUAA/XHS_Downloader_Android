@@ -59,7 +59,7 @@ class DefaultXhsContentRepository(
         } catch (error: Throwable) {
             throw XhsResolveException(DownloadFailure.Parsing(error), error)
         }
-        parsed.resolved ?: throw XhsResolveException(DownloadFailure.RequiresWebView)
+        parsed.resolved?.takeIf { it.noteId.isNotBlank() } ?: throw XhsResolveException(DownloadFailure.RequiresWebView)
     }
 }
 

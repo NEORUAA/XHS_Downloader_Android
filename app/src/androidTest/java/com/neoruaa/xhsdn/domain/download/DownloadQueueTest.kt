@@ -58,11 +58,11 @@ class DownloadQueueTest {
                 }
             }
         }
-        var taskId: Long? = null
+        val taskIds = mutableListOf<Long>()
         val scenario = ActivityScenario.launch(MainActivity::class.java)
         try {
             val id = container.taskRepository.createTask("https://www.xiaohongshu.com/explore/fixture", "Queue fixture", NoteType.IMAGE, 2)
-            taskId = id
+            taskIds += id
             val note = ResolvedNote("https://www.xiaohongshu.com/explore/fixture", "Queue fixture", "Fixture", null, null, null, noteId = "fixture_${System.nanoTime()}",
                 items = listOf(ResolvedMedia.Image("http://127.0.0.1:${server.localPort}/selected", id = "selected"),
                     ResolvedMedia.Image("http://127.0.0.1:${server.localPort}/unselected", id = "unselected")))
@@ -83,8 +83,24 @@ class DownloadQueueTest {
             assertEquals(1, completed.mediaRefs.size)
             assertTrue(requests.all { it.first == "/selected" })
             assertTrue(requests.any { it.second?.startsWith("bytes=") == true })
+            suspend fun repeatTask(skip: Boolean): com.neoruaa.xhsdn.data.DownloadTask {
+                val next = container.taskRepository.createTask(note.canonicalUrl, "Queue fixture", NoteType.IMAGE, 1)
+                taskIds += next
+                val settings = AppSettings(downloadOptions = com.neoruaa.xhsdn.data.settings.DownloadOptions(skipExisting = skip))
+                container.taskDatabase.downloadSessionDao().saveSession(DownloadSessionEntity(next, DownloadJson.encodeToString(settings),
+                    resolvedJson = DownloadJson.encodeToString(note), selectedJson = DownloadJson.encodeToString(setOf("selected"))))
+                container.downloadQueue.wake()
+                return withTimeout(20_000) { container.taskRepository.observeTask(next).first { it?.isCompleted == true } }!!
+            }
+            val beforeRepeat = requests.size
+            assertEquals(TaskStatus.COMPLETED, repeatTask(false).status)
+            assertTrue(requests.size > beforeRepeat)
+            val beforeSkip = requests.size
+            assertEquals(TaskStatus.SKIPPED, repeatTask(true).status)
+            assertEquals(beforeSkip, requests.size)
+
         } finally {
-            taskId?.let { id ->
+            taskIds.forEach { id ->
                 container.downloadQueue.cancel(id)
                 container.taskRepository.getTaskById(id)?.mediaRefs?.forEach { app.deleteStoredMedia(it) }
                 container.downloadQueue.delete(id)

@@ -12,6 +12,9 @@ sealed interface AppRoute : NavKey {
     data object Settings : AppRoute
 
     @Serializable
+    data class DownloadSettings(val section: Int) : AppRoute
+
+    @Serializable
     data class Detail(
         val taskId: String,
         val taskTitle: String,

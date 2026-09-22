@@ -68,7 +68,7 @@ class XhsNoteParser(
         val imageList = note.optJSONArray("imageList") ?: note.optJSONArray("images") ?: JSONArray()
         val mainVideo = note.optJSONObject("video")
         val type = note.optString("type").ifBlank { if (mainVideo != null && imageList.length() <= 1 && imageList.optJSONObject(0)?.optJSONObject("stream") == null) "video" else "normal" }
-        val isVideoNote = type == "video" && imageList.length() <= 1
+        val isVideoNote = type == "video"
         val items = mutableListOf<ResolvedMedia>()
         for (index in 0 until imageList.length()) {
             val item = imageList.optJSONObject(index) ?: continue

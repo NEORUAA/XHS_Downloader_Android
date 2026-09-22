@@ -20,7 +20,7 @@ object XhsUrlParser {
 
     fun isSupportedUrl(url: String?): Boolean = runCatching {
         val uri = URI(url ?: return false)
-        uri.scheme in setOf("http", "https") && uri.host?.lowercase() in hosts && uri.userInfo == null
+        uri.scheme?.lowercase() in setOf("http", "https") && uri.host?.lowercase() in hosts && uri.userInfo == null
     }.getOrDefault(false)
 
     fun isShortUrl(url: String): Boolean = runCatching {
@@ -28,7 +28,7 @@ object XhsUrlParser {
     }.getOrDefault(false)
 
     fun extractPostId(url: String?): String? = runCatching {
-        val normalized = url?.let { if (it.startsWith("http")) it else "https://$it" } ?: return null
+        val normalized = url?.let { if (it.startsWith("http", true)) it else "https://$it" } ?: return null
         if (!isSupportedUrl(normalized) || isShortUrl(normalized)) return null
         val segments = URI(normalized).path.trim('/').split('/')
         when {

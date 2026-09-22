@@ -75,10 +75,15 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithCache
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.displayCutout
 import androidx.compose.foundation.layout.union
@@ -1768,12 +1773,12 @@ private fun TaskCell(
                 onLongClickLabel = stringResource(R.string.more_options),
                 onLongClick = { showActions = true }
             )
-            .padding(12.dp)
+            .padding(vertical = 16.dp)
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(4.dp),
+                .padding(horizontal = 16.dp),
         ) {
             // 顶部：时间 + 状态标签
             Row(
@@ -1838,10 +1843,9 @@ private fun TaskCell(
                 }
             }
 
-            Spacer(modifier = Modifier.height(8.dp))
-
             // 进度条（仅下载中显示）
             if (task.totalFiles > 0 && task.status == com.neoruaa.xhsdn.data.TaskStatus.DOWNLOADING) {
+                Spacer(modifier = Modifier.height(8.dp))
                 Column {
                     // 进度文本
                     Row(
@@ -1869,37 +1873,59 @@ private fun TaskCell(
                                 .clip(RoundedCornerShape(3.dp))
                     )
                 }
-                Spacer(modifier = Modifier.height(8.dp))
             }
+        }
 
-            // 媒体预览网格（最后一个任务显示）
-            if (mediaItems.isNotEmpty()) {
-                Spacer(modifier = Modifier.height(8.dp))
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .horizontalScroll(rememberScrollState())
-                ) {
-                    mediaItems.forEach { item ->
-                        Box(
-                            modifier = Modifier
-                                .size(60.dp)
-                                .squircleSurface(
-                                    color = MiuixTheme.colorScheme.surface,
-                                    cornerRadius = 8.dp
-                                )
-                                .clickable { onMediaClick(item) }
-                        ) {
-                            val bitmap = rememberThumbnail(item)
-                            bitmap?.let {
-                                Image(
-                                    bitmap = it,
-                                    contentDescription = null,
-                                    contentScale = androidx.compose.ui.layout.ContentScale.Crop,
-                                    modifier = Modifier.fillMaxSize()
-                                )
-                            }
+        // Keep the scroll viewport edge-to-edge and its content inset aligned with the text.
+        if (mediaItems.isNotEmpty()) {
+            val previewScroll = rememberScrollState()
+            val cardColor = MiuixTheme.colorScheme.surfaceVariant
+            val isRtl = LocalLayoutDirection.current == LayoutDirection.Rtl
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 16.dp)
+                    .drawWithCache {
+                        val edgeWidth = 16.dp.toPx().coerceAtMost(size.width / 2)
+                        val edgeSize = androidx.compose.ui.geometry.Size(edgeWidth, size.height)
+                        val transparent = cardColor.copy(alpha = 0f)
+                        val leftFade = Brush.horizontalGradient(listOf(cardColor, transparent), endX = edgeWidth)
+                        val rightStart = size.width - edgeWidth
+                        val rightFade = Brush.horizontalGradient(listOf(transparent, cardColor), startX = rightStart, endX = size.width)
+                        onDrawWithContent {
+                            drawContent()
+                            val before = previewScroll.value.toFloat()
+                            val after = (previewScroll.maxValue - previewScroll.value).toFloat()
+                            val leftOverflow = if (isRtl) after else before
+                            val rightOverflow = if (isRtl) before else after
+                            if (leftOverflow > 0) drawRect(leftFade, size = edgeSize,
+                                alpha = (leftOverflow / edgeWidth).coerceIn(0f, 1f))
+                            if (rightOverflow > 0) drawRect(rightFade, topLeft = Offset(rightStart, 0f), size = edgeSize,
+                                alpha = (rightOverflow / edgeWidth).coerceIn(0f, 1f))
+                        }
+                    }
+                    .horizontalScroll(previewScroll)
+                    .padding(horizontal = 16.dp)
+            ) {
+                mediaItems.forEach { item ->
+                    Box(
+                        modifier = Modifier
+                            .size(60.dp)
+                            .squircleSurface(
+                                color = MiuixTheme.colorScheme.surface,
+                                cornerRadius = 8.dp
+                            )
+                            .clickable { onMediaClick(item) }
+                    ) {
+                        val bitmap = rememberThumbnail(item)
+                        bitmap?.let {
+                            Image(
+                                bitmap = it,
+                                contentDescription = null,
+                                contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                                modifier = Modifier.fillMaxSize()
+                            )
                         }
                     }
                 }
@@ -1911,8 +1937,8 @@ private fun TaskCell(
         if (statusMessage != null || hasTaskActions) {
             Row(
                 modifier = Modifier.fillMaxWidth()
-                    .padding(horizontal = 4.dp)
-                    .padding(top = 8.dp, bottom = 4.dp),
+                    .padding(horizontal = 16.dp)
+                    .padding(top = 8.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {

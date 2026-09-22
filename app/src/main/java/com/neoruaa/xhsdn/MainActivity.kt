@@ -1897,26 +1897,46 @@ private fun TaskCell(
             }
         }
 
-        task.errorMessage?.takeIf { it.isNotBlank() }?.let { message ->
-            Text(message, modifier = Modifier.padding(vertical = 8.dp), fontSize = 12.sp,
-                color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
-        }
-        if (task.status != TaskStatus.COMPLETED && task.status != TaskStatus.SKIPPED) {
-            Spacer(Modifier.height(12.dp))
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                if (task.isActive || task.status == TaskStatus.PAUSED) {
-                    ActionIconButton(imageVector = MiuixIcons.Regular.Close, contentDescription = stringResource(R.string.download_cancel), onClick = onCancel)
+        val statusMessage = task.errorMessage?.takeIf(String::isNotBlank)
+        val hasTaskActions = task.status != TaskStatus.COMPLETED && task.status != TaskStatus.SKIPPED
+        if (statusMessage != null || hasTaskActions) {
+            Row(
+                modifier = Modifier.fillMaxWidth()
+                    .padding(horizontal = 4.dp)
+                    .padding(top = 8.dp, bottom = 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                if (statusMessage != null) {
+                    Text(
+                        text = statusMessage,
+                        modifier = Modifier.weight(1f),
+                        fontSize = 12.sp,
+                        color = MiuixTheme.colorScheme.onSurfaceVariantSummary
+                    )
+                } else {
+                    Spacer(Modifier.weight(1f))
                 }
-                if (task.status in setOf(TaskStatus.QUEUED, TaskStatus.RESOLVING, TaskStatus.DOWNLOADING)) {
-                    ActionIconButton(imageVector = MiuixIcons.Regular.Pause, contentDescription = stringResource(R.string.download_pause), onClick = onStop)
-                }
-                if (task.status in setOf(TaskStatus.PAUSED, TaskStatus.WAITING_FOR_USER)) {
-                    ActionIconButton(imageVector = if (task.status == TaskStatus.WAITING_FOR_USER) MiuixIcons.Regular.SelectAll else MiuixIcons.Regular.Play,
-                        contentDescription = stringResource(if (task.status == TaskStatus.WAITING_FOR_USER) R.string.download_select else R.string.download_resume), onClick = onContinue)
-                }
-                if (task.status in setOf(TaskStatus.FAILED, TaskStatus.PARTIAL, TaskStatus.CANCELLED)) {
-                    ActionIconButton(imageVector = MiuixIcons.Regular.Refresh, contentDescription = stringResource(R.string.retry), onClick = onRetry)
-                    ActionIconButton(imageVector = MiuixIcons.Regular.Link, contentDescription = stringResource(R.string.web_crawl_option), onClick = onWebCrawl)
+                if (hasTaskActions) {
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        if (task.isActive || task.status == TaskStatus.PAUSED) {
+                            ActionIconButton(imageVector = MiuixIcons.Regular.Close, contentDescription = stringResource(R.string.download_cancel), onClick = onCancel)
+                        }
+                        if (task.status in setOf(TaskStatus.QUEUED, TaskStatus.RESOLVING, TaskStatus.DOWNLOADING)) {
+                            ActionIconButton(imageVector = MiuixIcons.Regular.Pause, contentDescription = stringResource(R.string.download_pause), onClick = onStop)
+                        }
+                        if (task.status in setOf(TaskStatus.PAUSED, TaskStatus.WAITING_FOR_USER)) {
+                            ActionIconButton(imageVector = if (task.status == TaskStatus.WAITING_FOR_USER) MiuixIcons.Regular.SelectAll else MiuixIcons.Regular.Play,
+                                contentDescription = stringResource(if (task.status == TaskStatus.WAITING_FOR_USER) R.string.download_select else R.string.download_resume), onClick = onContinue)
+                        }
+                        if (task.status in setOf(TaskStatus.FAILED, TaskStatus.PARTIAL, TaskStatus.CANCELLED)) {
+                            ActionIconButton(imageVector = MiuixIcons.Regular.Refresh, contentDescription = stringResource(R.string.retry), onClick = onRetry)
+                            ActionIconButton(imageVector = MiuixIcons.Regular.Link, contentDescription = stringResource(R.string.web_crawl_option), onClick = onWebCrawl)
+                        }
+                    }
                 }
             }
         }

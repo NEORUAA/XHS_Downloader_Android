@@ -201,6 +201,7 @@ private val thumbnailCache = object : LruCache<String, ImageBitmap>(50) {}
 
 class MainActivity : ComponentActivity() {
     private val viewModel: MainViewModel by viewModels()
+    private val updateChecker get() = (application as XHSApplication).appContainer.updateChecker
     private val historyViewModel: HistoryViewModel by viewModels {
         HistoryViewModel.factory(
             (application as XHSApplication).appContainer.taskRepository
@@ -255,6 +256,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        updateChecker.checkOnStartup()
         _autoDownloadIntentUrl.value = consumeDownloadIntent(intent)
 
         if (Build.VERSION.SDK_INT >= 33) { // Android 13
@@ -643,6 +645,7 @@ class MainActivity : ComponentActivity() {
                         }
                     }
                 )
+                com.neoruaa.xhsdn.feature.update.UpdateDialog(updateChecker)
             }
         }
     }

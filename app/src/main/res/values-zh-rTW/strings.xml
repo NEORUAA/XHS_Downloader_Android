@@ -353,4 +353,24 @@
     <string name="download_result_summary">已儲存 %1$d/%2$d；失敗 %3$d</string>
     <string name="common_reset_input">還原原值</string>
     <string name="settings_quality_compatibility">相容性優先（H.264）</string>
+    <string name="settings_check_updates">檢查更新</string>
+    <string name="update_check_hint">檢查 GitHub 上發布的新版本</string>
+    <string name="update_checking">正在檢查更新…</string>
+    <string name="update_available">發現新版本</string>
+    <string name="update_up_to_date">無需更新</string>
+    <string name="update_no_release">暫無正式版本</string>
+    <string name="update_versions">目前版本：%1$s\n最新正式版本：%2$s</string>
+    <string name="update_no_release_hint">GitHub 儲存庫尚未發布正式版本。</string>
+    <string name="update_failed">檢查更新失敗</string>
+    <string name="update_error_network">無法連線至 GitHub，請檢查網路後重試。</string>
+    <string name="update_error_timeout">檢查更新逾時，請稍後重試。</string>
+    <string name="update_error_rate_limit">GitHub 請求次數受限，請稍後重試。</string>
+    <string name="update_error_http">GitHub 回傳 HTTP %1$d，請稍後重試。</string>
+    <string name="update_error_response">GitHub 回傳的版本資訊無效，請稍後重試。</string>
+    <string name="update_error_version">版本號格式無法識別，無法判斷是否有更新。</string>
+    <string name="update_notes_empty">此版本未提供更新說明。</string>
+    <string name="update_later">稍後</string>
+    <string name="update_open_release">前往下載</string>
+    <string name="update_open_failed">無法開啟版本下載頁面。</string>
+    <string name="update_close">關閉</string>
 </resources>

@@ -353,4 +353,24 @@
     <string name="download_result_summary">Saved %1$d/%2$d; failed %3$d</string>
     <string name="common_reset_input">Restore original value</string>
     <string name="settings_quality_compatibility">Compatibility (H.264 first)</string>
+    <string name="settings_check_updates">Check for updates</string>
+    <string name="update_check_hint">Check for new releases on GitHub</string>
+    <string name="update_checking">Checking for updates…</string>
+    <string name="update_available">Update available</string>
+    <string name="update_up_to_date">No update needed</string>
+    <string name="update_no_release">No published release</string>
+    <string name="update_versions">Installed: %1$s\nLatest release: %2$s</string>
+    <string name="update_no_release_hint">No public stable release is available in the GitHub repository.</string>
+    <string name="update_failed">Update check failed</string>
+    <string name="update_error_network">Could not connect to GitHub. Check your connection and try again.</string>
+    <string name="update_error_timeout">The request timed out. Please try again later.</string>
+    <string name="update_error_rate_limit">GitHub is limiting requests. Please try again later.</string>
+    <string name="update_error_http">GitHub returned HTTP %1$d. Please try again later.</string>
+    <string name="update_error_response">GitHub returned invalid release information. Please try again later.</string>
+    <string name="update_error_version">The version format is not recognized, so update availability could not be determined.</string>
+    <string name="update_notes_empty">No release notes were provided.</string>
+    <string name="update_later">Later</string>
+    <string name="update_open_release">Go to download</string>
+    <string name="update_open_failed">Could not open the release page.</string>
+    <string name="update_close">Close</string>
 </resources>

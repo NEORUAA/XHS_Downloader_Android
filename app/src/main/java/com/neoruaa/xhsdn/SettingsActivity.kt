@@ -349,6 +349,7 @@ class SettingsActivity : ComponentActivity() {
                     onResetStorageLocation = viewModel::onResetCustomStorageLocation,
                     topBarState = topBarState
                 )
+                com.neoruaa.xhsdn.feature.update.UpdateDialog((application as XHSApplication).appContainer.updateChecker)
             }
         }
     }
@@ -738,6 +739,8 @@ private fun SettingsScreen(
         return
     }
     val openAdvanced: (Int) -> Unit = onOpenAdvanced ?: { localAdvanced = it }
+    val updateChecker = remember(context) { (context.applicationContext as XHSApplication).appContainer.updateChecker }
+    val updateState by updateChecker.state.collectAsStateWithLifecycle()
     val scrollBehavior = top.yukonga.miuix.kmp.basic.MiuixScrollBehavior(state = topBarState)
     val windowLayoutInfo = rememberWindowLayoutInfo()
     val topBarBackdrop = rememberMiuixTopBarBackdrop()
@@ -987,7 +990,7 @@ private fun SettingsScreen(
             }
 
             groupedCardItems(
-                items = listOf("version", "github"),
+                items = listOf("version", "check_updates", "github"),
                 key = { "about_$it" }
             ) { row ->
                 when (row) {
@@ -998,6 +1001,14 @@ private fun SettingsScreen(
                             BuildConfig.VERSION_NAME
                         ),
                         onClick = { }
+                    )
+                    "check_updates" -> BasicComponent(
+                        title = stringResource(R.string.settings_check_updates),
+                        summary = stringResource(if (updateState.isChecking) R.string.update_checking else R.string.update_check_hint),
+                        onClick = updateChecker::checkManually,
+                        endActions = {
+                            ActionIconButton(MiuixIcons.Regular.Refresh, stringResource(R.string.settings_check_updates), updateChecker::checkManually)
+                        }
                     )
                     "github" -> BasicComponent(
                         title = stringResource(R.string.visit_github),

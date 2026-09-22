@@ -53,6 +53,10 @@ class AppContainer(context: Context) {
     val credentials by lazy { com.neoruaa.xhsdn.data.network.SessionCredentials(appContext) }
     val network by lazy { com.neoruaa.xhsdn.data.network.XhsNetwork(credentials) }
     val downloadQueue by lazy { com.neoruaa.xhsdn.domain.download.DownloadQueue(appContext, this) }
+    val updateChecker by lazy {
+        val repository = com.neoruaa.xhsdn.data.update.GitHubUpdateRepository()
+        com.neoruaa.xhsdn.feature.update.UpdateCheckController(scope, repository::check)
+    }
 
     private val initializationStarted = AtomicBoolean(false)
     private val initializationCompletion = CompletableDeferred<Unit>()

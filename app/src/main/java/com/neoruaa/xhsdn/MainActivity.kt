@@ -308,23 +308,20 @@ class MainActivity : ComponentActivity() {
             // 剪贴板检测相关状态
             context = LocalContext.current
             var detectedXhsLink by remember { mutableStateOf<String?>(null) }
-            val manualInputLinks = appSettings.manualInputLinks
-            val xhsLinksEnabled = appSettings.xhsLinksEnabled
-            val selectiveDownload = appSettings.selectiveDownload
             
             // 监听生命周期 ON_RESUME 和 ON_PAUSE 进行剪贴板监听器管理
             val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
 
             // 提取核心检测逻辑为可复用函数
             fun checkClipboard() {
-                if (!xhsLinksEnabled || manualInputLinks) {
+                if (!appSettings.xhsLinksEnabled || appSettings.manualInputLinks) {
                     detectedXhsLink = null
                     return
                 }
                 val currentAutoRead = appSettings.autoReadClipboard
                 val currentShowBubble = appSettings.showClipboardBubble
 
-                Log.d("XHS_Debug", "checkClipboard: AutoRead=$currentAutoRead, ShowBubble=$currentShowBubble, ManualInput=$manualInputLinks")
+                Log.d("XHS_Debug", "checkClipboard: AutoRead=$currentAutoRead, ShowBubble=$currentShowBubble, ManualInput=${appSettings.manualInputLinks}")
 
                 // 2. Access Clipboard
                 val clipboard = context.getSystemService(CLIPBOARD_SERVICE) as android.content.ClipboardManager
@@ -349,7 +346,7 @@ class MainActivity : ComponentActivity() {
 
                                 ensureStoragePermission {
                                     // Trigger Download
-                                    if (selectiveDownload) {
+                                    if (appSettings.selectiveDownload) {
                                         viewModel.startSelectiveDownload { showToast(it) }
                                     } else {
                                         viewModel.startDownload { showToast(it) }
@@ -473,16 +470,17 @@ class MainActivity : ComponentActivity() {
                                 AppRoute.Main -> {
                                     var showInputDialog by remember { mutableStateOf(false) }
 
+                                    // Read observable settings inside the retained navigation content.
                                     MainScreen(
                     uiState = uiState,
                     historyUiState = historyUiState,
                     downloadSpeeds = viewModel.downloadSpeeds,
-                    manualInputLinks = manualInputLinks,
+                    manualInputLinks = appSettings.manualInputLinks,
                     showInputDialog = showInputDialog,
                     onShowInputDialogChange = { showInputDialog = it },
                     scrollBehavior = scrollBehavior,
                     onDownload = {
-                        if (!manualInputLinks && xhsLinksEnabled) {
+                        if (!appSettings.manualInputLinks && appSettings.xhsLinksEnabled) {
                             ensureStoragePermission {
                                 // 先读取剪贴板
                                 val clipboard = getSystemService(CLIPBOARD_SERVICE) as android.content.ClipboardManager
@@ -492,7 +490,7 @@ class MainActivity : ComponentActivity() {
                                 if (UrlUtils.isXhsLink(url)) {
                                     viewModel.updateUrl(clipText)
 
-                                    if (selectiveDownload) {
+                                    if (appSettings.selectiveDownload) {
                                         viewModel.startSelectiveDownload { showToast(it) }
                                     } else {
                                         // 先开始下载（创建任务）
@@ -583,7 +581,7 @@ class MainActivity : ComponentActivity() {
                     onManualInputDownload = { inputLink ->
                         ensureStoragePermission {
                             viewModel.updateUrl(inputLink)
-                            if (selectiveDownload) {
+                            if (appSettings.selectiveDownload) {
                                 viewModel.startSelectiveDownload { showToast(it) }
                             } else {
                                 viewModel.startDownload { showToast(it) }

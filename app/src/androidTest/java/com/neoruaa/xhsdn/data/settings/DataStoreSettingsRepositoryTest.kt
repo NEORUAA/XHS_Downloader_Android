@@ -71,6 +71,23 @@ class DataStoreSettingsRepositoryTest {
     }
 
     @Test
+    fun manualAndSelectiveModesSurviveRepositoryRestartAndOtherEdits() = runBlocking {
+        val original = DataStoreSettingsRepository(context, scope)
+        original.awaitReady()
+        original.setManualInputLinks(true)
+        original.setSelectiveDownload(true)
+        scope.coroutineContext[Job]?.cancelAndJoin()
+        scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+        val reopened = DataStoreSettingsRepository(context, scope)
+        reopened.awaitReady()
+        reopened.setKeepScreenOn(true)
+        val restored = reopened.settings.first()
+        assertTrue(restored.manualInputLinks)
+        assertTrue(restored.selectiveDownload)
+        assertTrue(restored.keepScreenOn)
+    }
+
+    @Test
     fun persistsAndClearsCustomStorageLocation() = runBlocking {
         val repository = DataStoreSettingsRepository(context, scope)
         assertEquals(null, withTimeout(5_000) { repository.settings.first() }.customStorageTreeUri)

@@ -208,11 +208,14 @@ class SettingsViewModel(
         }
     }
 
-    private fun persist(state: SettingsUiState) {
+    private fun persist(change: (SettingsUiState) -> SettingsUiState) {
         hasChanges = true
         viewModelScope.launch {
             persistenceMutex.withLock {
+                repository.awaitReady()
                 repository.update { current ->
+                    // Apply only this user action to the latest persisted snapshot.
+                    val state = change(current.toUiState())
                     current.copy(
                         createLivePhotos = state.createLivePhotos,
                         useCustomNamingFormat = state.useCustomNaming,
@@ -239,7 +242,7 @@ class SettingsViewModel(
     private fun updateState(block: (SettingsUiState) -> SettingsUiState) {
         val updated = block(_state.value)
         _state.value = updated
-        persist(updated)
+        persist(block)
     }
 
     private fun AppSettings.toUiState(

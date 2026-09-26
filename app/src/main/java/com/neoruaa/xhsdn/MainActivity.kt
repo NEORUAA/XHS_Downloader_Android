@@ -319,7 +319,7 @@ class MainActivity : ComponentActivity() {
 
             // 提取核心检测逻辑为可复用函数
             fun checkClipboard() {
-                if (!xhsLinksEnabled) {
+                if (!xhsLinksEnabled || manualInputLinks) {
                     detectedXhsLink = null
                     return
                 }

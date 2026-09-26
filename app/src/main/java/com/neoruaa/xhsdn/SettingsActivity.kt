@@ -839,9 +839,7 @@ private fun SettingsScreen(
             ) { row ->
                 when (row) {
                     "storage_location" -> if (uiState.customStorageTreeUri == null) {
-                        ArrowPreference(
-                            title = stringResource(R.string.storage_location),
-                            summary = stringResource(R.string.default_save_path_info),
+                        com.neoruaa.xhsdn.feature.settings.DefaultStoragePreference(
                             onClick = onStorageLocationClick
                         )
                     } else {

@@ -412,4 +412,7 @@
     <string name="settings_xhs_account">小紅書帳號</string>
     <string name="settings_account_signed_out">未登入</string>
     <string name="settings_account_signed_in">已登入</string>
+    <string name="settings_default_storage_active">目前使用預設儲存位置</string>
+    <string name="settings_default_storage_help">查看預設下載位置</string>
+    <string name="settings_help_symbol">?</string>
 </resources>

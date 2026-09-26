@@ -412,4 +412,7 @@
     <string name="settings_xhs_account">小红书账号</string>
     <string name="settings_account_signed_out">未登录</string>
     <string name="settings_account_signed_in">已登录</string>
+    <string name="settings_default_storage_active">当前使用默认存储位置</string>
+    <string name="settings_default_storage_help">查看默认下载位置</string>
+    <string name="settings_help_symbol">?</string>
 </resources>

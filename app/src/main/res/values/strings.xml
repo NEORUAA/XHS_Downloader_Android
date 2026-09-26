@@ -412,4 +412,7 @@
     <string name="settings_xhs_account">Xiaohongshu account</string>
     <string name="settings_account_signed_out">Not signed in</string>
     <string name="settings_account_signed_in">Signed in</string>
+    <string name="settings_default_storage_active">Currently using the default storage location</string>
+    <string name="settings_default_storage_help">Show default download locations</string>
+    <string name="settings_help_symbol">?</string>
 </resources>

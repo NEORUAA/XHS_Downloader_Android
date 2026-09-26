@@ -132,4 +132,6 @@
 
 本次代码仅补齐 `WEB_LIVEPHOTO_19` 的已知水印标识，原有回退下载仍保留。`app/src/test/resources/xhs/live-photo-web-preview.json` 是该响应的脱敏结构；测试确认所有候选均不是原始视频，不会因为切换视频偏好凭空产生原片。`XhsNoteParser.kt`、`XhsNoteParserTest.kt`、上述夹具及此文档为本轮修改范围。
 
+2026-09-27 补充：[App 媒体响应研究](XHS_APP_MEDIA_RESEARCH.md) 核对了用户提供的两个 Android APK 和一个 IPA。两版 Android native 签名及响应中的 HMAC 更新已能独立执行，媒体接口随后返回登录过期；8.42 独立设备激活又被服务端以设备异常拒绝，未获得会话。尚未接入下载器，也尚未解决此样本的视频水印。
+
 验证：`./gradlew :app:compileDebugKotlin :app:testDebugUnitTest --tests com.neoruaa.xhsdn.data.xhs.XhsNoteParserTest --tests com.neoruaa.xhsdn.domain.download.NoteOutputTest --console=plain` 通过，13 项测试零失败；`git diff --check` 通过。没有改动已能播放的小米容器，也没有暂存、提交或推送。

@@ -132,15 +132,11 @@ class DataStoreSettingsRepositoryTest {
     }
 
     @Test
-    fun xhsLinksAreEnabledByDefaultAndCanBeDisabled() = runBlocking {
-        val repository = DataStoreSettingsRepository(context, scope)
-        assertTrue(withTimeout(5_000) { repository.settings.first() }.xhsLinksEnabled)
-
-        repository.setXhsLinksEnabled(false)
-        val disabled = withTimeout(5_000) {
-            repository.settings.first { !it.xhsLinksEnabled }
-        }
-        assertFalse(disabled.xhsLinksEnabled)
-        assertFalse(repository.currentSettings.xhsLinksEnabled)
+    fun oldDownloadSnapshotsIgnoreRemovedLinkGate() {
+        val settings = DownloadJson.decodeFromString<AppSettings>(
+            """{"xhsLinksEnabled":false,"manualInputLinks":true,"selectiveDownload":true}"""
+        )
+        assertTrue(settings.manualInputLinks)
+        assertTrue(settings.selectiveDownload)
     }
 }

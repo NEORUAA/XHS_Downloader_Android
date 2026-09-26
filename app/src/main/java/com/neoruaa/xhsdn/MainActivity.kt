@@ -287,11 +287,11 @@ class MainActivity : ComponentActivity() {
             
             // 处理自动下载
             val autoUrl by _autoDownloadIntentUrl
-            LaunchedEffect(autoUrl, appSettings.selectiveDownload, appSettings.xhsLinksEnabled) {
+            LaunchedEffect(autoUrl, appSettings.selectiveDownload) {
             autoUrl?.let { url ->
                      settingsRepository.awaitReady()
                      val snapshot = settingsRepository.currentSettings
-                     if (url.isNotEmpty() && snapshot.xhsLinksEnabled) {
+                     if (url.isNotEmpty()) {
                         viewModel.updateUrl(url)
                         ensureStoragePermission {
                             if (snapshot.selectiveDownload) {
@@ -314,7 +314,7 @@ class MainActivity : ComponentActivity() {
 
             // 提取核心检测逻辑为可复用函数
             fun checkClipboard() {
-                if (!appSettings.xhsLinksEnabled || appSettings.manualInputLinks) {
+                if (appSettings.manualInputLinks) {
                     detectedXhsLink = null
                     return
                 }
@@ -480,7 +480,7 @@ class MainActivity : ComponentActivity() {
                     onShowInputDialogChange = { showInputDialog = it },
                     scrollBehavior = scrollBehavior,
                     onDownload = {
-                        if (!appSettings.manualInputLinks && appSettings.xhsLinksEnabled) {
+                        if (!appSettings.manualInputLinks) {
                             ensureStoragePermission {
                                 // 先读取剪贴板
                                 val clipboard = getSystemService(CLIPBOARD_SERVICE) as android.content.ClipboardManager
@@ -1499,6 +1499,12 @@ private fun HistoryPage(
                 ) {
                     ListPopupColumn {
                         menuItems.forEachIndexed { index, item ->
+                            if (index == linkActions.size) {
+                                top.yukonga.miuix.kmp.basic.HorizontalDivider(
+                                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
+                                    thickness = 1.5.dp
+                                )
+                            }
                             DropdownImpl(
                                 item = DropdownItem(
                                     text = item,

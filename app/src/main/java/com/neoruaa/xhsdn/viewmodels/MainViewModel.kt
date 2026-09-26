@@ -4,6 +4,7 @@ import android.app.Application
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.neoruaa.xhsdn.R
@@ -77,7 +78,7 @@ data class MainUiState(
     val selectiveDownload: SelectiveDownloadUiState = SelectiveDownloadUiState()
 )
 
-class MainViewModel(application: Application) : AndroidViewModel(application) {
+class MainViewModel(application: Application, private val savedStateHandle: SavedStateHandle = SavedStateHandle()) : AndroidViewModel(application) {
     private val appContext = application.applicationContext
     private val container = (application as XHSApplication).appContainer
     private val queue = container.downloadQueue
@@ -87,7 +88,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val downloadSpeeds: StateFlow<Map<Long, Long>> = queue.downloadSpeeds
     var currentTaskId: Long = 0
         private set
-    private val autoSelections = MutableStateFlow<Set<Long>>(emptySet())
+    private val autoSelections = savedStateHandle.getStateFlow("pendingSelections", emptyList<Long>())
+
+    private fun updateAutoSelections(change: (Set<Long>) -> Set<Long>) {
+        savedStateHandle["pendingSelections"] = change(autoSelections.value.toSet()).toList()
+    }
 
     init {
         viewModelScope.launch {
@@ -97,10 +102,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             }
         }
         viewModelScope.launch {
-            combine(tasks.observePendingTasks(), autoSelections) { pending, requested -> pending.firstOrNull { it.id in requested && it.status == TaskStatus.WAITING_FOR_USER } }
-                .collect { task ->
-                    if (task != null && !_uiState.value.selectiveDownload.show) showSelection(task.id)
-                }
+            combine(tasks.observePendingTasks(), autoSelections,
+                uiState.map { it.selectiveDownload.show }.distinctUntilChanged()) { pending, requested, visible ->
+                if (visible) null else pending.firstOrNull { it.id in requested && it.status == TaskStatus.WAITING_FOR_USER }
+            }.collectLatest { task ->
+                if (task != null) showSelection(task.id)
+            }
         }
     }
 
@@ -117,8 +124,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val input = uiState.value.urlInput
         viewModelScope.launch {
             try {
-                val ids = withContext(Dispatchers.IO) { queue.enqueue(input, selection, infoOnly) }
-                if (selection) autoSelections.update { it + ids }
+                container.settingsRepository.awaitReady()
+                val requireSelection = !infoOnly && (selection || container.settingsRepository.currentSettings.selectiveDownload)
+                val ids = withContext(Dispatchers.IO) { queue.enqueue(input, requireSelection, infoOnly) }
+                if (requireSelection) updateAutoSelections { it + ids }
             } catch (cancelled: CancellationException) { throw cancelled
             } catch (error: Exception) { onError(queue.errorMessage(error)) }
         }
@@ -139,7 +148,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun cancelSelectiveDownload() {
         val id = uiState.value.selectiveDownload.taskId
-        autoSelections.update { it - id }
+        updateAutoSelections { it - id }
         _uiState.update { it.copy(selectiveDownload = SelectiveDownloadUiState()) }
         // Waiting is durable: dismissing the sheet keeps the task available for later selection.
     }
@@ -205,7 +214,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 val note = noteJson?.let { XhsNoteParser().parseNote(JSONObject(it), url, XhsUrlParser.extractPostId(url)) }
                     ?: throw XhsResolveException(com.neoruaa.xhsdn.domain.download.DownloadFailure.RequiresWebView)
                 val id = queue.acceptResolved(taskId, note)
-                autoSelections.update { it + id }
+                updateAutoSelections { it + id }
             } catch (cancelled: CancellationException) { throw cancelled }
             catch (error: Exception) { _uiState.update { it.copy(status = listOf(queue.errorMessage(error))) } }
         }

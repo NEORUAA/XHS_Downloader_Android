@@ -109,6 +109,35 @@ fun Context.createVideoThumbnail(
     }.getOrNull()
 }
 
+/** Reads original dimensions without decoding a full image or video frame. */
+fun Context.readMediaDimensions(ref: StoredMediaRef, type: MediaType): Pair<Int, Int>? = runCatching {
+    when (type) {
+        MediaType.IMAGE -> {
+            val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            if (ref.legacyPath != null) BitmapFactory.decodeFile(ref.legacyPath, bounds)
+            else contentResolver.openFileDescriptor(ref.androidUri, "r")?.use {
+                BitmapFactory.decodeFileDescriptor(it.fileDescriptor, null, bounds)
+            }
+            if (bounds.outWidth <= 0 || bounds.outHeight <= 0) null
+            else if (ImageOrientationUtils.swapsWidthAndHeight(readExifOrientation(ref))) bounds.outHeight to bounds.outWidth
+            else bounds.outWidth to bounds.outHeight
+        }
+        MediaType.VIDEO -> {
+            val retriever = MediaMetadataRetriever()
+            try {
+                if (ref.legacyPath != null) retriever.setDataSource(ref.legacyPath)
+                else retriever.setDataSource(this, ref.androidUri)
+                val width = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)?.toIntOrNull() ?: 0
+                val height = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT)?.toIntOrNull() ?: 0
+                val rotation = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_ROTATION)?.toIntOrNull() ?: 0
+                if (width <= 0 || height <= 0) null
+                else if (rotation % 180 != 0) height to width else width to height
+            } finally { retriever.release() }
+        }
+        MediaType.OTHER -> null
+    }
+}.getOrNull()
+
 fun Context.readMediaAspectRatio(ref: StoredMediaRef, type: MediaType): Float? = runCatching {
     when (type) {
         MediaType.IMAGE -> {

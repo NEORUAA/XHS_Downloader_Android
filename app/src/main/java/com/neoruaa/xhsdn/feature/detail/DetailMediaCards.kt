@@ -54,6 +54,11 @@ internal fun buildDetailMediaCards(task: DownloadTask, session: DownloadSessionE
                 val completed = resource?.state in setOf("COMPLETED", "SKIPPED")
                 val hasOutputRecords = records.keys.any { it.startsWith("${item.id}:output:") }
                 val image = when (item) { is ResolvedMedia.Image -> item; is ResolvedMedia.LivePhoto -> item.image; else -> null }
+                val video = when (item) { is ResolvedMedia.Video -> item; is ResolvedMedia.LivePhoto -> item.video; else -> null }
+                val videoSource = video?.let { media ->
+                    val firstUrl = NoteOutput.videoUrls(media, options.videoPreference).firstOrNull()
+                    media.candidates.firstOrNull { it.url == firstUrl }
+                }
                 fun addOutput(suffix: String, parts: List<String>, type: MediaType, live: Boolean = false) {
                     val output = records["${item.id}:output:$suffix"]
                     val saved = refs(output).firstOrNull()?.let { local[it.path] }
@@ -66,7 +71,9 @@ internal fun buildDetailMediaCards(task: DownloadTask, session: DownloadSessionE
                             complete = it.state == "TRANSFERRED", failed = it.state == "TRANSFER_FAILED") } ?: MediaTransferProgress()
                     }
                     add(DetailMediaCard("${item.id}:$suffix", saved?.let(::MediaItem), item.previewUrl, type,
-                        image?.width ?: 0, image?.height ?: 0, live, parts, checkpoint, task.status, resource?.state == "FAILED"))
+                        if (type == MediaType.VIDEO) videoSource?.width ?: 0 else image?.width ?: 0,
+                        if (type == MediaType.VIDEO) videoSource?.height ?: 0 else image?.height ?: 0,
+                        live, parts, checkpoint, task.status, resource?.state == "FAILED"))
                 }
                 when (item) {
                     is ResolvedMedia.Image -> addOutput("main", listOf(item.id), MediaType.IMAGE)

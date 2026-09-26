@@ -26,15 +26,19 @@ class SettingsViewModelTest {
             // Simulate an older observer value arriving before the next action.
             repository.settings.value = AppSettings(keepScreenOn = true)
             runCurrent()
+            model.onShowMediaResolutionChange(true)
+            runCurrent()
             model.onSelectiveDownloadChange(true)
             runCurrent()
             assertTrue(repository.currentSettings.manualInputLinks)
             assertTrue(repository.currentSettings.selectiveDownload)
+            assertTrue(repository.currentSettings.showMediaResolution)
             assertFalse(repository.currentSettings.keepScreenOn)
             repository.settings.value = repository.currentSettings
             runCurrent()
             assertTrue(model.state.value.manualInputLinks)
             assertTrue(model.state.value.selectiveDownload)
+            assertTrue(model.state.value.showMediaResolution)
         } finally {
             model.viewModelScope.cancel()
             Dispatchers.resetMain()
@@ -43,13 +47,14 @@ class SettingsViewModelTest {
 
     @Test fun loadingSettingsBeforeAnEditPreservesUnrelatedPreferences() = runTest {
         Dispatchers.setMain(StandardTestDispatcher(testScheduler))
-        val repository = DelayedSettings(AppSettings(manualInputLinks = true, selectiveDownload = true))
+        val repository = DelayedSettings(AppSettings(manualInputLinks = true, selectiveDownload = true, showMediaResolution = true))
         val model = SettingsViewModel(repository)
         try {
             model.onKeepScreenOnChange(true)
             advanceUntilIdle()
             assertTrue(repository.currentSettings.manualInputLinks)
             assertTrue(repository.currentSettings.selectiveDownload)
+            assertTrue(repository.currentSettings.showMediaResolution)
             assertTrue(repository.currentSettings.keepScreenOn)
         } finally {
             model.viewModelScope.cancel()

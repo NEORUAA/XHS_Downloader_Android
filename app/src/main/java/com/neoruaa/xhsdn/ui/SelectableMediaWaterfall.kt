@@ -69,6 +69,7 @@ import com.neoruaa.xhsdn.feature.detail.DetailMediaCard
 import com.neoruaa.xhsdn.domain.download.MediaTransferProgress
 import com.neoruaa.xhsdn.data.TaskStatus
 import com.neoruaa.xhsdn.XHSApplication
+import com.neoruaa.xhsdn.utils.readMediaDimensions
 import top.yukonga.miuix.kmp.basic.LinearProgressIndicator
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Checkbox
@@ -97,6 +98,7 @@ fun DetailMediaWaterfall(
     cards: List<DetailMediaCard> = emptyList(),
     taskId: Long? = null,
 ) {
+    val showResolution = rememberShowMediaResolution()
     val entries = remember(cards, mediaItems) { cards.ifEmpty { mediaItems.map { DetailMediaCard(it.path, stored = it) } } }
     StagedBalancedTwoLaneLayout(
         modifier = modifier,
@@ -107,6 +109,7 @@ fun DetailMediaWaterfall(
         if (stored != null) {
             DetailMediaPreview(
                 item = stored,
+                showResolution = showResolution,
                 onClick = { onMediaClick(stored) },
                 onDelete = { onDeleteMedia(stored) },
                 thumbnailLayoutReady = layoutReady,
@@ -115,7 +118,7 @@ fun DetailMediaWaterfall(
                 onThumbnailLoadComplete = onThumbnailLoadComplete
             )
         } else {
-            PendingMediaPreview(card = card, taskId = taskId, onThumbnailLoadComplete = onThumbnailLoadComplete)
+            PendingMediaPreview(card = card, taskId = taskId, showResolution = showResolution, onThumbnailLoadComplete = onThumbnailLoadComplete)
         }
     }
 }
@@ -125,6 +128,7 @@ private fun PendingMediaPreview(
     modifier: Modifier = Modifier,
     card: DetailMediaCard,
     taskId: Long?,
+    showResolution: Boolean,
     onThumbnailLoadComplete: () -> Unit,
 ) {
     val thumbnail = rememberSelectableThumbnail(CachedMediaItem(card.key, "", card.type, card.previewUrl, card.width, card.height, card.live))
@@ -137,12 +141,12 @@ private fun PendingMediaPreview(
             SelectablePlaceholderMedia(card.type)
             thumbnail.bitmap?.let { Image(it, contentDescription = null, modifier = Modifier.fillMaxSize()) }
         }
-        MediaTransferFooter(card = card, taskId = taskId, modifier = Modifier.padding(12.dp))
+        MediaTransferFooter(card = card, taskId = taskId, showResolution = showResolution, modifier = Modifier.padding(12.dp))
     }
 }
 
 @Composable
-private fun MediaTransferFooter(modifier: Modifier = Modifier, card: DetailMediaCard, taskId: Long?) {
+private fun MediaTransferFooter(modifier: Modifier = Modifier, card: DetailMediaCard, taskId: Long?, showResolution: Boolean) {
     val context = LocalContext.current
     val queue = remember(context) { (context.applicationContext as XHSApplication).appContainer.downloadQueue }
     val progress by remember(taskId, card.transferIds, card.checkpoint) {
@@ -174,7 +178,11 @@ private fun MediaTransferFooter(modifier: Modifier = Modifier, card: DetailMedia
         } else if (!failed && !paused && !cancelled && card.taskStatus == TaskStatus.DOWNLOADING && progress.downloaded > 0) {
             LinearProgressIndicator(modifier = Modifier.fillMaxWidth().padding(top = 6.dp))
         }
-        if (progress.downloaded > 0 || progress.total > 0) {
+        if (showResolution) {
+            Text(mediaResolutionLabel(card.width, card.height),
+                style = MiuixTheme.textStyles.footnote1, color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                modifier = Modifier.padding(top = 4.dp))
+        } else if (progress.downloaded > 0 || progress.total > 0) {
             val received = android.text.format.Formatter.formatShortFileSize(context, progress.downloaded)
             Text(if (progress.total > 0) stringResource(R.string.detail_transfer_bytes, received,
                 android.text.format.Formatter.formatShortFileSize(context, progress.total)) else received,
@@ -191,6 +199,7 @@ fun SelectableMediaWaterfall(
     selectedPaths: Set<String>,
     onToggle: (String) -> Unit
 ) {
+    val showResolution = rememberShowMediaResolution()
     val density = LocalDensity.current
     val contentDirection = LocalLayoutDirection.current
     val textMeasurer = rememberTextMeasurer()
@@ -225,6 +234,7 @@ fun SelectableMediaWaterfall(
                         SelectableMediaPreview(
                             item = item,
                             selected = item.path in selectedPaths,
+                            showResolution = showResolution,
                             onToggle = { onToggle(item.path) },
                             fixedAspectRatio = selectableAspectRatio(item),
                             footerHeight = footerHeight,
@@ -388,7 +398,8 @@ fun DetailMediaPreview(
     thumbnailLayoutReady: Boolean = true,
     thumbnailVisible: Boolean = true,
     thumbnailLoadEpoch: Any = Unit,
-    onThumbnailLoadComplete: () -> Unit = {}
+    onThumbnailLoadComplete: () -> Unit = {},
+    showResolution: Boolean = false
 ) {
     var showDeleteDialog by remember { mutableStateOf(false) }
     var deleteAfterDismiss by remember { mutableStateOf(false) }
@@ -401,7 +412,7 @@ fun DetailMediaPreview(
     val aspectRatio = if (thumbnailLayoutReady) bitmap.aspectRatioOrDefault() else 0.75f
     val overlayResId = remember(item.path, item.type) { storedOverlayResId(item) }
     val fileName = item.media.displayName
-    val fileSize = rememberStoredFileSize(item)
+    val fileSize = if (showResolution && item.type != MediaType.OTHER) rememberStoredResolution(item) else rememberStoredFileSize(item)
 
     Column(
         modifier = modifier
@@ -529,6 +540,7 @@ fun SelectableMediaPreview(
     onThumbnailLoadComplete: () -> Unit = {},
     fixedAspectRatio: Float? = null,
     footerHeight: Dp? = null,
+    showResolution: Boolean = false,
 ) {
     val thumbnailState = rememberSelectableThumbnail(item)
     val bitmap = thumbnailState.bitmap
@@ -539,12 +551,13 @@ fun SelectableMediaPreview(
     val aspectRatio = fixedAspectRatio ?: if (item.width > 0 && item.height > 0) (item.width.toFloat() / item.height).coerceIn(0.5f, 2f) else if (thumbnailLayoutReady) bitmap.aspectRatioOrDefault() else 0.75f
     val overlayResId = remember(item.path, item.type) { selectableOverlayResId(item) }
     val context = LocalContext.current
-    val sourceSize by produceState(item.sizeBytes, item.path, item.sizeUrl, item.sizeBytes) {
-        if (value <= 0 && item.sizeUrl.isNotBlank()) {
+    val sourceSize by produceState(item.sizeBytes, item.path, item.sizeUrl, item.sizeBytes, showResolution) {
+        if (!showResolution && value <= 0 && item.sizeUrl.isNotBlank()) {
             value = remoteMediaSize(context, item.sizeUrl) ?: 0
         }
     }
     val fileSize = when {
+        showResolution -> mediaResolutionLabel(item.width, item.height)
         sourceSize > 0 -> android.text.format.Formatter.formatShortFileSize(context, sourceSize)
         item.width > 0 && item.height > 0 -> stringResource(R.string.selective_dimensions, item.width, item.height)
         else -> stringResource(R.string.selective_size_unknown)
@@ -672,6 +685,29 @@ private fun rememberStoredThumbnail(item: MediaItem): ThumbnailLoadState {
         value = ThumbnailLoadState(isComplete = true, bitmap = bitmap)
     }
     return state.value
+}
+
+@Composable
+private fun rememberShowMediaResolution(): Boolean {
+    val context = LocalContext.current
+    val repository = remember(context) { (context.applicationContext as XHSApplication).appContainer.settingsRepository }
+    val resolution by remember(repository) { repository.settings.map { it.showMediaResolution }.distinctUntilChanged() }
+        .collectAsStateWithLifecycle(initialValue = repository.currentSettings.showMediaResolution)
+    return resolution
+}
+
+@Composable
+private fun mediaResolutionLabel(width: Int, height: Int): String =
+    if (width > 0 && height > 0) stringResource(R.string.selective_dimensions, width, height)
+    else stringResource(R.string.media_resolution_unknown)
+
+@Composable
+private fun rememberStoredResolution(item: MediaItem): String {
+    val context = LocalContext.current
+    val dimensions by produceState<Pair<Int, Int>?>(null, item.path) {
+        value = withContext(Dispatchers.IO) { context.readMediaDimensions(item.media, item.type) }
+    }
+    return mediaResolutionLabel(dimensions?.first ?: 0, dimensions?.second ?: 0)
 }
 
 @Composable

@@ -95,6 +95,9 @@ import top.yukonga.miuix.kmp.basic.rememberTopAppBarState
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Back
 import top.yukonga.miuix.kmp.icon.extended.Refresh
+import top.yukonga.miuix.kmp.menu.OverlayDropdownMenu
+import top.yukonga.miuix.kmp.basic.DropdownEntry
+import top.yukonga.miuix.kmp.basic.DropdownItem
 import top.yukonga.miuix.kmp.preference.ArrowPreference
 import top.yukonga.miuix.kmp.theme.ColorSchemeMode
 import top.yukonga.miuix.kmp.theme.MiuixTheme
@@ -109,6 +112,7 @@ data class SettingsUiState(
     val tokens: List<NamingFormat.TokenDefinition> = emptyList(),
     val debugNotificationEnabled: Boolean = false,
     val selectiveDownload: Boolean = false,
+    val showMediaResolution: Boolean = false,
     val keepScreenOn: Boolean = false,
     val showClipboardBubble: Boolean = true,
     val autoReadClipboard: Boolean = false,
@@ -164,6 +168,10 @@ class SettingsViewModel(
 
     fun onSelectiveDownloadChange(enabled: Boolean) = updateState {
         it.copy(selectiveDownload = enabled)
+    }
+
+    fun onShowMediaResolutionChange(enabled: Boolean) = updateState {
+        it.copy(showMediaResolution = enabled)
     }
 
     fun onKeepScreenOnChange(enabled: Boolean) = updateState {
@@ -222,6 +230,7 @@ class SettingsViewModel(
                         customNamingTemplate = state.template.text.ifBlank { NamingFormat.DEFAULT_TEMPLATE },
                         debugNotificationEnabled = state.debugNotificationEnabled,
                         selectiveDownload = state.selectiveDownload,
+                        showMediaResolution = state.showMediaResolution,
                         keepScreenOn = state.keepScreenOn,
                         showClipboardBubble = state.showClipboardBubble,
                         autoReadClipboard = state.autoReadClipboard,
@@ -254,6 +263,7 @@ class SettingsViewModel(
         tokens = NamingFormat.getAvailableTokens(),
         debugNotificationEnabled = debugNotificationEnabled,
         selectiveDownload = selectiveDownload,
+        showMediaResolution = showMediaResolution,
         keepScreenOn = keepScreenOn,
         showClipboardBubble = showClipboardBubble,
         autoReadClipboard = autoReadClipboard,
@@ -342,6 +352,7 @@ class SettingsActivity : ComponentActivity() {
                     onResetTemplate = viewModel::onResetTemplate,
                     onDebugNotificationChange = viewModel::onDebugNotificationChange,
                     onSelectiveDownloadChange = viewModel::onSelectiveDownloadChange,
+                    onShowMediaResolutionChange = viewModel::onShowMediaResolutionChange,
                     onKeepScreenOnChange = viewModel::onKeepScreenOnChange,
                     onShowClipboardBubbleChange = viewModel::onShowClipboardBubbleChange,
                     onAutoReadClipboardChange = viewModel::onAutoReadClipboardChange,
@@ -631,6 +642,7 @@ internal fun SettingsRoute(onBack: () -> Unit, onOpenAdvanced: ((Int) -> Unit)? 
         onResetTemplate = routeViewModel::onResetTemplate,
         onDebugNotificationChange = routeViewModel::onDebugNotificationChange,
         onSelectiveDownloadChange = routeViewModel::onSelectiveDownloadChange,
+        onShowMediaResolutionChange = routeViewModel::onShowMediaResolutionChange,
         onKeepScreenOnChange = routeViewModel::onKeepScreenOnChange,
         onShowClipboardBubbleChange = routeViewModel::onShowClipboardBubbleChange,
         onAutoReadClipboardChange = routeViewModel::onAutoReadClipboardChange,
@@ -722,6 +734,7 @@ private fun SettingsScreen(
     onResetTemplate: () -> Unit,
     onDebugNotificationChange: (Boolean) -> Unit,
     onSelectiveDownloadChange: (Boolean) -> Unit,
+    onShowMediaResolutionChange: (Boolean) -> Unit,
     onKeepScreenOnChange: (Boolean) -> Unit,
     onShowClipboardBubbleChange: (Boolean) -> Unit,
     onAutoReadClipboardChange: (Boolean) -> Unit,
@@ -756,6 +769,7 @@ private fun SettingsScreen(
         add("archive_advanced")
         add("network_advanced")
         add("selective_download")
+        add("media_card_info")
         add("debug_notifications")
         add("keep_screen_on")
     }
@@ -854,6 +868,16 @@ private fun SettingsScreen(
                         description = stringResource(R.string.selective_download_desc),
                         checked = uiState.selectiveDownload,
                         onCheckedChange = onSelectiveDownloadChange
+                    )
+                    "media_card_info" -> OverlayDropdownMenu(
+                        title = stringResource(R.string.settings_media_card_info),
+                        summary = stringResource(if (uiState.showMediaResolution) R.string.settings_media_resolution else R.string.settings_media_file_size),
+                        entry = DropdownEntry(items = listOf(
+                            DropdownItem(text = stringResource(R.string.settings_media_file_size),
+                                selected = !uiState.showMediaResolution, onClick = { onShowMediaResolutionChange(false) }),
+                            DropdownItem(text = stringResource(R.string.settings_media_resolution),
+                                selected = uiState.showMediaResolution, onClick = { onShowMediaResolutionChange(true) }),
+                        )),
                     )
                     "debug_notifications" -> MiuixSwitchWidget(
                         title = stringResource(R.string.debug_notifications),

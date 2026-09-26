@@ -390,4 +390,8 @@
     <string name="detail_transfer_waiting">Waiting</string>
     <string name="detail_transfer_percent">%1$d%%</string>
     <string name="detail_transfer_bytes">%1$s / %2$s</string>
+    <string name="settings_media_card_info">Media card information</string>
+    <string name="settings_media_file_size">File size</string>
+    <string name="settings_media_resolution">Resolution</string>
+    <string name="media_resolution_unknown">Resolution unavailable</string>
 </resources>

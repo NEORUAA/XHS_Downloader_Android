@@ -87,6 +87,7 @@ class DataStoreSettingsRepository(
             preferences[CUSTOM_NAMING_TEMPLATE] = updated.customNamingTemplate
             preferences[DEBUG_NOTIFICATION_ENABLED] = updated.debugNotificationEnabled
             preferences[SELECTIVE_DOWNLOAD] = updated.selectiveDownload
+            preferences[SHOW_MEDIA_RESOLUTION] = updated.showMediaResolution
             preferences[KEEP_SCREEN_ON] = updated.keepScreenOn
             preferences[SHOW_CLIPBOARD_BUBBLE] = updated.showClipboardBubble
             preferences[AUTO_READ_CLIPBOARD] = updated.autoReadClipboard
@@ -180,6 +181,7 @@ class DataStoreSettingsRepository(
                 ?: legacyBoolean("debug_notification_enabled", false),
             selectiveDownload = preferences[SELECTIVE_DOWNLOAD]
                 ?: legacyBoolean("selective_download", false),
+            showMediaResolution = preferences[SHOW_MEDIA_RESOLUTION] ?: false,
             keepScreenOn = preferences[KEEP_SCREEN_ON]
                 ?: legacyBoolean("keep_screen_on", false),
             showClipboardBubble = preferences[SHOW_CLIPBOARD_BUBBLE]
@@ -253,6 +255,7 @@ class DataStoreSettingsRepository(
         private val USE_CUSTOM_NAMING_FORMAT = booleanPreferencesKey("use_custom_naming_format")
         private val CUSTOM_NAMING_TEMPLATE = stringPreferencesKey("custom_naming_template")
         private val DEBUG_NOTIFICATION_ENABLED = booleanPreferencesKey("debug_notification_enabled")
+        private val SHOW_MEDIA_RESOLUTION = booleanPreferencesKey("show_media_resolution")
         private val SELECTIVE_DOWNLOAD = booleanPreferencesKey("selective_download")
         private val KEEP_SCREEN_ON = booleanPreferencesKey("keep_screen_on")
         private val SHOW_CLIPBOARD_BUBBLE = booleanPreferencesKey("show_clipboard_bubble")

@@ -14,6 +14,7 @@ import androidx.test.platform.app.InstrumentationRegistry
 import com.neoruaa.xhsdn.*
 import com.neoruaa.xhsdn.viewmodels.*
 import java.io.File
+import kotlinx.coroutines.runBlocking
 import org.junit.Assert.*
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -43,8 +44,11 @@ class MediaPreviewSheetTest {
         )
         val state = mutableStateOf(MainUiState(selectiveDownload = SelectiveDownloadUiState(show = true,
             phase = SelectiveDownloadPhase.Ready, items = items, selectedPaths = setOf(items[1].path))))
+        val repository = app.appContainer.settingsRepository
+        val originalResolution = runBlocking { repository.awaitReady(); repository.currentSettings.showMediaResolution }
         val scenario = ActivityScenario.launch(MainActivity::class.java)
         try {
+            runBlocking { repository.update { it.copy(showMediaResolution = false) } }
             scenario.onActivity { activity ->
                 activity.setContent { MiuixTheme {
                     SelectiveDownloadSheet(state.value, onCancel = { state.value = MainUiState() }, onSave = {}, onToggleItem = { path ->
@@ -70,11 +74,20 @@ class MediaPreviewSheetTest {
             awaitText(app.getString(R.string.selective_type_video)).getBoundsInScreen(videoBounds)
             assertTrue("The longer lane must be on the left", liveBounds.left < coverBounds.left)
             assertTrue("The left lane must end below the right lane", liveBounds.bottom >= videoBounds.bottom)
+            runBlocking { repository.update { it.copy(showMediaResolution = true) } }
+            awaitText(app.getString(R.string.selective_dimensions, 1920, 1080))
+            assertNull(find(android.text.format.Formatter.formatShortFileSize(app, 1_500_000)))
+            runBlocking { repository.update { it.copy(showMediaResolution = false) } }
+            awaitText(android.text.format.Formatter.formatShortFileSize(app, 1_500_000))
             Thread.sleep(3_000) // Let the system clipboard toast and checkbox animation finish.
             val screenshot = automation.takeScreenshot()
             File(app.cacheDir, "selection-metadata-ui.png").outputStream().use { screenshot.compress(Bitmap.CompressFormat.PNG, 100, it) }
             screenshot.recycle()
-        } finally { scenario.close(); directory.deleteRecursively() }
+        } finally {
+            scenario.close()
+            runBlocking { repository.update { it.copy(showMediaResolution = originalResolution) } }
+            directory.deleteRecursively()
+        }
     }
 
     private fun find(text: String, node: AccessibilityNodeInfo? = automation.rootInActiveWindow): AccessibilityNodeInfo? {

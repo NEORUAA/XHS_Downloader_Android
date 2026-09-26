@@ -76,6 +76,8 @@ class DataStoreSettingsRepositoryTest {
         original.awaitReady()
         original.setManualInputLinks(true)
         original.setSelectiveDownload(true)
+        assertFalse(original.currentSettings.showMediaResolution)
+        original.update { it.copy(showMediaResolution = true) }
         scope.coroutineContext[Job]?.cancelAndJoin()
         scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
         val reopened = DataStoreSettingsRepository(context, scope)
@@ -84,6 +86,7 @@ class DataStoreSettingsRepositoryTest {
         val restored = reopened.settings.first()
         assertTrue(restored.manualInputLinks)
         assertTrue(restored.selectiveDownload)
+        assertTrue(restored.showMediaResolution)
         assertTrue(restored.keepScreenOn)
     }
 

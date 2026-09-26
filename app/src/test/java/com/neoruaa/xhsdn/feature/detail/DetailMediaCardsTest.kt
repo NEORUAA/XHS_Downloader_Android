@@ -70,6 +70,13 @@ class DetailMediaCardsTest {
         assertTrue(cards[1].resourceFailed)
     }
 
+    @Test fun pendingVideoUsesTheSelectedSourceDimensions() {
+        val source = video.copy(candidates = listOf(MediaCandidate(video.sourceUrl, width = 1920, height = 1080)))
+        val card = buildDetailMediaCards(task, session(listOf(source)), emptyList()).single()
+        assertEquals(1920, card.width)
+        assertEquals(1080, card.height)
+    }
+
     @Test fun unknownComponentLengthDoesNotPretendToBeComplete() {
         val partial = MediaTransferProgress.combine(listOf(MediaTransferProgress(100, 100, complete = true), MediaTransferProgress()))
         assertEquals(100, partial.downloaded)

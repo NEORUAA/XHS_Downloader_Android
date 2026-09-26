@@ -10,6 +10,7 @@ data class AppSettings(
     val customNamingTemplate: String = NamingFormat.DEFAULT_TEMPLATE,
     val debugNotificationEnabled: Boolean = false,
     val selectiveDownload: Boolean = false,
+    val showMediaResolution: Boolean = false,
     val keepScreenOn: Boolean = false,
     val showClipboardBubble: Boolean = true,
     val autoReadClipboard: Boolean = false,

@@ -390,4 +390,8 @@
     <string name="detail_transfer_waiting">等待下载</string>
     <string name="detail_transfer_percent">%1$d%%</string>
     <string name="detail_transfer_bytes">%1$s / %2$s</string>
+    <string name="settings_media_card_info">媒体卡片信息</string>
+    <string name="settings_media_file_size">文件体积</string>
+    <string name="settings_media_resolution">分辨率</string>
+    <string name="media_resolution_unknown">分辨率未知</string>
 </resources>

@@ -25,7 +25,7 @@ internal suspend fun remoteMediaSize(context: Context, url: String): Long? {
         val container = (context.applicationContext as XHSApplication).appContainer
         val client = container.network.client(container.settingsRepository.currentSettings.downloadOptions, true)
         val size = requestMediaSize(client, url)
-        sourceSizes.put(url, size ?: -1L)
+        if (size != null) sourceSizes.put(url, size)
         size
     }
 }
@@ -44,8 +44,10 @@ internal suspend fun requestMediaSize(client: OkHttpClient, url: String): Long? 
             }
             override fun onResponse(call: Call, response: Response) {
                 val size = response.use {
-                    val type = it.header("Content-Type").orEmpty().lowercase()
-                    if (it.isSuccessful && (type.startsWith("image/") || type.startsWith("video/")) &&
+                    val type = it.header("Content-Type").orEmpty().substringBefore(';').trim().lowercase()
+                    // Original CDN media may use the generic binary MIME type.
+                    val mediaType = type.startsWith("image/") || type.startsWith("video/") || type == "application/octet-stream"
+                    if (it.isSuccessful && mediaType &&
                         it.header("Content-Encoding").let { encoding -> encoding == null || encoding.equals("identity", true) }) {
                         it.header("Content-Length")?.toLongOrNull()?.takeIf { length -> length > 0 }
                     } else null

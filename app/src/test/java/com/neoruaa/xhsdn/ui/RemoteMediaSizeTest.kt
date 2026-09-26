@@ -15,6 +15,14 @@ class RemoteMediaSizeTest {
         assertEquals(2345678L, requestMediaSize(client, "https://cdn.example/image"))
     }
 
+    @Test fun acceptsOriginalCdnBinaryMediaWithAnExplicitLength() = runBlocking {
+        for (type in listOf("application/octet-stream", "Application/Octet-Stream; charset=binary")) {
+            assertEquals(9804323L, requestMediaSize(client(200, type, "9804323"), "https://cdn.example/image"))
+        }
+        assertNull(requestMediaSize(client(403, "application/octet-stream", "100"), "https://cdn.example/image"))
+        assertNull(requestMediaSize(client(200, "application/octet-stream", null), "https://cdn.example/image"))
+    }
+
     @Test fun unavailableOrNonMediaResponsesLeaveResolutionAsFallback() = runBlocking {
         for (client in listOf(client(405, "image/jpeg", "100"), client(200, "text/html", "100"),
             client(200, "video/mp4", null), client(200, "video/mp4", "-1"))) {

@@ -14,9 +14,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.colorResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -28,7 +30,6 @@ import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Contacts
 import top.yukonga.miuix.kmp.preference.ArrowPreference
-import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 @Composable
 internal fun WebAccountCard(modifier: Modifier = Modifier, onClick: () -> Unit) {
@@ -43,12 +44,12 @@ internal fun WebAccountCard(modifier: Modifier = Modifier, onClick: () -> Unit) 
         ArrowPreference(
             title = account?.nickname?.takeIf { it.isNotBlank() } ?: stringResource(R.string.settings_xhs_account),
             summary = stringResource(if (account == null) R.string.settings_account_signed_out else R.string.settings_account_signed_in),
-            insideMargin = PaddingValues(horizontal = 16.dp, vertical = 20.dp),
+            insideMargin = PaddingValues(16.dp),
             startAction = {
                 Box(Modifier.padding(end = 16.dp).size(48.dp)
-                    .clip(CircleShape).background(MiuixTheme.colorScheme.onBackgroundVariant), contentAlignment = Alignment.Center) {
+                    .clip(CircleShape).background(colorResource(R.color.account_avatar_background)), contentAlignment = Alignment.Center) {
                     Icon(MiuixIcons.Regular.Contacts, contentDescription = null,
-                        tint = MiuixTheme.colorScheme.surface, modifier = Modifier.size(28.dp))
+                        tint = Color.White, modifier = Modifier.size(28.dp))
                     avatar?.let { Image(it.asImageBitmap(), contentDescription = null,
                         contentScale = ContentScale.Crop, modifier = Modifier.size(48.dp)) }
                 }

@@ -32,6 +32,21 @@ class StructuredNoteTest {
         assertEquals(1, video.videos.size)
     }
 
+    @Test fun videoNotesKeepLivePhotoPairsAlongsideTheCoverAndMainVideo() {
+        val note = XhsNoteParser().parseNote(JSONObject("""{"noteId":"mixed","type":"video","imageList":[
+            {"urlDefault":"https://cdn.example/cover.jpg"},
+            {"urlDefault":"https://cdn.example/live.jpg","stream":{"h264":[{"masterUrl":"https://cdn.example/motion.mp4"}]}}
+        ],"video":{"media":{"stream":{"h264":[{"masterUrl":"https://cdn.example/main.mp4"}]}}}}"""), "", "mixed")
+        assertEquals(3, note.orderedMedia.size)
+        assertTrue((note.orderedMedia[0] as ResolvedMedia.Image).cover)
+        val live = note.orderedMedia[1] as ResolvedMedia.LivePhoto
+        assertFalse(live.image.cover)
+        assertEquals("https://cdn.example/motion.mp4", live.video.sourceUrl)
+        assertEquals("https://cdn.example/main.mp4", (note.orderedMedia[2] as ResolvedMedia.Video).sourceUrl)
+        val eligible = com.neoruaa.xhsdn.domain.download.NoteOutput.eligible(note, com.neoruaa.xhsdn.data.settings.DownloadOptions(videoCoverDownload = false))
+        assertEquals(listOf(live, note.orderedMedia[2]), eligible)
+    }
+
     @Test fun acceptsBareRednoteLinksAndRejectsLookalikeHosts() {
         assertEquals(listOf("https://www.rednote.com/explore/abc"), XhsUrlParser.extractLinks("分享：www.rednote.com/explore/abc。"))
         assertTrue(XhsUrlParser.extractLinks("https://evil.xiaohongshu.com/explore/a https://xiaohongshu.com.evil/explore/b").isEmpty())

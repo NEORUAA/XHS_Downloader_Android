@@ -77,14 +77,15 @@ class XhsNoteParser(
                 (0 until info.length()).mapNotNull { info.optJSONObject(it)?.optString("url") }.firstOrNull { it.isNotBlank() }.orEmpty()
             }.ifBlank { item.optString("traceId").takeIf(String::isNotBlank)?.let { "https://sns-img-qc.xhscdn.com/$it" }.orEmpty() }
             if (!isHttp(original)) continue
+            val streams = candidates(item.optJSONObject("stream"))
+            val isCover = isVideoNote && streams.isEmpty()
             val image = ResolvedMedia.Image(
                 sourceUrl = urlTransformer(original), originalUrl = original,
-                id = "$noteId:${if (isVideoNote) "cover" else "image"}:${index + 1}",
-                previewUrl = original, cover = isVideoNote,
+                id = "$noteId:${if (isCover) "cover" else "image"}:${index + 1}",
+                previewUrl = original, cover = isCover,
                 width = item.optInt("width"), height = item.optInt("height"),
             )
-            val streams = candidates(item.optJSONObject("stream"))
-            if (!isVideoNote && streams.isNotEmpty()) {
+            if (streams.isNotEmpty()) {
                 items += ResolvedMedia.LivePhoto(image, ResolvedMedia.Video(
                     streams.first().url, id = "$noteId:live:${index + 1}", previewUrl = original, candidates = streams,
                 ))

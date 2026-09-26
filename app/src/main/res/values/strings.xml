@@ -409,4 +409,7 @@
     <string name="selective_type_comment">Comment image</string>
     <string name="download_comments_unavailable">Comment data is unavailable. Open the note in the browser, load comments and extract again.</string>
     <string name="download_comments_partial">Only loaded comment images are included. More comments or replies remain unloaded.</string>
+    <string name="settings_xhs_account">Xiaohongshu account</string>
+    <string name="settings_account_signed_out">Not signed in</string>
+    <string name="settings_account_signed_in">Signed in</string>
 </resources>

@@ -539,7 +539,7 @@ class SettingsActivity : ComponentActivity() {
 }
 
 @Composable
-internal fun SettingsRoute(onBack: () -> Unit, onOpenAdvanced: ((Int) -> Unit)? = null) {
+internal fun SettingsRoute(onBack: () -> Unit, onOpenAdvanced: ((Int) -> Unit)? = null, onOpenAccount: (() -> Unit)? = null) {
     val context = LocalContext.current
     val resources = androidx.compose.ui.platform.LocalResources.current
     val repository = remember(context) {
@@ -652,7 +652,8 @@ internal fun SettingsRoute(onBack: () -> Unit, onOpenAdvanced: ((Int) -> Unit)? 
         onStorageLocationClick = ::openStorageTreePicker,
         onResetStorageLocation = routeViewModel::onResetCustomStorageLocation,
         topBarState = topBarState,
-        onOpenAdvanced = onOpenAdvanced
+        onOpenAdvanced = onOpenAdvanced,
+        onOpenAccount = onOpenAccount
     )
 }
 
@@ -745,6 +746,7 @@ private fun SettingsScreen(
     onResetStorageLocation: () -> Unit,
     topBarState: TopAppBarState,
     onOpenAdvanced: ((Int) -> Unit)? = null,
+    onOpenAccount: (() -> Unit)? = null,
 ) {
     val context = LocalContext.current
     var localAdvanced by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf<Int?>(null) }
@@ -817,6 +819,16 @@ private fun SettingsScreen(
                 end = windowLayoutInfo.contentEndPadding
             )
         ) {
+            item(key = "account_top_spacing") { Spacer(Modifier.height(12.dp)) }
+            item(key = "web_account") {
+                com.neoruaa.xhsdn.feature.settings.WebAccountCard(
+                    modifier = Modifier.padding(horizontal = 12.dp).padding(bottom = 12.dp),
+                    onClick = onOpenAccount ?: {
+                        context.startActivity(Intent(context, WebViewActivity::class.java)
+                            .putExtra("url", com.neoruaa.xhsdn.data.account.XhsWebSession.HOME))
+                    }
+                )
+            }
             item(key = "download_options_title") {
                 SmallTitle(stringResource(R.string.download_options))
             }

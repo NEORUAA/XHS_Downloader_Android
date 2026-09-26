@@ -12,6 +12,14 @@ import android.webkit.WebResourceRequest
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.webkit.CookieManager
+import androidx.compose.runtime.LaunchedEffect
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.repeatOnLifecycle
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import com.neoruaa.xhsdn.data.account.XhsWebSession
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
@@ -142,6 +150,9 @@ private fun WebViewScreen(
     onResult: (List<String>, String, Long?) -> Unit
 ) {
     val context = LocalContext.current
+    val container = remember(context) { (context.applicationContext as XHSApplication).appContainer }
+    val lifecycleOwner = LocalLifecycleOwner.current
+    val accountScript = remember(context) { context.assets.open("xhs_account.js").bufferedReader().use { it.readText() } }
     var urlText by remember { mutableStateOf(TextFieldValue(initialUrl ?: "")) }
     var loading by remember { mutableStateOf(false) }
     var progress by remember { mutableStateOf(0) }
@@ -156,7 +167,8 @@ private fun WebViewScreen(
             settings.javaScriptEnabled = true
             settings.domStorageEnabled = true
             settings.cacheMode = WebSettings.LOAD_DEFAULT
-            settings.userAgentString = "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Mobile Safari/537.36"
+            settings.userAgentString = XhsWebSession.desktopUserAgent(WebSettings.getDefaultUserAgent(context))
+            CookieManager.getInstance().setAcceptCookie(true)
             settings.setSupportZoom(true)
             settings.builtInZoomControls = true
             settings.displayZoomControls = false
@@ -171,7 +183,7 @@ private fun WebViewScreen(
             settings.allowFileAccessFromFileURLs = false
             settings.allowFileAccess = false
             settings.allowContentAccess = false
-            setInitialScale(80)
+            setInitialScale(0)
         }
     }
     
@@ -179,7 +191,37 @@ private fun WebViewScreen(
     val sniffedVideoUrls = remember { mutableSetOf<String>() }
 
     DisposableEffect(webView) {
-        onDispose { webView.destroy() }
+        onDispose {
+            CookieManager.getInstance().flush()
+            webView.stopLoading()
+            webView.destroy()
+        }
+    }
+
+    fun refreshAccount() {
+        val page = webView.url
+        if (!XhsWebSession.isTrusted(page)) return
+        webView.evaluateJavascript(accountScript) { encoded ->
+            if (webView.url != page || !XhsWebSession.isTrusted(webView.url)) return@evaluateJavascript
+            val result = runCatching {
+                org.json.JSONObject(org.json.JSONTokener(encoded).nextValue() as String)
+            }.getOrNull() ?: return@evaluateJavascript
+            container.scope.launch {
+                try { container.webAccount.update(result) }
+                catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+                catch (_: Exception) { android.util.Log.w("WebAccount", "Could not persist account display state") }
+            }
+        }
+    }
+
+    LaunchedEffect(webView, lifecycleOwner) {
+        lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
+            try {
+                while (true) { refreshAccount(); delay(1_500) }
+            } finally {
+                CookieManager.getInstance().flush()
+            }
+        }
     }
 
     Scaffold(
@@ -308,18 +350,16 @@ private fun WebViewScreen(
 
             override fun onPageFinished(view: WebView?, url: String?) {
                 loading = false
+                CookieManager.getInstance().flush()
+                refreshAccount()
             }
 
             override fun shouldOverrideUrlLoading(
                 view: WebView?,
                 request: WebResourceRequest?
             ): Boolean {
-                if (request?.url?.scheme == "http" || request?.url?.scheme == "https") {
-                    view?.let { loadUrl(it, request.url.toString()) }
-                } else {
-                    return true
-                }
-                return super.shouldOverrideUrlLoading(view, request)
+                // Let WebView retain redirects, POST bodies and navigation history.
+                return request?.url?.scheme !in setOf("http", "https")
             }
 
             override fun onLoadResource(view: WebView?, url: String?) {

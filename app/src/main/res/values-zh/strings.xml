@@ -409,4 +409,7 @@
     <string name="selective_type_comment">评论图片</string>
     <string name="download_comments_unavailable">未获取到评论数据，请在浏览器中打开笔记、加载评论后重新提取。</string>
     <string name="download_comments_partial">仅包含已加载的评论图片，仍有评论或回复尚未加载。</string>
+    <string name="settings_xhs_account">小红书账号</string>
+    <string name="settings_account_signed_out">未登录</string>
+    <string name="settings_account_signed_in">已登录</string>
 </resources>

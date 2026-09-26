@@ -50,6 +50,7 @@ class AppContainer(context: Context) {
         DataStoreSettingsRepository(appContext, scope)
     }
 
+    val webAccount by lazy { com.neoruaa.xhsdn.data.account.WebAccountRepository(java.io.File(appContext.noBackupFilesDir, "web-account.json"), scope) }
     val credentials by lazy { com.neoruaa.xhsdn.data.network.SessionCredentials(appContext) }
     val network by lazy { com.neoruaa.xhsdn.data.network.XhsNetwork(credentials) }
     val downloadQueue by lazy { com.neoruaa.xhsdn.domain.download.DownloadQueue(appContext, this) }

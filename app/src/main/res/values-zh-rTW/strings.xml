@@ -409,4 +409,7 @@
     <string name="selective_type_comment">留言圖片</string>
     <string name="download_comments_unavailable">未取得留言資料，請在瀏覽器中開啟筆記、載入留言後重新擷取。</string>
     <string name="download_comments_partial">僅包含已載入的留言圖片，仍有留言或回覆尚未載入。</string>
+    <string name="settings_xhs_account">小紅書帳號</string>
+    <string name="settings_account_signed_out">未登入</string>
+    <string name="settings_account_signed_in">已登入</string>
 </resources>

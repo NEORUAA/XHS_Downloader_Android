@@ -419,10 +419,10 @@ private fun extractImages(
         try {
             val decoded = org.json.JSONTokener(encoded).nextValue() as? String ?: error("Missing result")
             val result = org.json.JSONObject(decoded)
-            val note = result.optJSONObject("note") ?: error("Missing note state")
+            requireNotNull(result.optJSONObject("note")) { "Missing note state" }
             val url = result.optString("url", pageUrl)
-            com.neoruaa.xhsdn.data.xhs.XhsNoteParser().parseNote(note, url, com.neoruaa.xhsdn.data.xhs.XhsUrlParser.extractPostId(pageUrl))
-            onResult(listOf(url), note.toString(), null)
+            com.neoruaa.xhsdn.data.xhs.XhsNoteParser().parseDetail(result, url, com.neoruaa.xhsdn.data.xhs.XhsUrlParser.extractPostId(pageUrl))
+            onResult(listOf(url), result.toString(), null)
         } catch (_: Exception) {
             Toast.makeText(context, context.getString(R.string.download_error_web), Toast.LENGTH_LONG).show()
         }

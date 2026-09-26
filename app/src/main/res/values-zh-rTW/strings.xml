@@ -404,4 +404,9 @@
     <string name="settings_live_vivo_legacy">vivo / iQOO 雙檔案（實驗性）</string>
     <string name="settings_live_huawei">華為 / 榮耀（實驗性）</string>
     <string name="settings_live_format_hint">用於合成動態照片。自動模式依裝置品牌選擇，相簿支援仍取決於機型與系統；舊版 vivo 相簿可嘗試雙檔案格式，並將兩個檔案一起保留。匯出給其他手機時可手動選格式。保留原影片與音軌，無法恢復來源檔案沒有的聲音。</string>
+    <string name="settings_download_comment_images">下載留言區圖片</string>
+    <string name="settings_download_comment_images_desc">包含已載入留言與回覆中的圖片，不自動取得尚未載入的留言。</string>
+    <string name="selective_type_comment">留言圖片</string>
+    <string name="download_comments_unavailable">未取得留言資料，請在瀏覽器中開啟筆記、載入留言後重新擷取。</string>
+    <string name="download_comments_partial">僅包含已載入的留言圖片，仍有留言或回覆尚未載入。</string>
 </resources>

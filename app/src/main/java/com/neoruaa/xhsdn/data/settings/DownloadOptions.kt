@@ -38,6 +38,7 @@ data class DownloadOptions(
     val imageDownload: Boolean = true,
     val videoDownload: Boolean = true,
     val videoCoverDownload: Boolean = false,
+    val commentImageDownload: Boolean = false,
     val livePhotoMode: LivePhotoMode = LivePhotoMode.MERGED,
     val livePhotoFormat: LivePhotoFormat = LivePhotoFormat.AUTO,
     val skipExisting: Boolean = false,

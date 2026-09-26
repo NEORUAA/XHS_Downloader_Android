@@ -404,4 +404,9 @@
     <string name="settings_live_vivo_legacy">vivo / iQOO paired files (experimental)</string>
     <string name="settings_live_huawei">Huawei / Honor (experimental)</string>
     <string name="settings_live_format_hint">Used when merging Live Photos. Automatic selects by device brand; gallery support varies by model and OS. For older vivo galleries, try paired files and keep both files together. To export to another phone, select its format. Original video and audio are retained; silent sources remain silent.</string>
+    <string name="settings_download_comment_images">Download comment images</string>
+    <string name="settings_download_comment_images_desc">Include images from loaded comments and replies. Unloaded comments are not fetched automatically.</string>
+    <string name="selective_type_comment">Comment image</string>
+    <string name="download_comments_unavailable">Comment data is unavailable. Open the note in the browser, load comments and extract again.</string>
+    <string name="download_comments_partial">Only loaded comment images are included. More comments or replies remain unloaded.</string>
 </resources>

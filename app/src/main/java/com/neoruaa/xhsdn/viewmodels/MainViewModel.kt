@@ -51,6 +51,7 @@ data class CachedMediaItem(
     val cover: Boolean = false,
     val sizeBytes: Long = 0,
     val sizeUrl: String = "",
+    val comment: Boolean = false,
 )
 
 data class SelectiveDownloadUiState(
@@ -66,6 +67,7 @@ data class SelectiveDownloadUiState(
     val noteUrl: String = "",
     val noteContent: String? = null,
     val cacheDir: String? = null,
+    val commentNotice: Int? = null,
     val errorMessage: String? = null
 )
 
@@ -152,11 +154,11 @@ class MainViewModel(application: Application, private val savedStateHandle: Save
                     is ResolvedMedia.Image -> NoteOutput.imageUrls(item, settings.downloadOptions.imageFormat).firstOrNull().orEmpty()
                     is ResolvedMedia.Video -> NoteOutput.videoUrls(item, settings.downloadOptions.videoPreference).firstOrNull().orEmpty()
                     is ResolvedMedia.LivePhoto -> "" // The merged output has no single source Content-Length.
-                })
+                }, comment = image?.commentId != null)
         }
         _uiState.update { it.copy(selectiveDownload = SelectiveDownloadUiState(show = true, taskId = id,
             phase = SelectiveDownloadPhase.Ready, items = items, selectedPaths = NoteOutput.eligible(note, settings.downloadOptions).map { item -> item.id }.toSet(),
-            noteUrl = note.canonicalUrl, noteContent = note.description)) }
+            noteUrl = note.canonicalUrl, noteContent = note.description, commentNotice = NoteOutput.commentWarning(note, settings.downloadOptions))) }
     }
 
     fun cancelSelectiveDownload() {
@@ -224,7 +226,7 @@ class MainViewModel(application: Application, private val savedStateHandle: Save
         viewModelScope.launch {
             try {
                 val url = uiState.value.urlInput
-                val note = noteJson?.let { XhsNoteParser().parseNote(JSONObject(it), url, XhsUrlParser.extractPostId(url)) }
+                val note = noteJson?.let { XhsNoteParser().parseDetail(JSONObject(it), url, XhsUrlParser.extractPostId(url)) }
                     ?: throw XhsResolveException(com.neoruaa.xhsdn.domain.download.DownloadFailure.RequiresWebView)
                 val id = queue.acceptResolved(taskId, note)
                 updateAutoSelections { it + id }

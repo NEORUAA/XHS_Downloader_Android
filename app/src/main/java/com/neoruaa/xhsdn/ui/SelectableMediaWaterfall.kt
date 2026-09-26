@@ -563,6 +563,7 @@ fun SelectableMediaPreview(
         else -> stringResource(R.string.selective_size_unknown)
     }
     val mediaType = stringResource(when {
+        item.comment -> R.string.selective_type_comment
         item.live -> R.string.selective_type_live
         item.cover -> R.string.selective_type_cover
         item.type == MediaType.VIDEO -> R.string.selective_type_video

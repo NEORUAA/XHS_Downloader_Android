@@ -223,6 +223,7 @@ class DownloadQueue(private val context: Context, private val container: AppCont
             var failed = 0
             var skipped = 0
             val warnings = mutableSetOf<String>()
+            if (!session.infoOnly) NoteOutput.commentWarning(note, options)?.let { warnings.add(context.getString(it)) }
             var lastPersist = 0L
             suspend fun publish(terminal: Boolean = false) = progressLock.withLock {
                 val fraction = fractions.values.sum().coerceAtMost((total - complete - failed).coerceAtLeast(0).toFloat())
@@ -299,7 +300,8 @@ class DownloadQueue(private val context: Context, private val container: AppCont
                                 val piece = sessions.resources(id).firstOrNull { it.mediaId == pieceId && it.state == "COMPLETED" && refsExist(it.refsJson) }
                                 val ref = if (piece != null) DownloadJson.decodeFromString<List<StoredMediaRef>>(piece.refsJson).single() else {
                                     val filename = NoteOutput.fileName(note, settings, index, type.extension, task.createdAt)
-                                    val name = if (suffix == "main") filename else filename.substringBeforeLast('.') + "_$nameSuffix.${type.extension}"
+                                    val outputSuffix = if (item is ResolvedMedia.Image && item.commentId != null) "comment" else nameSuffix
+                                    val name = if (outputSuffix == "main") filename else filename.substringBeforeLast('.') + "_$outputSuffix.${type.extension}"
                                     val saveContext = currentCoroutineContext()
                                     val paired = options.livePhotoMode == LivePhotoMode.MERGED && options.livePhotoFormat == LivePhotoFormat.VIVO_LEGACY &&
                                         suffix in setOf("live", "vivo_motion")

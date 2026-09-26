@@ -1097,6 +1097,8 @@ internal fun SelectiveDownloadSheet(
                 selectiveState.items.filter { all || it.path !in selectiveState.selectedPaths }.forEach { onToggleItem(it.path) }
             })
         }
+        selectiveState.commentNotice?.let { Text(stringResource(it),
+            color = MiuixTheme.colorScheme.onSurfaceVariantSummary, modifier = Modifier.padding(bottom = 12.dp)) }
         com.neoruaa.xhsdn.ui.SelectableMediaWaterfall(
             modifier = Modifier.fillMaxWidth().heightIn(max = 560.dp),
             items = selectiveState.items,

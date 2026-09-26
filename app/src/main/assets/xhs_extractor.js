@@ -11,6 +11,14 @@
         const value = queue.shift();
         if (!value || typeof value !== 'object' || seen.has(value)) continue;
         seen.add(value);
+        const detail = value.noteDetailMap && value.noteDetailMap[expected];
+        if (detail && detail.note && (!detail.note.noteId || detail.note.noteId === expected)) {
+            return JSON.stringify({note: detail.note, comments: detail.comments, url: location.href});
+        }
+        const mobile = value.noteData && value.noteData.data;
+        if (mobile && mobile.noteData && mobile.noteData.noteId === expected) {
+            return JSON.stringify({note: mobile.noteData, comments: mobile.commentData, url: location.href});
+        }
         if (value.noteId === expected && (value.imageList || value.video || value.desc !== undefined)) {
             return JSON.stringify({note: value, url: location.href});
         }

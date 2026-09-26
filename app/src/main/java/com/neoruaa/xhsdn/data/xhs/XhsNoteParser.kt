@@ -30,7 +30,8 @@ class XhsNoteParser(
 ) {
     fun parse(html: String?, expectedNoteId: String? = null, canonicalUrl: String = ""): ParsedXhsNote {
         if (html.isNullOrBlank()) return empty()
-        val notes = parseInitialStateRootFromHtml(html)?.let(::findNoteObjects).orEmpty()
+        val root = parseInitialStateRootFromHtml(html)
+        val notes = root?.let(::findNoteObjects).orEmpty()
             .filter(::isLikelyNoteObject)
         val selected = if (expectedNoteId != null) {
             notes.firstOrNull { it.optString("noteId") == expectedNoteId }
@@ -43,7 +44,10 @@ class XhsNoteParser(
                 .findAll(html).map { it.value }.distinct().toList()
             return empty().copy(mediaUrls = urls, containsVideo = urls.any { it.contains(".mp4") || it.contains(".mov") })
         }
-        val note = parseNote(selected, canonicalUrl, expectedNoteId)
+        val mobile = root?.optJSONObject("noteData")?.optJSONObject("data")
+            ?.takeIf { it.optJSONObject("noteData")?.optString("noteId") == selected.optString("noteId") }
+        val detail = root?.optJSONObject("note")?.optJSONObject("noteDetailMap")?.optJSONObject(selected.optString("noteId")) ?: mobile
+        val note = parseDetail(detail ?: selected, canonicalUrl, expectedNoteId)
         val urls = note.orderedMedia.flatMap { media -> when (media) {
             is ResolvedMedia.LivePhoto -> listOf(media.image.sourceUrl, media.video.sourceUrl)
             else -> listOf(media.sourceUrl)
@@ -62,7 +66,14 @@ class XhsNoteParser(
 
     fun description(html: String?): String? = parse(html).description
 
-    fun parseNote(note: JSONObject, canonicalUrl: String, expectedNoteId: String? = null): ResolvedNote {
+    /** Preserve the sibling comments when decoding a noteDetailMap entry or WebView result. */
+    fun parseDetail(detail: JSONObject, canonicalUrl: String, expectedNoteId: String? = null): ResolvedNote {
+        val note = detail.optJSONObject("note") ?: detail.optJSONObject("noteData") ?: detail
+        val comments = detail.optJSONObject("comments") ?: detail.optJSONObject("commentData") ?: note.optJSONObject("comments")
+        return parseNote(note, canonicalUrl, expectedNoteId, comments)
+    }
+
+    fun parseNote(note: JSONObject, canonicalUrl: String, expectedNoteId: String? = null, comments: JSONObject? = note.optJSONObject("comments")): ResolvedNote {
         val noteId = note.optString("noteId").ifBlank { expectedNoteId.orEmpty() }
         require(expectedNoteId == null || noteId == expectedNoteId) { "Note identity mismatch" }
         val imageList = note.optJSONArray("imageList") ?: note.optJSONArray("images") ?: JSONArray()
@@ -98,6 +109,8 @@ class XhsNoteParser(
                 distinct.first().url, id = "$noteId:video", previewUrl = items.firstOrNull()?.previewUrl.orEmpty(), candidates = distinct,
             )
         }
+        val commentMedia = parseCommentImages(comments, noteId)
+        items += commentMedia.first
         val user = note.optJSONObject("user") ?: note.optJSONObject("user_info") ?: JSONObject()
         val title = note.optString("title").takeIf(String::isNotBlank)
         val body = note.optString("desc").ifBlank { note.optString("description") }
@@ -115,7 +128,45 @@ class XhsNoteParser(
             interactions = listOf("likedCount", "collectedCount", "commentCount", "shareCount").associateWith { interact.optString(it, "") },
             images = items.filterIsInstance<ResolvedMedia.Image>(), videos = items.filterIsInstance<ResolvedMedia.Video>(),
             livePhotos = items.filterIsInstance<ResolvedMedia.LivePhoto>(), items = items,
+            commentsLoaded = (comments?.optJSONArray("list") ?: comments?.optJSONArray("comments")) != null && comments?.optBoolean("firstRequestFinish", true) == true,
+            commentsHasMore = commentMedia.second,
         )
+    }
+
+    private fun parseCommentImages(comments: JSONObject?, noteId: String): Pair<List<ResolvedMedia.Image>, Boolean> {
+        val images = mutableListOf<ResolvedMedia.Image>()
+        val queue = ArrayDeque<JSONObject>()
+        val seen = mutableSetOf<String>()
+        var hasMore = comments?.optBoolean("hasMore", false) == true
+        fun enqueue(list: JSONArray?) {
+            if (list != null) for (index in 0 until list.length()) list.optJSONObject(index)?.let(queue::addLast)
+        }
+        enqueue(comments?.optJSONArray("list") ?: comments?.optJSONArray("comments"))
+        while (queue.isNotEmpty()) {
+            val comment = queue.removeFirst()
+            if (comment.optString("noteId").let { it.isNotBlank() && it != noteId } || comment.optBoolean("invalid")) continue
+            val commentId = comment.optString("id")
+            if (commentId.isBlank() || !seen.add(commentId)) continue
+            hasMore = hasMore || comment.optBoolean("subCommentHasMore") || comment.optBoolean("hasMore")
+            enqueue(comment.optJSONArray("subComments"))
+            val pictures = comment.optJSONArray("pictures") ?: continue
+            for (index in 0 until pictures.length()) {
+                val picture = pictures.optJSONObject(index) ?: continue
+                val info = picture.optJSONArray("infoList") ?: JSONArray()
+                val variants = (0 until info.length()).mapNotNull { info.optJSONObject(it) }
+                val original = picture.optString("urlDefault").takeIf(::isHttp)
+                    ?: variants.firstOrNull { it.optString("imageScene") == "WB_DFT" }?.optString("url")?.takeIf(::isHttp)
+                    ?: picture.optString("url").takeIf(::isHttp)
+                    ?: variants.firstNotNullOfOrNull { it.optString("url").takeIf(::isHttp) }
+                    ?: picture.optString("urlPre").takeIf(::isHttp)
+                    ?: continue
+                images += ResolvedMedia.Image(urlTransformer(original), originalUrl = original,
+                    id = "$noteId:comment:$commentId:${index + 1}", commentId = commentId,
+                    previewUrl = picture.optString("urlPre").takeIf(::isHttp) ?: original,
+                    width = picture.optInt("width"), height = picture.optInt("height"))
+            }
+        }
+        return images to hasMore
     }
 
     private fun videoCandidates(video: JSONObject?): List<MediaCandidate> {

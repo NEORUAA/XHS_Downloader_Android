@@ -22,6 +22,8 @@ data class ResolvedNote(
     val publishedAt: Long? = null,
     val interactions: Map<String, String> = emptyMap(),
     val items: List<ResolvedMedia> = emptyList(),
+    val commentsLoaded: Boolean = false,
+    val commentsHasMore: Boolean = false,
 ) {
     val orderedMedia: List<ResolvedMedia>
         get() = items.ifEmpty { images + videos + livePhotos }
@@ -53,6 +55,7 @@ sealed interface ResolvedMedia {
         override val id: String = sourceUrl,
         override val previewUrl: String = originalUrl,
         val cover: Boolean = false,
+        val commentId: String? = null,
         val width: Int = 0,
         val height: Int = 0,
     ) : ResolvedMedia

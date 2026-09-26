@@ -14,10 +14,21 @@ import java.util.Locale
 object NoteOutput {
     fun eligible(note: ResolvedNote, options: DownloadOptions, forSelection: Boolean = false): List<ResolvedMedia> = note.orderedMedia.filter {
         when (it) {
-            is ResolvedMedia.Image -> if (it.cover) forSelection || options.videoCoverDownload else options.imageDownload
+            is ResolvedMedia.Image -> when {
+                it.commentId != null -> options.commentImageDownload
+                it.cover -> forSelection || options.videoCoverDownload
+                else -> options.imageDownload
+            }
             is ResolvedMedia.Video -> options.videoDownload
             is ResolvedMedia.LivePhoto -> options.imageDownload || (options.videoDownload && options.livePhotoMode != LivePhotoMode.STILL)
         }
+    }
+
+    fun commentWarning(note: ResolvedNote, options: DownloadOptions): Int? = when {
+        !options.commentImageDownload -> null
+        !note.commentsLoaded -> com.neoruaa.xhsdn.R.string.download_comments_unavailable
+        note.commentsHasMore -> com.neoruaa.xhsdn.R.string.download_comments_partial
+        else -> null
     }
 
     fun imageUrls(image: ResolvedMedia.Image, format: ImageFormat): List<String> {

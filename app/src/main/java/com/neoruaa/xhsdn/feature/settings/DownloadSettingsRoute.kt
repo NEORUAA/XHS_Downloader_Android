@@ -99,7 +99,7 @@ internal fun DownloadSettingsRoute(section: Int, onBack: () -> Unit, onOpenBrows
     val exportCsv = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/csv")) { export(it, false) }
     val title = when (section) { 0 -> R.string.settings_media_title; 1 -> R.string.settings_archive_title; else -> R.string.settings_network_title }
     val rows = when (section) {
-        0 -> listOf("images", "videos", "cover", "image_format", "video_quality", "live", "live_format")
+        0 -> listOf("images", "videos", "cover", "comment_images", "image_format", "video_quality", "live", "live_format")
         1 -> listOf("skip", "author_archive", "note_archive", "note_format", "publish_time", "export_json", "export_csv")
         else -> listOf("timeout", "retries", "proxy", "proxy_media", "web_session", "login") + SessionCredentials.HOSTS.map { "cookie:$it" }
     }
@@ -128,6 +128,10 @@ internal fun DownloadSettingsRoute(section: Int, onBack: () -> Unit, onOpenBrows
                     "images" -> OptionSwitch(R.string.settings_download_images, checked = options.imageDownload) { update { it.copy(imageDownload = !it.imageDownload) } }
                     "videos" -> OptionSwitch(R.string.settings_download_videos, checked = options.videoDownload) { update { it.copy(videoDownload = !it.videoDownload) } }
                     "cover" -> OptionSwitch(R.string.settings_download_cover, checked = options.videoCoverDownload) { update { it.copy(videoCoverDownload = !it.videoCoverDownload) } }
+                    "comment_images" -> OptionSwitch(R.string.settings_download_comment_images,
+                        R.string.settings_download_comment_images_desc, options.commentImageDownload) {
+                        update { it.copy(commentImageDownload = !it.commentImageDownload) }
+                    }
                     "image_format" -> ArrowPreference(title = stringResource(R.string.settings_image_format), summary = stringResource(imageLabels[options.imageFormat.ordinal]), onClick = { choice = row; showChoice = true })
                     "video_quality" -> ArrowPreference(title = stringResource(R.string.settings_video_quality), summary = stringResource(videoLabels[options.videoPreference.ordinal]), onClick = { choice = row; showChoice = true })
                     "live" -> ArrowPreference(title = stringResource(R.string.settings_live_mode), summary = stringResource(liveLabels[options.livePhotoMode.ordinal]), onClick = { choice = row; showChoice = true })

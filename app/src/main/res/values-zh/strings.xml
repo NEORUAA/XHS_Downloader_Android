@@ -373,4 +373,10 @@
     <string name="update_open_release">前往下载</string>
     <string name="update_open_failed">无法打开版本下载页面。</string>
     <string name="update_close">关闭</string>
+    <string name="selective_dimensions">%1$d × %2$d</string>
+    <string name="selective_size_unknown">大小未知</string>
+    <string name="selective_type_image">图片</string>
+    <string name="selective_type_video">视频</string>
+    <string name="selective_type_live">实况</string>
+    <string name="selective_type_cover">封面</string>
 </resources>

@@ -12,9 +12,9 @@ import java.util.Locale
 
 /** Shared naming and candidate policy for normal, selective and WebView downloads. */
 object NoteOutput {
-    fun eligible(note: ResolvedNote, options: DownloadOptions): List<ResolvedMedia> = note.orderedMedia.filter {
+    fun eligible(note: ResolvedNote, options: DownloadOptions, forSelection: Boolean = false): List<ResolvedMedia> = note.orderedMedia.filter {
         when (it) {
-            is ResolvedMedia.Image -> if (it.cover) options.videoCoverDownload else options.imageDownload
+            is ResolvedMedia.Image -> if (it.cover) forSelection || options.videoCoverDownload else options.imageDownload
             is ResolvedMedia.Video -> options.videoDownload
             is ResolvedMedia.LivePhoto -> options.imageDownload || (options.videoDownload && options.livePhotoMode != LivePhotoMode.STILL)
         }

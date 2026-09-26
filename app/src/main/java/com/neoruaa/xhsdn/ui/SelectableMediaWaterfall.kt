@@ -412,7 +412,23 @@ fun SelectableMediaPreview(
     }
     val aspectRatio = if (item.width > 0 && item.height > 0) (item.width.toFloat() / item.height).coerceIn(0.5f, 2f) else if (thumbnailLayoutReady) bitmap.aspectRatioOrDefault() else 0.75f
     val overlayResId = remember(item.path, item.type) { selectableOverlayResId(item) }
-    val fileSize = item.displayName
+    val context = LocalContext.current
+    val sourceSize by produceState(item.sizeBytes, item.path, item.sizeUrl, item.sizeBytes) {
+        if (value <= 0 && item.sizeUrl.isNotBlank()) {
+            value = remoteMediaSize(context, item.sizeUrl) ?: 0
+        }
+    }
+    val fileSize = when {
+        sourceSize > 0 -> android.text.format.Formatter.formatShortFileSize(context, sourceSize)
+        item.width > 0 && item.height > 0 -> stringResource(R.string.selective_dimensions, item.width, item.height)
+        else -> stringResource(R.string.selective_size_unknown)
+    }
+    val mediaType = stringResource(when {
+        item.live -> R.string.selective_type_live
+        item.cover -> R.string.selective_type_cover
+        item.type == MediaType.VIDEO -> R.string.selective_type_video
+        else -> R.string.selective_type_image
+    })
 
     Column(
         modifier = modifier
@@ -476,11 +492,11 @@ fun SelectableMediaPreview(
                         modifier = Modifier.size(20.dp)
                     )
                 }
-                Text(
-                    text = fileSize,
-                    modifier = Modifier.weight(1f),
-                    maxLines = 1
-                )
+                Column(Modifier.weight(1f)) {
+                    Text(text = fileSize, maxLines = 1)
+                    Text(text = mediaType, style = MiuixTheme.textStyles.footnote1,
+                        color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
+                }
             }
             Checkbox(
                 state = if (selected) ToggleableState.On else ToggleableState.Off,
@@ -488,21 +504,6 @@ fun SelectableMediaPreview(
                 modifier = Modifier.size(26.dp)
             )
         }
-    }
-}
-
-private fun selectableFileSize(path: String): String {
-    val file = File(path)
-    return if (file.exists()) {
-        val size = file.length()
-        when {
-            size > 1024 * 1024 * 1024 -> "%.2f GB".format(size / (1024.0 * 1024.0 * 1024.0))
-            size > 1024 * 1024 -> "%.1f MB".format(size / (1024.0 * 1024.0))
-            size > 1024 -> "%.1f KB".format(size / 1024.0)
-            else -> "$size B"
-        }
-    } else {
-        "--"
     }
 }
 

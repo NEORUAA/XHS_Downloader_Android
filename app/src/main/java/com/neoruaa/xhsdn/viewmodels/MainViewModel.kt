@@ -48,6 +48,9 @@ data class CachedMediaItem(
     val width: Int = 0,
     val height: Int = 0,
     val live: Boolean = false,
+    val cover: Boolean = false,
+    val sizeBytes: Long = 0,
+    val sizeUrl: String = "",
 )
 
 data class SelectiveDownloadUiState(
@@ -136,13 +139,23 @@ class MainViewModel(application: Application, private val savedStateHandle: Save
     private suspend fun showSelection(id: Long) {
         val note = queue.resolved(id) ?: return
         val settings = queue.settings(id) ?: return
-        val items = NoteOutput.eligible(note, settings.downloadOptions).mapIndexed { index, item ->
+        val items = NoteOutput.eligible(note, settings.downloadOptions, forSelection = true).mapIndexed { index, item ->
             val image = when (item) { is ResolvedMedia.Image -> item; is ResolvedMedia.LivePhoto -> item.image; else -> null }
+            val video = (item as? ResolvedMedia.Video)?.let { media ->
+                val firstUrl = NoteOutput.videoUrls(media, settings.downloadOptions.videoPreference).firstOrNull()
+                media.candidates.firstOrNull { it.url == firstUrl }
+            }
             CachedMediaItem(item.id, (index + 1).toString(), if (item is ResolvedMedia.Video) MediaType.VIDEO else MediaType.IMAGE,
-                item.previewUrl, image?.width ?: 0, image?.height ?: 0, item is ResolvedMedia.LivePhoto)
+                item.previewUrl, image?.width ?: video?.width ?: 0, image?.height ?: video?.height ?: 0,
+                item is ResolvedMedia.LivePhoto, image?.cover == true, video?.size ?: 0,
+                when (item) {
+                    is ResolvedMedia.Image -> NoteOutput.imageUrls(item, settings.downloadOptions.imageFormat).firstOrNull().orEmpty()
+                    is ResolvedMedia.Video -> NoteOutput.videoUrls(item, settings.downloadOptions.videoPreference).firstOrNull().orEmpty()
+                    is ResolvedMedia.LivePhoto -> "" // The merged output has no single source Content-Length.
+                })
         }
         _uiState.update { it.copy(selectiveDownload = SelectiveDownloadUiState(show = true, taskId = id,
-            phase = SelectiveDownloadPhase.Ready, items = items, selectedPaths = items.map { item -> item.path }.toSet(),
+            phase = SelectiveDownloadPhase.Ready, items = items, selectedPaths = NoteOutput.eligible(note, settings.downloadOptions).map { item -> item.id }.toSet(),
             noteUrl = note.canonicalUrl, noteContent = note.description)) }
     }
 

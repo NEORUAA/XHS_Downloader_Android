@@ -1074,7 +1074,7 @@ private fun MainScreen(
 }
 
 @Composable
-private fun SelectiveDownloadSheet(
+internal fun SelectiveDownloadSheet(
     uiState: MainUiState,
     onCancel: () -> Unit,
     onSave: () -> Unit,

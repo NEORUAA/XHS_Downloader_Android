@@ -33,6 +33,15 @@ class NoteOutputTest {
         assertNotEquals(NoteOutput.recordKey("note", "image", original, emptyList()), NoteOutput.recordKey("note", "image", changed.copy(customStorageTreeUri = "content://other"), emptyList()))
     }
 
+    @Test fun selectionOffersCoversWithoutChangingAutomaticDownloadDefaults() {
+        val cover = ResolvedMedia.Image("cover", cover = true)
+        val video = ResolvedMedia.Video("video")
+        val note = com.neoruaa.xhsdn.core.model.ResolvedNote("", null, null, null, null, null, items = listOf(cover, video))
+        val options = com.neoruaa.xhsdn.data.settings.DownloadOptions(videoCoverDownload = false)
+        assertEquals(listOf(video), NoteOutput.eligible(note, options))
+        assertEquals(listOf(cover, video), NoteOutput.eligible(note, options, forSelection = true))
+    }
+
     @Test fun limitsNameBytesWithoutSplittingUnicodeCharacters() {
         val name = NoteOutput.safePart("😀".repeat(100) + "/file", "note")
         assertTrue(name.toByteArray().size <= 160)

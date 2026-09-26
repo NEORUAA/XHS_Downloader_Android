@@ -179,7 +179,7 @@ class DownloadQueue(private val context: Context, private val container: AppCont
                 val author = sessions.author(authorId)
                 sessions.saveAuthor(NoteAuthorEntity(authorId, note.authorName.orEmpty(), author?.remark.orEmpty()))
             }
-            var media = NoteOutput.eligible(note, options)
+            var media = NoteOutput.eligible(note, options, forSelection = session.requireSelection)
             tasks.updateTask(id) { it.copy(noteTitle = it.noteTitle?.takeIf(String::isNotBlank) ?: note.title, noteContent = note.description,
                 noteType = if (note.type == "video") NoteType.VIDEO else NoteType.IMAGE, totalFiles = media.size) }
             if (session.requireSelection && session.selectedJson == null && !session.infoOnly) {

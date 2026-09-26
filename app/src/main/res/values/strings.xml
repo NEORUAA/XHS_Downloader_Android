@@ -373,4 +373,10 @@
     <string name="update_open_release">Go to download</string>
     <string name="update_open_failed">Could not open the release page.</string>
     <string name="update_close">Close</string>
+    <string name="selective_dimensions">%1$d × %2$d</string>
+    <string name="selective_size_unknown">Size unavailable</string>
+    <string name="selective_type_image">Image</string>
+    <string name="selective_type_video">Video</string>
+    <string name="selective_type_live">Live Photo</string>
+    <string name="selective_type_cover">Cover</string>
 </resources>

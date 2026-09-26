@@ -31,6 +31,18 @@ class WaterfallPlacementTest {
     }
 
     @Test
+    fun `longer logical right lane is displayed on the physical left`() {
+        val placement = calculateBalancedWaterfallPlacement(listOf(100, 250, 80), 10)
+        assertTrue(placement.swapVisualLanes)
+        val visualBottoms = intArrayOf(0, 0)
+        listOf(100, 250, 80).forEachIndexed { index, height ->
+            val lane = if (placement.swapVisualLanes) 1 - placement.lanes[index] else placement.lanes[index]
+            visualBottoms[lane] = placement.yOffsets[index] + height
+        }
+        assertTrue(visualBottoms[0] >= visualBottoms[1])
+    }
+
+    @Test
     fun `empty input has no placement or height`() {
         val placement = calculateBalancedWaterfallPlacement(emptyList(), spacing = 10)
 

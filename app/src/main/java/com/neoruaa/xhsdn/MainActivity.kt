@@ -185,9 +185,6 @@ import top.yukonga.miuix.kmp.icon.extended.Delete
 import top.yukonga.miuix.kmp.icon.extended.SelectAll
 import com.neoruaa.xhsdn.ui.ActionIconButton
 import com.neoruaa.xhsdn.data.TaskStatus
-import androidx.compose.foundation.lazy.staggeredgrid.LazyVerticalStaggeredGrid
-import androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridCells
-import androidx.compose.foundation.lazy.staggeredgrid.items
 import top.yukonga.miuix.kmp.icon.extended.Download
 import top.yukonga.miuix.kmp.icon.extended.Ok
 import top.yukonga.miuix.kmp.icon.basic.Search
@@ -1099,17 +1096,12 @@ internal fun SelectiveDownloadSheet(
                 selectiveState.items.filter { all || it.path !in selectiveState.selectedPaths }.forEach { onToggleItem(it.path) }
             })
         }
-        LazyVerticalStaggeredGrid(
-            columns = StaggeredGridCells.Fixed(2),
-            modifier = Modifier.fillMaxWidth().heightIn(max = 560.dp).miuixVerticalScrollEffects(),
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-            verticalItemSpacing = 10.dp,
-            contentPadding = PaddingValues(bottom = 24.dp),
-        ) {
-            items(selectiveState.items, key = { it.path }) { item ->
-                com.neoruaa.xhsdn.ui.SelectableMediaPreview(item = item, selected = item.path in selectiveState.selectedPaths, onToggle = { onToggleItem(item.path) })
-            }
-        }
+        com.neoruaa.xhsdn.ui.SelectableMediaWaterfall(
+            modifier = Modifier.fillMaxWidth().heightIn(max = 560.dp),
+            items = selectiveState.items,
+            selectedPaths = selectiveState.selectedPaths,
+            onToggle = onToggleItem,
+        )
     }
 }
 

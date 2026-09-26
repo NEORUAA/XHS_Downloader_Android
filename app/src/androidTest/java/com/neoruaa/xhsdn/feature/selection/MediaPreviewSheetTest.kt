@@ -38,7 +38,7 @@ class MediaPreviewSheetTest {
         }
         val items = listOf(
             CachedMediaItem(picture("cover", Color.rgb(42, 111, 180)), "1", MediaType.IMAGE, width = 1200, height = 800, cover = true),
-            CachedMediaItem(picture("live", Color.rgb(80, 155, 120)), "2", MediaType.IMAGE, width = 800, height = 1200, live = true),
+            CachedMediaItem(picture("live", Color.rgb(80, 155, 120)), "2", MediaType.IMAGE, width = 800, height = 1600, live = true),
             CachedMediaItem(picture("video", Color.rgb(185, 125, 65)), "3", MediaType.VIDEO, width = 1920, height = 1080, sizeBytes = 1_500_000),
         )
         val state = mutableStateOf(MainUiState(selectiveDownload = SelectiveDownloadUiState(show = true,
@@ -62,6 +62,15 @@ class MediaPreviewSheetTest {
             while (!node.isClickable) node = node.parent ?: error("Missing clickable preview")
             assertTrue(node.performAction(AccessibilityNodeInfo.ACTION_CLICK))
             awaitText(app.getString(R.string.selective_download_ready, 2, 3))
+            val coverBounds = android.graphics.Rect()
+            val liveBounds = android.graphics.Rect()
+            val videoBounds = android.graphics.Rect()
+            awaitText(app.getString(R.string.selective_type_cover)).getBoundsInScreen(coverBounds)
+            awaitText(app.getString(R.string.selective_type_live)).getBoundsInScreen(liveBounds)
+            awaitText(app.getString(R.string.selective_type_video)).getBoundsInScreen(videoBounds)
+            assertTrue("The longer lane must be on the left", liveBounds.left < coverBounds.left)
+            assertTrue("The left lane must end below the right lane", liveBounds.bottom >= videoBounds.bottom)
+            Thread.sleep(3_000) // Let the system clipboard toast and checkbox animation finish.
             val screenshot = automation.takeScreenshot()
             File(app.cacheDir, "selection-metadata-ui.png").outputStream().use { screenshot.compress(Bitmap.CompressFormat.PNG, 100, it) }
             screenshot.recycle()

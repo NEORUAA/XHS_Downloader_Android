@@ -9,6 +9,13 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.staggeredgrid.LazyVerticalStaggeredGrid
+import androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridCells
+import androidx.compose.foundation.lazy.staggeredgrid.items
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -18,6 +25,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
@@ -34,6 +42,11 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.unit.LayoutDirection
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.state.ToggleableState
@@ -62,6 +75,7 @@ import top.yukonga.miuix.kmp.squircle.squircleSurface
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.window.WindowDialog
 import java.io.File
+import kotlin.math.roundToInt
 import kotlin.math.max
 
 private val waterfallThumbnailDispatcher = Dispatchers.IO.limitedParallelism(4)
@@ -97,20 +111,48 @@ fun SelectableMediaWaterfall(
     selectedPaths: Set<String>,
     onToggle: (String) -> Unit
 ) {
-    StagedBalancedTwoLaneLayout(
-        modifier = modifier,
-        items = items,
-        itemKey = CachedMediaItem::path
-    ) { item, layoutReady, imageVisible, loadEpoch, onThumbnailLoadComplete ->
-        SelectableMediaPreview(
-            item = item,
-            selected = selectedPaths.contains(item.path),
-            onToggle = { onToggle(item.path) },
-            thumbnailLayoutReady = layoutReady,
-            thumbnailVisible = imageVisible,
-            thumbnailLoadEpoch = loadEpoch,
-            onThumbnailLoadComplete = onThumbnailLoadComplete
-        )
+    val density = LocalDensity.current
+    val contentDirection = LocalLayoutDirection.current
+    val textMeasurer = rememberTextMeasurer()
+    val primaryHeight = textMeasurer.measure(stringResource(R.string.selective_dimensions, 1200, 800),
+        style = MiuixTheme.textStyles.body1).size.height
+    val secondaryHeight = textMeasurer.measure(stringResource(R.string.selective_type_live),
+        style = MiuixTheme.textStyles.footnote1).size.height
+    val footerHeight = with(density) { (primaryHeight + secondaryHeight).toDp() }.coerceAtLeast(26.dp) + 20.dp
+    BoxWithConstraints(modifier.fillMaxWidth()) {
+        val spacing = with(density) { 10.dp.roundToPx() }
+        val columnWidth = (constraints.maxWidth - spacing).coerceAtLeast(0) / 2
+        val footerPixels = with(density) { footerHeight.roundToPx() }
+        val placement = remember(items, columnWidth, footerPixels, spacing) {
+            calculateBalancedWaterfallPlacement(items.map {
+                (columnWidth / selectableAspectRatio(it)).roundToInt() + footerPixels
+            }, spacing)
+        }
+        // Native staggered-grid placement is greedy too. Mirroring its lane order
+        // matches the detail page without composing offscreen thumbnails to measure them.
+        val laneDirection = if (placement.swapVisualLanes) LayoutDirection.Rtl else LayoutDirection.Ltr
+        CompositionLocalProvider(LocalLayoutDirection provides laneDirection) {
+            LazyVerticalStaggeredGrid(
+                columns = StaggeredGridCells.Fixed(2),
+                // Equal pixel widths keep measured heights consistent with the lane calculation.
+                modifier = Modifier.width(with(density) { (columnWidth * 2 + spacing).toDp() }).miuixVerticalScrollEffects(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalItemSpacing = 10.dp,
+                contentPadding = PaddingValues(bottom = 24.dp),
+            ) {
+                items(items, key = { it.path }) { item ->
+                    CompositionLocalProvider(LocalLayoutDirection provides contentDirection) {
+                        SelectableMediaPreview(
+                            item = item,
+                            selected = item.path in selectedPaths,
+                            onToggle = { onToggle(item.path) },
+                            fixedAspectRatio = selectableAspectRatio(item),
+                            footerHeight = footerHeight,
+                        )
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -196,7 +238,7 @@ private fun <T> BalancedTwoLaneLayout(
             itemHeights = placeables.map { it.height },
             spacing = spacing
         )
-        val swapVisualLanes = placement.rightHeight > placement.leftHeight
+        val swapVisualLanes = placement.swapVisualLanes
         val layoutHeight = max(placement.leftHeight, placement.rightHeight)
             .coerceIn(constraints.minHeight, constraints.maxHeight)
 
@@ -216,7 +258,9 @@ internal data class WaterfallPlacement(
     val yOffsets: List<Int>,
     val leftHeight: Int,
     val rightHeight: Int
-)
+) {
+    val swapVisualLanes: Boolean get() = rightHeight > leftHeight
+}
 
 internal fun calculateBalancedWaterfallPlacement(
     itemHeights: List<Int>,
@@ -402,7 +446,9 @@ fun SelectableMediaPreview(
     thumbnailLayoutReady: Boolean = true,
     thumbnailVisible: Boolean = true,
     thumbnailLoadEpoch: Any = Unit,
-    onThumbnailLoadComplete: () -> Unit = {}
+    onThumbnailLoadComplete: () -> Unit = {},
+    fixedAspectRatio: Float? = null,
+    footerHeight: Dp? = null,
 ) {
     val thumbnailState = rememberSelectableThumbnail(item)
     val bitmap = thumbnailState.bitmap
@@ -410,7 +456,7 @@ fun SelectableMediaPreview(
     LaunchedEffect(thumbnailState.isComplete, item.path, thumbnailLoadEpoch) {
         if (thumbnailState.isComplete) currentLoadCompleteCallback()
     }
-    val aspectRatio = if (item.width > 0 && item.height > 0) (item.width.toFloat() / item.height).coerceIn(0.5f, 2f) else if (thumbnailLayoutReady) bitmap.aspectRatioOrDefault() else 0.75f
+    val aspectRatio = fixedAspectRatio ?: if (item.width > 0 && item.height > 0) (item.width.toFloat() / item.height).coerceIn(0.5f, 2f) else if (thumbnailLayoutReady) bitmap.aspectRatioOrDefault() else 0.75f
     val overlayResId = remember(item.path, item.type) { selectableOverlayResId(item) }
     val context = LocalContext.current
     val sourceSize by produceState(item.sizeBytes, item.path, item.sizeUrl, item.sizeBytes) {
@@ -476,6 +522,7 @@ fun SelectableMediaPreview(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
+                .then(if (footerHeight != null) Modifier.height(footerHeight) else Modifier)
                 .padding(horizontal = 12.dp, vertical = 10.dp),
             horizontalArrangement = Arrangement.Start,
             verticalAlignment = Alignment.CenterVertically
@@ -493,7 +540,7 @@ fun SelectableMediaPreview(
                     )
                 }
                 Column(Modifier.weight(1f)) {
-                    Text(text = fileSize, maxLines = 1)
+                    Text(text = fileSize, maxLines = 1, style = MiuixTheme.textStyles.body1)
                     Text(text = mediaType, style = MiuixTheme.textStyles.footnote1,
                         color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
                 }
@@ -623,3 +670,6 @@ private fun isSelectableLivePhotoItem(item: CachedMediaItem): Boolean {
     val fileName = File(item.path).name.lowercase()
     return "_live." in fileName || "_live_" in fileName
 }
+
+internal fun selectableAspectRatio(item: CachedMediaItem): Float =
+    if (item.width > 0 && item.height > 0) (item.width.toFloat() / item.height).coerceIn(0.5f, 2f) else 0.75f

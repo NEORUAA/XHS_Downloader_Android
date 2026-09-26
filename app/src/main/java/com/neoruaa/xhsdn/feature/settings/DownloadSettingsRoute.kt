@@ -7,8 +7,6 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
@@ -18,8 +16,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.semantics.selected
+import top.yukonga.miuix.kmp.preference.WindowSpinnerPreference
 import top.yukonga.miuix.kmp.preference.ArrowPreference
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.neoruaa.xhsdn.R
@@ -37,7 +34,6 @@ import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Back
 import top.yukonga.miuix.kmp.icon.extended.Link
 import top.yukonga.miuix.kmp.icon.extended.FileDownloads
-import top.yukonga.miuix.kmp.icon.extended.Ok
 import top.yukonga.miuix.kmp.icon.extended.Refresh
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.window.WindowDialog
@@ -55,8 +51,6 @@ internal fun DownloadSettingsRoute(section: Int, onBack: () -> Unit, onOpenBrows
     val layout = rememberWindowLayoutInfo()
     val scrollBehavior = MiuixScrollBehavior(rememberTopAppBarState())
     val backdrop = rememberMiuixTopBarBackdrop()
-    var choice by rememberSaveable { mutableStateOf<String?>(null) }
-    var showChoice by rememberSaveable { mutableStateOf(false) }
     var edit by rememberSaveable { mutableStateOf<String?>(null) }
     var showEdit by rememberSaveable { mutableStateOf(false) }
     // Do not persist credential text in saved instance state.
@@ -132,14 +126,24 @@ internal fun DownloadSettingsRoute(section: Int, onBack: () -> Unit, onOpenBrows
                         R.string.settings_download_comment_images_desc, options.commentImageDownload) {
                         update { it.copy(commentImageDownload = !it.commentImageDownload) }
                     }
-                    "image_format" -> ArrowPreference(title = stringResource(R.string.settings_image_format), summary = stringResource(imageLabels[options.imageFormat.ordinal]), onClick = { choice = row; showChoice = true })
-                    "video_quality" -> ArrowPreference(title = stringResource(R.string.settings_video_quality), summary = stringResource(videoLabels[options.videoPreference.ordinal]), onClick = { choice = row; showChoice = true })
-                    "live" -> ArrowPreference(title = stringResource(R.string.settings_live_mode), summary = stringResource(liveLabels[options.livePhotoMode.ordinal]), onClick = { choice = row; showChoice = true })
-                    "live_format" -> ArrowPreference(title = stringResource(R.string.settings_live_format), summary = stringResource(liveFormatLabels[options.livePhotoFormat.ordinal]), onClick = { choice = row; showChoice = true })
+                    "image_format" -> OptionSelector(R.string.settings_image_format, imageLabels, options.imageFormat.ordinal) { index ->
+                        update { it.copy(imageFormat = ImageFormat.entries[index]) }
+                    }
+                    "video_quality" -> OptionSelector(R.string.settings_video_quality, videoLabels, options.videoPreference.ordinal) { index ->
+                        update { it.copy(videoPreference = VideoPreference.entries[index]) }
+                    }
+                    "live" -> OptionSelector(R.string.settings_live_mode, liveLabels, options.livePhotoMode.ordinal) { index ->
+                        update { it.copy(livePhotoMode = LivePhotoMode.entries[index]) }
+                    }
+                    "live_format" -> OptionSelector(R.string.settings_live_format, liveFormatLabels, options.livePhotoFormat.ordinal) { index ->
+                        update { it.copy(livePhotoFormat = LivePhotoFormat.entries[index]) }
+                    }
                     "skip" -> OptionSwitch(R.string.settings_skip_existing, R.string.settings_skip_hint, options.skipExisting) { update { it.copy(skipExisting = !it.skipExisting) } }
                     "author_archive" -> OptionSwitch(R.string.settings_author_archive, checked = options.authorArchive) { update { it.copy(authorArchive = !it.authorArchive) } }
                     "note_archive" -> OptionSwitch(R.string.settings_note_archive, checked = options.noteArchive) { update { it.copy(noteArchive = !it.noteArchive) } }
-                    "note_format" -> ArrowPreference(title = stringResource(R.string.settings_note_format), summary = stringResource(noteLabels[options.noteFormat.ordinal]), onClick = { choice = row; showChoice = true })
+                    "note_format" -> OptionSelector(R.string.settings_note_format, noteLabels, options.noteFormat.ordinal) { index ->
+                        update { it.copy(noteFormat = NoteFormat.entries[index]) }
+                    }
                     "publish_time" -> OptionSwitch(R.string.settings_publish_time, R.string.settings_publish_time_hint, options.writePublishTime) { update { it.copy(writePublishTime = !it.writePublishTime) } }
                     "export_json" -> BasicComponent(title = stringResource(R.string.settings_export_json), summary = stringResource(R.string.settings_export_hint), onClick = { exportJson.launch("xhs-download-records.json") },
                         endActions = { ActionIconButton(MiuixIcons.Regular.FileDownloads, stringResource(R.string.settings_export_json), { exportJson.launch("xhs-download-records.json") }) })
@@ -177,38 +181,6 @@ internal fun DownloadSettingsRoute(section: Int, onBack: () -> Unit, onOpenBrows
                 }
             }
             item("bottom") { Spacer(Modifier.height(24.dp).navigationBarsPadding()) }
-        }
-    }
-    choice?.let { key ->
-        val (label, labels, selected) = when (key) {
-            "image_format" -> Triple(R.string.settings_image_format, imageLabels, options.imageFormat.ordinal)
-            "video_quality" -> Triple(R.string.settings_video_quality, videoLabels, options.videoPreference.ordinal)
-            "live" -> Triple(R.string.settings_live_mode, liveLabels, options.livePhotoMode.ordinal)
-            "live_format" -> Triple(R.string.settings_live_format, liveFormatLabels, options.livePhotoFormat.ordinal)
-            else -> Triple(R.string.settings_note_format, noteLabels, options.noteFormat.ordinal)
-        }
-        WindowDialog(
-            title = stringResource(label),
-            show = showChoice,
-            onDismissRequest = { showChoice = false },
-            onDismissFinished = { choice = null }
-        ) {
-            Column(Modifier.heightIn(max = 500.dp)) {
-                Column(Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState())) {
-                    labels.forEachIndexed { index, resource ->
-                        BasicComponent(title = stringResource(resource), modifier = Modifier.semantics { this.selected = selected == index }, onClick = {
-                            update { when (key) {
-                                "image_format" -> it.copy(imageFormat = ImageFormat.entries[index])
-                                "video_quality" -> it.copy(videoPreference = VideoPreference.entries[index])
-                                "live" -> it.copy(livePhotoMode = LivePhotoMode.entries[index])
-                                "live_format" -> it.copy(livePhotoFormat = LivePhotoFormat.entries[index])
-                                else -> it.copy(noteFormat = NoteFormat.entries[index])
-                            } }; showChoice = false
-                        }, endActions = { if (selected == index) Icon(MiuixIcons.Regular.Ok, contentDescription = null) })
-                    }
-                }
-                TextButton(stringResource(R.string.cancel), onClick = { showChoice = false }, modifier = Modifier.fillMaxWidth())
-            }
         }
     }
     edit?.let { key ->
@@ -281,6 +253,17 @@ internal fun DownloadSettingsRoute(section: Int, onBack: () -> Unit, onOpenBrows
             }
         }
     }
+}
+
+@Composable
+private fun OptionSelector(title: Int, labels: List<Int>, selectedIndex: Int, onSelect: (Int) -> Unit) {
+    WindowSpinnerPreference(
+        title = stringResource(title),
+        items = labels.map { DropdownItem(text = stringResource(it)) },
+        selectedIndex = selectedIndex,
+        dialogButtonString = stringResource(R.string.cancel),
+        onSelectedIndexChange = onSelect,
+    )
 }
 
 @Composable

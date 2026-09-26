@@ -189,6 +189,7 @@ import top.yukonga.miuix.kmp.icon.extended.Download
 import top.yukonga.miuix.kmp.icon.extended.Ok
 import top.yukonga.miuix.kmp.icon.basic.Search
 import top.yukonga.miuix.kmp.icon.basic.SearchCleanup
+import top.yukonga.miuix.kmp.icon.extended.Notes
 import top.yukonga.miuix.kmp.window.WindowBottomSheet
 import top.yukonga.miuix.kmp.squircle.squircleBackground
 import top.yukonga.miuix.kmp.squircle.squircleSurface
@@ -1426,7 +1427,7 @@ private fun HistoryPage(
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(
-                            imageVector = if (manualInputLinks) MiuixIcons.Regular.Link else MiuixIcons.Regular.Paste,
+                            imageVector = if (manualInputLinks) MiuixIcons.Regular.Link else MiuixIcons.File,
                             contentDescription = null,
                             modifier = Modifier.padding(end = 8.dp),
                             tint = MiuixTheme.colorScheme.onPrimary

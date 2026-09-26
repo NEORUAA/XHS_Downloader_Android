@@ -99,7 +99,7 @@ internal fun DownloadSettingsRoute(section: Int, onBack: () -> Unit, onOpenBrows
     val exportCsv = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/csv")) { export(it, false) }
     val title = when (section) { 0 -> R.string.settings_media_title; 1 -> R.string.settings_archive_title; else -> R.string.settings_network_title }
     val rows = when (section) {
-        0 -> listOf("images", "videos", "cover", "image_format", "video_quality", "live")
+        0 -> listOf("images", "videos", "cover", "image_format", "video_quality", "live", "live_format")
         1 -> listOf("skip", "author_archive", "note_archive", "note_format", "publish_time", "export_json", "export_csv")
         else -> listOf("timeout", "retries", "proxy", "proxy_media", "web_session", "login") + SessionCredentials.HOSTS.map { "cookie:$it" }
     }
@@ -131,6 +131,7 @@ internal fun DownloadSettingsRoute(section: Int, onBack: () -> Unit, onOpenBrows
                     "image_format" -> ArrowPreference(title = stringResource(R.string.settings_image_format), summary = stringResource(imageLabels[options.imageFormat.ordinal]), onClick = { choice = row; showChoice = true })
                     "video_quality" -> ArrowPreference(title = stringResource(R.string.settings_video_quality), summary = stringResource(videoLabels[options.videoPreference.ordinal]), onClick = { choice = row; showChoice = true })
                     "live" -> ArrowPreference(title = stringResource(R.string.settings_live_mode), summary = stringResource(liveLabels[options.livePhotoMode.ordinal]), onClick = { choice = row; showChoice = true })
+                    "live_format" -> ArrowPreference(title = stringResource(R.string.settings_live_format), summary = stringResource(liveFormatLabels[options.livePhotoFormat.ordinal]), onClick = { choice = row; showChoice = true })
                     "skip" -> OptionSwitch(R.string.settings_skip_existing, R.string.settings_skip_hint, options.skipExisting) { update { it.copy(skipExisting = !it.skipExisting) } }
                     "author_archive" -> OptionSwitch(R.string.settings_author_archive, checked = options.authorArchive) { update { it.copy(authorArchive = !it.authorArchive) } }
                     "note_archive" -> OptionSwitch(R.string.settings_note_archive, checked = options.noteArchive) { update { it.copy(noteArchive = !it.noteArchive) } }
@@ -158,7 +159,7 @@ internal fun DownloadSettingsRoute(section: Int, onBack: () -> Unit, onOpenBrows
             }
             if (section == 0) item("media_hint") {
                 Column(Modifier.padding(horizontal = 24.dp).padding(bottom = 12.dp)) {
-                    listOf(R.string.settings_format_hint, R.string.settings_video_hint, R.string.settings_live_hint).forEach {
+                    listOf(R.string.settings_format_hint, R.string.settings_video_hint, R.string.settings_live_hint, R.string.settings_live_format_hint).forEach {
                         Text(stringResource(it), modifier = Modifier.padding(bottom = 8.dp), style = MiuixTheme.textStyles.body2, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
                     }
                 }
@@ -179,6 +180,7 @@ internal fun DownloadSettingsRoute(section: Int, onBack: () -> Unit, onOpenBrows
             "image_format" -> Triple(R.string.settings_image_format, imageLabels, options.imageFormat.ordinal)
             "video_quality" -> Triple(R.string.settings_video_quality, videoLabels, options.videoPreference.ordinal)
             "live" -> Triple(R.string.settings_live_mode, liveLabels, options.livePhotoMode.ordinal)
+            "live_format" -> Triple(R.string.settings_live_format, liveFormatLabels, options.livePhotoFormat.ordinal)
             else -> Triple(R.string.settings_note_format, noteLabels, options.noteFormat.ordinal)
         }
         WindowDialog(
@@ -195,6 +197,7 @@ internal fun DownloadSettingsRoute(section: Int, onBack: () -> Unit, onOpenBrows
                                 "image_format" -> it.copy(imageFormat = ImageFormat.entries[index])
                                 "video_quality" -> it.copy(videoPreference = VideoPreference.entries[index])
                                 "live" -> it.copy(livePhotoMode = LivePhotoMode.entries[index])
+                                "live_format" -> it.copy(livePhotoFormat = LivePhotoFormat.entries[index])
                                 else -> it.copy(noteFormat = NoteFormat.entries[index])
                             } }; showChoice = false
                         }, endActions = { if (selected == index) Icon(MiuixIcons.Regular.Ok, contentDescription = null) })
@@ -285,4 +288,6 @@ private fun OptionSwitch(title: Int, summary: Int? = null, checked: Boolean, onT
 private val imageLabels = listOf(R.string.settings_image_auto, R.string.settings_format_jpeg, R.string.settings_format_png, R.string.settings_format_webp, R.string.settings_format_heic, R.string.settings_format_avif)
 private val videoLabels = listOf(R.string.settings_quality_resolution, R.string.settings_quality_bitrate, R.string.settings_quality_size, R.string.settings_quality_compatibility)
 private val liveLabels = listOf(R.string.settings_live_merged, R.string.settings_live_separate, R.string.settings_live_still)
+private val liveFormatLabels = listOf(R.string.settings_live_auto, R.string.settings_live_standard, R.string.settings_live_xiaomi,
+    R.string.settings_live_oplus, R.string.settings_live_samsung, R.string.settings_live_vivo, R.string.settings_live_vivo_legacy, R.string.settings_live_huawei)
 private val noteLabels = listOf(R.string.settings_format_none, R.string.settings_format_txt, R.string.settings_format_md, R.string.settings_format_both)

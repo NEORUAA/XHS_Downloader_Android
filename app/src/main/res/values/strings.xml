@@ -17,7 +17,7 @@
     <string name="clear_input">Clear input</string>
     <string name="app_description"><![CDATA[origin resolution & no watermark]]></string>
     <string name="settings">Settings</string>
-    <string name="default_save_path_info">All files will be saved to MediaStore\'s Pictures or Movies + \"xhsdn\" subfolder</string>
+    <string name="default_save_path_info">Images and videos are saved in Pictures/xhsdn and Movies/xhsdn; paired vivo Live Photos use DCIM/xhsdn. Text exports use Download/xhsdn.</string>
     <string name="cancel">Cancel</string>
     <string name="apply">Apply</string>
     <string name="settings_saved">Settings saved successfully</string>
@@ -394,4 +394,14 @@
     <string name="settings_media_file_size">File size</string>
     <string name="settings_media_resolution">Resolution</string>
     <string name="media_resolution_unknown">Resolution unavailable</string>
+    <string name="settings_live_format">Live Photo format</string>
+    <string name="settings_live_auto">Automatic (current device)</string>
+    <string name="settings_live_standard">Standard / Google Photos</string>
+    <string name="settings_live_xiaomi">Xiaomi / Redmi / POCO</string>
+    <string name="settings_live_oplus">OPPO / OnePlus / realme</string>
+    <string name="settings_live_samsung">Samsung (SEF)</string>
+    <string name="settings_live_vivo">vivo / iQOO single file (experimental)</string>
+    <string name="settings_live_vivo_legacy">vivo / iQOO paired files (experimental)</string>
+    <string name="settings_live_huawei">Huawei / Honor (experimental)</string>
+    <string name="settings_live_format_hint">Used when merging Live Photos. Automatic selects by device brand; gallery support varies by model and OS. For older vivo galleries, try paired files and keep both files together. To export to another phone, select its format. Original video and audio are retained; silent sources remain silent.</string>
 </resources>

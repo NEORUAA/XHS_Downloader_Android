@@ -293,15 +293,17 @@ class DownloadQueue(private val context: Context, private val container: AppCont
                                     throw error
                                 }
                             }
-                            suspend fun save(file: File, type: MediaFileType, suffix: String) {
+                            suspend fun save(file: File, type: MediaFileType, suffix: String, nameSuffix: String = suffix) {
                                 currentCoroutineContext().ensureActive()
                                 val pieceId = "${item.id}:output:$suffix"
                                 val piece = sessions.resources(id).firstOrNull { it.mediaId == pieceId && it.state == "COMPLETED" && refsExist(it.refsJson) }
                                 val ref = if (piece != null) DownloadJson.decodeFromString<List<StoredMediaRef>>(piece.refsJson).single() else {
                                     val filename = NoteOutput.fileName(note, settings, index, type.extension, task.createdAt)
-                                    val name = if (suffix == "main") filename else filename.substringBeforeLast('.') + "_$suffix.${type.extension}"
+                                    val name = if (suffix == "main") filename else filename.substringBeforeLast('.') + "_$nameSuffix.${type.extension}"
                                     val saveContext = currentCoroutineContext()
-                                    val stored = storage.storeArchived(destination, name, type.mimeType, file.length(), folders) { output ->
+                                    val paired = options.livePhotoMode == LivePhotoMode.MERGED && options.livePhotoFormat == LivePhotoFormat.VIVO_LEGACY &&
+                                        suffix in setOf("live", "vivo_motion")
+                                    val stored = storage.storeArchived(destination, name, type.mimeType, file.length(), folders, livePhotoPair = paired) { output ->
                                         file.inputStream().use { input ->
                                             val buffer = ByteArray(256 * 1024)
                                             while (true) {
@@ -337,15 +339,31 @@ class DownloadQueue(private val context: Context, private val container: AppCont
                                     val still = if (options.imageDownload) part { image(item.image) } else null
                                     val motion = if (options.videoDownload && options.livePhotoMode != LivePhotoMode.STILL) part { fetch(item.video.id, NoteOutput.videoUrls(item.video, options.videoPreference)) } else null
                                     val output = File(context.cacheDir, "merged_${id}_${index}.jpg")
+                                    val pairedVideo = File(context.cacheDir, "merged_${id}_${index}.mp4")
                                     try {
-                                        if (still != null && motion != null && options.livePhotoMode == LivePhotoMode.MERGED && LivePhotoCreator.createLivePhoto(still.file, motion.file, output, null)) {
-                                            save(output, MediaFileType("jpg", "image/jpeg"), "live")
+                                        val format = LivePhotoCreator.resolveFormat(options.livePhotoFormat)
+                                        val merge = still != null && motion != null && options.livePhotoMode == LivePhotoMode.MERGED
+                                        val created = merge && withContext(Dispatchers.IO) {
+                                            val mergeContext = currentCoroutineContext()
+                                            if (format == LivePhotoFormat.VIVO_LEGACY) {
+                                                val pairId = java.util.UUID.nameUUIDFromBytes("$id:${item.id}".toByteArray())
+                                                    .toString().replace("-", "").take(28)
+                                                LivePhotoCreator.createVivoPair(still.file, motion.file, output, pairedVideo, pairId) { mergeContext.ensureActive() }
+                                            } else {
+                                                LivePhotoCreator.createLivePhoto(still.file, motion.file, output, null, format) { mergeContext.ensureActive() }
+                                            }
+                                        }
+                                        if (created) {
+                                            save(output, MediaFileType("jpg", "image/jpeg"), "live", "live_MP")
+                                            if (format == LivePhotoFormat.VIVO_LEGACY) {
+                                                save(pairedVideo, MediaFileType("mp4", "video/mp4"), "vivo_motion", "live_MP")
+                                            }
                                         } else {
                                             if (still != null && motion != null && options.livePhotoMode == LivePhotoMode.MERGED) notes.add(context.getString(R.string.download_warning_live))
                                             still?.let { save(it.file, it.type, "main") }
                                             motion?.let { save(it.file, it.type, "motion") }
                                         }
-                                    } finally { output.delete() }
+                                    } finally { output.delete(); pairedVideo.delete() }
                                     componentError?.let { throw it }
                                 }
                             }

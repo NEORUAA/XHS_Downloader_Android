@@ -84,6 +84,9 @@ internal fun buildDetailMediaCards(task: DownloadTask, session: DownloadSessionE
                         val fallback = records.containsKey("${item.id}:output:main") || records.containsKey("${item.id}:output:motion")
                         if (still && motion && options.livePhotoMode == LivePhotoMode.MERGED && !fallback) {
                             addOutput("live", listOf(item.image.id, item.video.id), MediaType.IMAGE, live = true)
+                            if (options.livePhotoFormat == LivePhotoFormat.VIVO_LEGACY) {
+                                addOutput("vivo_motion", listOf(item.video.id), MediaType.VIDEO)
+                            }
                         } else {
                             if (still) addOutput("main", listOf(item.image.id), MediaType.IMAGE)
                             if (motion) addOutput("motion", listOf(item.video.id), MediaType.VIDEO)

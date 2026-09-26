@@ -1,0 +1,53 @@
+{
+  "noteId": "live-web-preview-case",
+  "type": "normal",
+  "imageList": [
+    {
+      "fileId": "notes_pre_post/test-image",
+      "height": 4032,
+      "width": 3024,
+      "url": "https://sns-webpic-qc.xhscdn.com/notes_pre_post/test-image!h5_1080jpg",
+      "traceId": "",
+      "infoList": [],
+      "livePhoto": true,
+      "stream": {
+        "h264": [
+          {
+            "audioChannels": 0,
+            "hdrType": 0,
+            "masterUrl": "https://sns-video-v3.xhscdn.com/stream/1/10/19/test_19.mp4",
+            "backupUrls": [
+              "https://sns-bak-v1.xhscdn.com/stream/1/10/19/test_19.mp4",
+              "https://sns-bak-v6.xhscdn.com/stream/1/10/19/test_19.mp4"
+            ],
+            "vmaf": -1,
+            "psnr": 0,
+            "volume": 0,
+            "videoCodec": "h264",
+            "rotate": 0,
+            "ssim": 0,
+            "weight": 62,
+            "qualityType": "HD",
+            "streamType": 19,
+            "streamDesc": "WEB_LIVEPHOTO_19",
+            "defaultStream": 0,
+            "width": 1080,
+            "duration": 3000,
+            "fps": 30,
+            "videoBitrate": 2093658,
+            "audioBitrate": 0,
+            "format": "mp4",
+            "height": 1440,
+            "size": 787061,
+            "avgBitrate": 2098829,
+            "videoDuration": 3000,
+            "audioDuration": 0
+          }
+        ],
+        "h265": [],
+        "h266": [],
+        "av1": []
+      }
+    }
+  ]
+}

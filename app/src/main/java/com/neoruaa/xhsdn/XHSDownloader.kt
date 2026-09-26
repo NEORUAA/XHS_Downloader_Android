@@ -542,7 +542,7 @@ class XHSDownloader @JvmOverloads constructor(
                     continue
                 }
 
-                val output = File(workingDirectory, "xhs_${baseName}_live.jpg")
+                val output = File(workingDirectory, "xhs_${baseName}_live_MP.jpg")
                 val created = LivePhotoCreator.createLivePhoto(imageFile, videoFile, output, null)
                 if (created && output.exists() && output.length() > 0) {
                     if (cacheDestinationMode) {

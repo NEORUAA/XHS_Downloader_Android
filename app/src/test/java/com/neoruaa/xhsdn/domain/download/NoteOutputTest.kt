@@ -9,6 +9,25 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class NoteOutputTest {
+    @Test fun knownWatermarkedStreamsNeverWinOnResolutionBitrateSizeOrCompatibility() {
+        val video = ResolvedMedia.Video("watermarked", candidates = listOf(
+            MediaCandidate("watermarked", width = 4000, height = 3000, bitrate = 99999, size = 99999, codec = "h264", watermarked = true),
+            MediaCandidate("unknown", width = 720, height = 1280, codec = "h265"),
+            MediaCandidate("original", original = true),
+        ))
+        for (preference in VideoPreference.entries) {
+            assertEquals("watermarked", NoteOutput.videoUrls(video, preference).last())
+        }
+        val old = com.neoruaa.xhsdn.data.settings.DownloadJson.decodeFromString<MediaCandidate>("""{"url":"old"}""")
+        assertFalse(old.watermarked)
+    }
+
+    @Test fun livePhotoFormatChangesDownloadIdentity() {
+        val original = AppSettings()
+        val samsung = original.copy(downloadOptions = original.downloadOptions.copy(livePhotoFormat = com.neoruaa.xhsdn.data.settings.LivePhotoFormat.SAMSUNG))
+        assertNotEquals(NoteOutput.recordKey("note", "live", original, emptyList()), NoteOutput.recordKey("note", "live", samsung, emptyList()))
+    }
+
     @Test fun compatibilityPrefersHighestResolutionAvcWithoutDiscardingFallbacks() {
         val video = ResolvedMedia.Video("original", candidates = listOf(
             MediaCandidate("original", original = true),

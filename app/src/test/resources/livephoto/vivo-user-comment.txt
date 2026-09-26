@@ -1,0 +1,11 @@
+filter: 2237; fileterIntensity: 0.000000; filterMask: 0; captureOrientation: 90;
+niceRunStatus: 1002; hdrForward: 7; shaking: 0.000000; highlight: 1; motionR: 0; algolist: 0;
+multi-frame: 1;
+brp_mask: 0;
+brp_del_th: 0.0000,0.0000;
+brp_del_sen: 0.0000,0.0000;
+delta:1;
+bokeh:1;
+ispap:1;
+papproctime: 2000:01:01 00:00:00;
+module: photo;hw-remosaic: false;touch: (-1.0, -1.0);sceneMode: 13107200;cct_value: 0;AI_Scene: (-1, -1);aec_lux: 130.098;aec_lux_index: 0;albedo:  ;confidence:  ;motionLevel: -1;weatherinfo: weather: cloudy,icon:1,weatherInfo:100;temperature: 37;zeissColor: bright;

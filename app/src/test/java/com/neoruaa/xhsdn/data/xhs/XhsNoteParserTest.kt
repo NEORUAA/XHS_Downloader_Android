@@ -5,6 +5,57 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class XhsNoteParserTest {
+    @Test fun reportedWebLivePhotoIsAWatermarkedPreviewNotAnOriginalVideo() {
+        val json = javaClass.getResourceAsStream("/xhs/live-photo-web-preview.json")!!
+            .bufferedReader().use { it.readText() }
+        val note = XhsNoteParser().parseNote(org.json.JSONObject(json), "")
+        val video = note.livePhotos.single().video
+        assertEquals(3, video.candidates.size)
+        assertTrue(video.candidates.all { it.watermarked && !it.original })
+        assertTrue(video.candidates.all { it.width == 1080 && it.height == 1440 })
+        // Changing ranking cannot manufacture an original absent from this response.
+        for (preference in com.neoruaa.xhsdn.data.settings.VideoPreference.entries) {
+            assertEquals(video.candidates.map { it.url }, com.neoruaa.xhsdn.domain.download.NoteOutput.videoUrls(video, preference))
+        }
+    }
+
+    @Test fun livePhotoUsesSuppliedOriginalKeyBeforeStreamVariants() {
+        val note = org.json.JSONObject("""{"noteId":"n1","type":"normal","imageList":[
+            {"urlDefault":"https://example.com/cover.jpg","consumer":{"originVideoKey":"original/live.mp4"},
+             "stream":{"h264":[{"masterUrl":"https://example.com/wm.mp4","streamType":259,"width":4096,"height":2160},
+                                    {"masterUrl":"https://example.com/clean.mp4","streamType":258}]}}
+        ]}""")
+        val live = XhsNoteParser().parseNote(note, "").livePhotos.single()
+        assertEquals("https://sns-video-bd.xhscdn.com/original/live.mp4", live.video.sourceUrl)
+        assertTrue(live.video.candidates.first().original)
+        for (preference in com.neoruaa.xhsdn.data.settings.VideoPreference.entries) {
+            val urls = com.neoruaa.xhsdn.domain.download.NoteOutput.videoUrls(live.video, preference)
+            assertTrue(urls.indexOf("https://example.com/clean.mp4") < urls.indexOf("https://example.com/wm.mp4"))
+        }
+    }
+
+    @Test fun livePhotoWithoutOriginalRetainsUnknownAndWatermarkedFallbacks() {
+        val note = org.json.JSONObject("""{"noteId":"n1","type":"normal","imageList":[
+            {"urlDefault":"https://example.com/cover.jpg","videoId":"not-an-original-key",
+             "stream":{"h264":[{"masterUrl":"https://example.com/wm.mp4","streamType":309},
+                                    {"masterUrl":"https://example.com/unknown.mp4"}]}}
+        ]}""")
+        val video = XhsNoteParser().parseNote(note, "").livePhotos.single().video
+        assertEquals("https://example.com/unknown.mp4", video.sourceUrl)
+        assertEquals(2, video.candidates.size)
+        assertTrue(video.candidates.none { it.original })
+        assertTrue(video.candidates.last().watermarked)
+    }
+
+    @Test fun nestedLivePhotoAndNullOriginalDoNotCreateBogusCdnUrls() {
+        val note = org.json.JSONObject("""{"noteId":"n1","type":"normal","imageList":[
+            {"urlDefault":"https://example.com/cover.jpg","livePhoto":{"consumer":{"originVideoKey":null},
+             "media":{"stream":{"h264":[{"masterUrl":"https://example.com/live.mp4"}]}}}}
+        ]}""")
+        val video = XhsNoteParser().parseNote(note, "").livePhotos.single().video
+        assertEquals(listOf("https://example.com/live.mp4"), video.candidates.map { it.url })
+    }
+
     @Test
     fun parsesImageVideoLivePhotoAndMetadata() {
         val html = """

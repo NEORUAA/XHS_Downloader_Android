@@ -17,7 +17,7 @@
     <string name="downloaded_files_title">已下載檔案：</string>
     <string name="app_description"><![CDATA[無損解析度 & 無浮水印]]></string>
     <string name="settings">設定</string>
-    <string name="default_save_path_info">所有檔案將儲存到內建儲存空間的Pictures或Movies + 「xhsdn」子資料夾</string>
+    <string name="default_save_path_info">圖片和影片分別儲存到 Pictures/xhsdn 與 Movies/xhsdn；vivo 雙檔案實況儲存到 DCIM/xhsdn，文字匯出儲存到 Download/xhsdn。</string>
     <string name="cancel">取消</string>
     <string name="apply">確認</string>
     <string name="settings_saved">設定儲存成功</string>
@@ -394,4 +394,14 @@
     <string name="settings_media_file_size">檔案大小</string>
     <string name="settings_media_resolution">解析度</string>
     <string name="media_resolution_unknown">解析度未知</string>
+    <string name="settings_live_format">實況合成格式</string>
+    <string name="settings_live_auto">自動（目前裝置）</string>
+    <string name="settings_live_standard">通用 / Google 相簿</string>
+    <string name="settings_live_xiaomi">小米 / 紅米 / POCO</string>
+    <string name="settings_live_oplus">OPPO / OnePlus / realme</string>
+    <string name="settings_live_samsung">三星（SEF）</string>
+    <string name="settings_live_vivo">vivo / iQOO 單檔案（實驗性）</string>
+    <string name="settings_live_vivo_legacy">vivo / iQOO 雙檔案（實驗性）</string>
+    <string name="settings_live_huawei">華為 / 榮耀（實驗性）</string>
+    <string name="settings_live_format_hint">用於合成動態照片。自動模式依裝置品牌選擇，相簿支援仍取決於機型與系統；舊版 vivo 相簿可嘗試雙檔案格式，並將兩個檔案一起保留。匯出給其他手機時可手動選格式。保留原影片與音軌，無法恢復來源檔案沒有的聲音。</string>
 </resources>

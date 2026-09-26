@@ -102,7 +102,7 @@ class AndroidResolvedMediaSink(context: Context) : ResolvedMediaSink {
     ): StoredMediaRef {
         var imageFile: File? = null
         var videoFile: File? = null
-        val outputFile = File(cacheDirectory, "xhs_${baseName}_live.jpg")
+        val outputFile = File(cacheDirectory, "xhs_${baseName}_live_MP.jpg")
         try {
             imageFile = downloader.downloadFileToDirectory(
                 media.image.sourceUrl,

@@ -5,76 +5,191 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Matrix
 import android.media.ExifInterface
+import android.media.MediaExtractor
+import android.media.MediaFormat
 import android.media.MediaScannerConnection
+import android.os.Build
 import android.util.Log
-import java.io.ByteArrayOutputStream
+import com.neoruaa.xhsdn.data.settings.LivePhotoFormat
 import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
 import java.io.IOException
+import java.io.RandomAccessFile
+import java.text.SimpleDateFormat
+import java.util.Date
 import java.util.Locale
+import kotlinx.coroutines.CancellationException
 
-/** Creates Motion Photo/Live Photo files by prepending XMP metadata to a JPEG. */
+/** Creates device-specific live photos without changing the source video or its audio tracks. */
 object LivePhotoCreator {
     private const val TAG = "LivePhotoCreator"
 
-    /**
-     * Creates a live photo by embedding video into image with XMP metadata.
-     */
+    fun resolveFormat(format: LivePhotoFormat): LivePhotoFormat = format.resolve(Build.MANUFACTURER, Build.BRAND)
+
     @JvmStatic
     fun createLivePhoto(
         imageFile: File,
         videoFile: File,
         outputFile: File,
         context: Context?,
+        format: LivePhotoFormat = LivePhotoFormat.AUTO,
+        checkActive: () -> Unit = ::checkThread,
     ): Boolean {
-        val jpegFile = File(
-            imageFile.parentFile,
-            imageFile.name.replace(Regex("\\.[^.]+$"), "") + "_converted.jpg",
-        )
+        require(outputFile.canonicalFile !in listOf(imageFile.canonicalFile, videoFile.canonicalFile))
+        var jpeg: File? = null
+        var staged: File? = null
         try {
-            Log.d(
-                TAG,
-                "Creating live photo from image: ${imageFile.absolutePath} " +
-                    "(size: ${imageFile.length()} bytes) and video: ${videoFile.absolutePath} " +
-                    "(size: ${videoFile.length()} bytes) -> output: ${outputFile.absolutePath}",
-            )
-
-            Log.d(TAG, "Converting image to JPEG: ${jpegFile.absolutePath}")
-            if (!convertToJpeg(imageFile, jpegFile)) {
-                Log.e(TAG, "Failed to convert image to JPEG")
-                return false
+            checkActive()
+            val resolved = resolveFormat(format)
+            require(resolved != LivePhotoFormat.VIVO_LEGACY) { "The legacy vivo format requires paired output" }
+            val mime = MotionPhotoContainer.videoMime(videoFile, checkActive)
+            if (resolved in setOf(LivePhotoFormat.OPLUS, LivePhotoFormat.HUAWEI) && mime != "video/mp4") {
+                throw IOException("Selected live photo format requires MP4")
             }
-            Log.d(TAG, "Successfully converted to JPEG: ${jpegFile.absolutePath} (size: ${jpegFile.length()} bytes)")
-
-            val videoSize = videoFile.length()
-            val xmpData = generateXmpMetadata(videoSize.toInt(), videoSize.toInt()).toByteArray(Charsets.UTF_8)
-            val xmpSegment = createXmpApp1Segment(xmpData)
-            val result = createLivePhotoStreaming(jpegFile, videoFile, outputFile, xmpSegment)
-
-            if (result && context != null) {
-                triggerMediaStoreScan(context, outputFile)
+            val countFrames = resolved == LivePhotoFormat.HUAWEI
+            val sourceTracks = inspectTracks(videoFile, 0, videoFile.length(), countFrames, checkActive)
+            jpeg = File.createTempFile("live_cover_", ".jpg", outputFile.absoluteFile.parentFile)
+            if (!convertToJpeg(imageFile, jpeg)) return false
+            checkActive()
+            addVendorExif(jpeg, resolved)
+            staged = File.createTempFile("live_output_", ".jpg", outputFile.absoluteFile.parentFile)
+            val layout = MotionPhotoContainer.write(jpeg, videoFile, staged, resolved, mime, sourceTracks.frameCount, checkActive)
+            val embeddedTracks = inspectTracks(staged, layout.videoOffset, layout.videoLength, countFrames, checkActive)
+            if (sourceTracks != embeddedTracks) throw IOException("Embedded media tracks changed")
+            checkActive()
+            if (!staged.renameTo(outputFile)) throw IOException("Unable to publish live photo")
+            if (context != null) {
+                MediaScannerConnection.scanFile(context, arrayOf(outputFile.absolutePath), arrayOf("image/jpeg"), null)
             }
-            return result
-        } catch (e: Exception) {
-            Log.e(TAG, "Error creating live photo: ${e.message}", e)
-            if (outputFile.exists() && !outputFile.delete()) {
-                Log.w(TAG, "Failed to delete invalid output: ${outputFile.absolutePath}")
-            }
+            Log.d(TAG, "Created $resolved motion photo with ${sourceTracks.mimeTypes}")
+            return true
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: Exception) {
+            Log.w(TAG, "Unable to create live photo", error)
             return false
         } finally {
-            if (jpegFile.exists() && !jpegFile.delete()) {
-                Log.w(TAG, "Failed to delete temporary JPEG: ${jpegFile.absolutePath}")
-            }
+            jpeg?.delete()
+            staged?.delete()
         }
     }
 
-    private fun triggerMediaStoreScan(context: Context, file: File) {
-        MediaScannerConnection.scanFile(
-            context,
-            arrayOf(file.absolutePath),
-            arrayOf("image/jpeg"),
-        ) { path, uri -> Log.d(TAG, "Scanned: $path -> $uri") }
+    /** Both files carry the same persistent ID so a retried download can reuse either saved half. */
+    fun createVivoPair(
+        imageFile: File, videoFile: File, outputImage: File, outputVideo: File,
+        pairId: String, checkActive: () -> Unit = ::checkThread,
+    ): Boolean {
+        require(outputImage.canonicalFile != outputVideo.canonicalFile)
+        require(listOf(outputImage.canonicalFile, outputVideo.canonicalFile).none {
+            it == imageFile.canonicalFile || it == videoFile.canonicalFile
+        })
+        try {
+            checkActive()
+            if (MotionPhotoContainer.videoMime(videoFile, checkActive) != "video/mp4") return false
+            val tracks = inspectTracks(videoFile, 0, videoFile.length())
+            if (!convertToJpeg(imageFile, outputImage)) return false
+            outputImage.appendBytes(MotionPhotoContainer.vivoImageTail(pairId))
+            videoFile.inputStream().use { input -> outputVideo.outputStream().use { out ->
+                MotionPhotoContainer.copy(input, out, checkActive)
+            } }
+            // A size-zero final BMFF box extends to EOF; terminate it before adding a uuid box.
+            RandomAccessFile(outputVideo, "rw").use { file ->
+                var position = 0L
+                while (position < file.length()) {
+                    checkActive()
+                    file.seek(position)
+                    val size = file.readInt().toLong() and 0xffffffffL
+                    if (size == 0L) {
+                        val remaining = file.length() - position
+                        if (remaining > 0xffffffffL) throw IOException("Video box is too large")
+                        file.seek(position); file.writeInt(remaining.toInt()); break
+                    }
+                    if (size == 1L) { file.skipBytes(4); position += file.readLong() } else position += size
+                }
+            }
+            outputVideo.appendBytes(MotionPhotoContainer.vivoVideoBox(pairId))
+            if (inspectTracks(outputVideo, 0, outputVideo.length()) != tracks) throw IOException("Paired media tracks changed")
+            checkActive()
+            return true
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: Exception) {
+            Log.w(TAG, "Unable to create vivo pair", error)
+            return false
+        }
+    }
+
+    private data class Tracks(val mimeTypes: List<String>, val durationMs: Long, val frameCount: Int)
+
+    private fun inspectTracks(
+        file: File, offset: Long, length: Long, countFrames: Boolean = false, checkActive: () -> Unit = ::checkThread,
+    ): Tracks {
+        val extractor = MediaExtractor()
+        try {
+            FileInputStream(file).use { extractor.setDataSource(it.fd, offset, length) }
+            val types = mutableListOf<String>()
+            var durationUs = 0L
+            var hasVideo = false
+            var frameCount = 0
+            for (index in 0 until extractor.trackCount) {
+                val format = extractor.getTrackFormat(index)
+                val mime = format.getString(MediaFormat.KEY_MIME) ?: continue
+                if (!mime.startsWith("video/") && !mime.startsWith("audio/")) continue
+                types += mime
+                if (mime.startsWith("video/")) {
+                    hasVideo = true
+                    if (format.getInteger(MediaFormat.KEY_WIDTH) <= 0 || format.getInteger(MediaFormat.KEY_HEIGHT) <= 0) {
+                        throw IOException("Invalid video dimensions")
+                    }
+                    if (format.containsKey(MediaFormat.KEY_DURATION)) durationUs = format.getLong(MediaFormat.KEY_DURATION)
+                }
+                extractor.selectTrack(index)
+                extractor.seekTo(0, MediaExtractor.SEEK_TO_CLOSEST_SYNC)
+                // AAC priming samples can have negative presentation times; only a missing track is EOS.
+                if (extractor.sampleTrackIndex != index) throw IOException("Empty media track")
+                if (countFrames && mime.startsWith("video/")) {
+                    do {
+                        checkActive()
+                        if (frameCount == Int.MAX_VALUE) throw IOException("Too many video frames")
+                        frameCount++
+                    } while (extractor.advance())
+                }
+                extractor.unselectTrack(index)
+            }
+            if (!hasVideo) throw IOException("No readable video track")
+            return Tracks(types, durationUs / 1000, frameCount)
+        } finally {
+            extractor.release()
+        }
+    }
+
+    private fun addVendorExif(jpeg: File, format: LivePhotoFormat) {
+        val marker = when (format) {
+            LivePhotoFormat.OPLUS -> "Oplus_8388608"
+            LivePhotoFormat.VIVO -> vivoUserComment()
+            else -> return
+        }
+        ExifInterface(jpeg.absolutePath).apply {
+            setAttribute(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_NORMAL.toString())
+            setAttribute(ExifInterface.TAG_USER_COMMENT, marker)
+            saveAttributes()
+        }
+    }
+
+    internal fun vivoUserComment(date: String = SimpleDateFormat("yyyy:MM:dd HH:mm:ss", Locale.ROOT).format(Date())): String {
+        // Observed X300 capture-state structure. Neutral fields are not original capture metadata.
+        return "filter: 2237; fileterIntensity: 0.000000; filterMask: 0; captureOrientation: 90;\n" +
+            "niceRunStatus: 1002; hdrForward: 7; shaking: 0.000000; highlight: 1; motionR: 0; algolist: 0;\n" +
+            "multi-frame: 1;\nbrp_mask: 0;\nbrp_del_th: 0.0000,0.0000;\nbrp_del_sen: 0.0000,0.0000;\n" +
+            "delta:1;\nbokeh:1;\nispap:1;\npapproctime: $date;\n" +
+            "module: photo;hw-remosaic: false;touch: (-1.0, -1.0);sceneMode: 13107200;cct_value: 0;" +
+            "AI_Scene: (-1, -1);aec_lux: 130.098;aec_lux_index: 0;albedo:  ;confidence:  ;motionLevel: -1;" +
+            "weatherinfo: weather: cloudy,icon:1,weatherInfo:100;temperature: 37;zeissColor: bright;"
+    }
+
+    private fun checkThread() {
+        if (Thread.currentThread().isInterrupted) throw CancellationException("Live photo creation cancelled")
     }
 
     /** Converts any Android-decodable image to an orientation-normalized JPEG. */
@@ -163,229 +278,4 @@ object LivePhotoCreator {
         }
     }
 
-    @Suppress("unused")
-    private fun isWebPFormat(file: File): Boolean {
-        return try {
-            FileInputStream(file).use { input ->
-                val header = ByteArray(12)
-                if (input.read(header) < header.size) {
-                    false
-                } else {
-                    header[0] == 'R'.code.toByte() &&
-                        header[1] == 'I'.code.toByte() &&
-                        header[2] == 'F'.code.toByte() &&
-                        header[3] == 'F'.code.toByte() &&
-                        header[8] == 'W'.code.toByte() &&
-                        header[9] == 'E'.code.toByte() &&
-                        header[10] == 'B'.code.toByte() &&
-                        header[11] == 'P'.code.toByte()
-                }
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "Error checking WebP format: ${e.message}")
-            false
-        }
-    }
-
-    @Suppress("unused")
-    private fun convertWebPToJpeg(webpFile: File, jpegFile: File): Boolean {
-        var bitmap: Bitmap? = null
-        return try {
-            bitmap = BitmapFactory.decodeFile(webpFile.absolutePath)
-            if (bitmap == null) {
-                Log.e(TAG, "Failed to decode WebP image")
-                false
-            } else {
-                FileOutputStream(jpegFile).use { output ->
-                    bitmap.compress(Bitmap.CompressFormat.JPEG, 95, output)
-                }
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "Error converting WebP to JPEG: ${e.message}")
-            false
-        } finally {
-            if (bitmap != null && !bitmap.isRecycled) bitmap.recycle()
-        }
-    }
-
-    private fun generateXmpMetadata(videoSize: Int, videoLengthForOffset: Int): String =
-        String.format(
-            Locale.ROOT,
-            "<x:xmpmeta xmlns:x=\"adobe:ns:meta/\" x:xmptk=\"Adobe XMP Core 5.1.0-jc003\">" +
-                "<rdf:RDF xmlns:rdf=\"http://www.w3.org/1999/02/22-rdf-syntax-ns#\">" +
-                "<rdf:Description rdf:about=\"\"" +
-                "    xmlns:GCamera=\"http://ns.google.com/photos/1.0/camera/\"" +
-                "    xmlns:OpCamera=\"http://ns.oplus.com/photos/1.0/camera/\"" +
-                "    xmlns:MiCamera=\"http://ns.xiaomi.com/photos/1.0/camera/\"" +
-                "    xmlns:Container=\"http://ns.google.com/photos/1.0/container/\"" +
-                "    xmlns:Item=\"http://ns.google.com/photos/1.0/container/item/\"" +
-                "  GCamera:MotionPhoto=\"1\"" +
-                "  GCamera:MotionPhotoVersion=\"1\"" +
-                "  GCamera:MotionPhotoPresentationTimestampUs=\"0\"" +
-                "  OpCamera:MotionPhotoPrimaryPresentationTimestampUs=\"0\"" +
-                "  OpCamera:MotionPhotoOwner=\"xhs\"" +
-                "  OpCamera:OLivePhotoVersion=\"2\"" +
-                "  OpCamera:VideoLength=\"%d\"" +
-                "  GCamera:MicroVideoVersion=\"1\"" +
-                "  GCamera:MicroVideo=\"1\"" +
-                "  GCamera:MicroVideoOffset=\"%d\"" +
-                "  GCamera:MicroVideoPresentationTimestampUs=\"0\"" +
-                "  MiCamera:XMPMeta=\"&lt;?xml version='1.0' encoding='UTF-8' standalone='yes' ?&gt;\">" +
-                "  <Container:Directory>" +
-                "    <rdf:Seq>" +
-                "      <rdf:li rdf:parseType=\"Resource\">" +
-                "        <Container:Item" +
-                "          Item:Mime=\"image/jpeg\"" +
-                "          Item:Semantic=\"Primary\"" +
-                "          Item:Length=\"0\"" +
-                "          Item:Padding=\"0\"/>" +
-                "      </rdf:li>" +
-                "      <rdf:li rdf:parseType=\"Resource\">" +
-                "        <Container:Item" +
-                "          Item:Mime=\"video/mp4\"" +
-                "          Item:Semantic=\"MotionPhoto\"" +
-                "          Item:Length=\"%d\"/>" +
-                "      </rdf:li>" +
-                "    </rdf:Seq>" +
-                "  </Container:Directory>" +
-                "</rdf:Description>" +
-                "</rdf:RDF>" +
-                "</x:xmpmeta>",
-            videoSize,
-            videoSize,
-            videoSize,
-        )
-
-    private fun createXmpApp1Segment(xmpData: ByteArray): ByteArray {
-        val xmpHeader = "http://ns.adobe.com/xap/1.0/\u0000".toByteArray(Charsets.UTF_8)
-        val segmentLength = xmpHeader.size + xmpData.size + 2
-        return ByteArrayOutputStream().apply {
-            write(0xFF)
-            write(0xE1)
-            write((segmentLength shr 8) and 0xFF)
-            write(segmentLength and 0xFF)
-            write(xmpHeader)
-            write(xmpData)
-        }.toByteArray()
-    }
-
-    private fun isLivePhotoValid(file: File): Boolean {
-        return try {
-            FileInputStream(file).use { input ->
-                val header = ByteArray(10)
-                val bytesRead = input.read(header)
-                if (bytesRead < 2 || header[0] != 0xFF.toByte() || header[1] != 0xD8.toByte()) {
-                    Log.d(TAG, "File does not have valid JPEG SOI marker")
-                    return false
-                }
-            }
-
-            val buffer = ByteArray(16 * 1024)
-            var totalRead = 0
-            FileInputStream(file).use { input ->
-                while (totalRead < buffer.size) {
-                    val count = input.read(buffer, totalRead, buffer.size - totalRead)
-                    if (count == -1) break
-                    totalRead += count
-                }
-            }
-            val content = String(buffer, 0, totalRead, Charsets.UTF_8)
-            val hasXmpMeta = content.contains("xmpmeta")
-            val hasMotionPhoto = content.contains("MotionPhoto")
-            val hasMicroVideo = content.contains("MicroVideo")
-            Log.d(
-                TAG,
-                "XMP validation - xmpmeta: $hasXmpMeta, MotionPhoto: $hasMotionPhoto, " +
-                    "MicroVideo: $hasMicroVideo",
-            )
-            if (!hasXmpMeta || !hasMotionPhoto) return false
-
-            val options = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-            BitmapFactory.decodeFile(file.absolutePath, options)
-            if (options.outWidth <= 0 || options.outHeight <= 0) {
-                Log.d(TAG, "Image has invalid dimensions: ${options.outWidth}x${options.outHeight}")
-                return false
-            }
-            true
-        } catch (e: Exception) {
-            Log.e(TAG, "Error validating live photo: ${e.message}")
-            false
-        }
-    }
-
-    @Suppress("unused")
-    private fun readFileToBytes(file: File): ByteArray =
-        FileInputStream(file).use { input ->
-            ByteArrayOutputStream().use { output ->
-                val buffer = ByteArray(16 * 1024)
-                while (true) {
-                    val count = input.read(buffer)
-                    if (count == -1) break
-                    output.write(buffer, 0, count)
-                }
-                output.toByteArray()
-            }
-        }
-
-    private fun createLivePhotoStreaming(
-        imageFile: File,
-        videoFile: File,
-        outputFile: File,
-        xmpSegment: ByteArray,
-    ): Boolean {
-        return try {
-            FileInputStream(imageFile).use { imageStream ->
-                FileInputStream(videoFile).use { videoStream ->
-                    FileOutputStream(outputFile).use { outputStream ->
-                        val header = ByteArray(2)
-                        if (imageStream.read(header) != 2) {
-                            Log.e(TAG, "Could not read image header")
-                            return false
-                        }
-                        outputStream.write(header)
-                        outputStream.write(xmpSegment)
-
-                        val buffer = ByteArray(8192)
-                        val totalImageBytes = (imageFile.length() - 2).coerceAtLeast(0).toInt()
-                        var copiedImageBytes = 0
-                        while (copiedImageBytes < totalImageBytes) {
-                            val bytesToRead = minOf(buffer.size, totalImageBytes - copiedImageBytes)
-                            val bytesRead = imageStream.read(buffer, 0, bytesToRead)
-                            if (bytesRead == -1) break
-                            outputStream.write(buffer, 0, bytesRead)
-                            copiedImageBytes += bytesRead
-                        }
-
-                        var copiedVideoBytes = 0L
-                        while (true) {
-                            val bytesRead = videoStream.read(buffer)
-                            if (bytesRead == -1) break
-                            outputStream.write(buffer, 0, bytesRead)
-                            copiedVideoBytes += bytesRead
-                        }
-                        outputStream.flush()
-                        Log.d(
-                            TAG,
-                            "Successfully created live photo with streaming approach. " +
-                                "Image bytes copied: $copiedImageBytes, Video bytes copied: $copiedVideoBytes, " +
-                                "Total file size: ${outputFile.length()}",
-                        )
-                    }
-                }
-            }
-
-            if (!isLivePhotoValid(outputFile)) {
-                Log.e(TAG, "Created live photo is not valid - failed validation check")
-                if (outputFile.exists()) outputFile.delete()
-                false
-            } else {
-                Log.d(TAG, "Live photo validation passed successfully")
-                true
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "Error in streaming live photo creation: ${e.message}", e)
-            if (outputFile.exists()) outputFile.delete()
-            false
-        }
-    }
 }

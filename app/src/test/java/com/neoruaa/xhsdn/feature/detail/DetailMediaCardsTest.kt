@@ -59,6 +59,14 @@ class DetailMediaCardsTest {
         assertEquals(listOf("image", "video"), merged.transferIds)
     }
 
+    @Test fun pairedVivoShowsBothOutputsWhileStillRepresentingOneLivePhoto() {
+        val live = ResolvedMedia.LivePhoto(image, video)
+        val cards = buildDetailMediaCards(task, session(listOf(live), DownloadOptions(livePhotoFormat = LivePhotoFormat.VIVO_LEGACY)), emptyList())
+        assertEquals(listOf("image:live", "image:vivo_motion"), cards.map { it.key })
+        assertTrue(cards.first().live)
+        assertEquals(listOf("video"), cards.last().transferIds)
+    }
+
     @Test fun partialLiveFallbackKeepsSavedStillAndFailedMotionWithoutDuplicatingFiles() {
         val ref = StoredMediaRef("content://test/still", "still.jpg", "image/jpeg")
         val records = listOf(DownloadResourceEntity(1, "image", "", "FAILED"),

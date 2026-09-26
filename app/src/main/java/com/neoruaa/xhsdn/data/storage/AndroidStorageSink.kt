@@ -41,7 +41,7 @@ class AndroidStorageSink(context: Context) : StorageSink, StoredMediaReader {
         mimeType: String,
         sizeBytes: Long,
         writer: StorageStreamWriter,
-    ): StoredMediaRef = storeArchived(destination, displayName, mimeType, sizeBytes, emptyList(), writer)
+    ): StoredMediaRef = storeArchived(destination, displayName, mimeType, sizeBytes, emptyList(), writer = writer)
 
     fun storeArchived(
         destination: StorageDestination,
@@ -49,6 +49,7 @@ class AndroidStorageSink(context: Context) : StorageSink, StoredMediaReader {
         mimeType: String,
         sizeBytes: Long,
         folders: List<String>,
+        livePhotoPair: Boolean = false,
         writer: StorageStreamWriter,
     ): StoredMediaRef {
         val segments = folders.map(::sanitizeDisplayName).filter { it.isNotBlank() && it != "." && it != ".." }
@@ -61,9 +62,9 @@ class AndroidStorageSink(context: Context) : StorageSink, StoredMediaReader {
             when (destination) {
                 StorageDestination.DefaultMediaStore ->
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                        storeMediaStore(safeName, safeMimeType, segments, writer)
+                        storeMediaStore(safeName, safeMimeType, segments, livePhotoPair, writer)
                     } else {
-                        storeLegacyFile(safeName, safeMimeType, sizeBytes, segments, writer)
+                        storeLegacyFile(safeName, safeMimeType, sizeBytes, segments, livePhotoPair, writer)
                     }
 
                 is StorageDestination.CustomTree -> storeCustomTree(
@@ -89,9 +90,11 @@ class AndroidStorageSink(context: Context) : StorageSink, StoredMediaReader {
         displayName: String,
         mimeType: String,
         folders: List<String>,
+        livePhotoPair: Boolean,
         writer: StorageStreamWriter,
     ): StoredMediaRef {
-        val (collection, basePath) = mediaStoreTarget(mimeType)
+        val (collection, mediaPath) = mediaStoreTarget(mimeType)
+        val basePath = if (livePhotoPair) "${Environment.DIRECTORY_DCIM}/xhsdn/" else mediaPath
         val relativePath = basePath + folders.joinToString("/", postfix = if (folders.isEmpty()) "" else "/")
         val uniqueName = uniqueMediaStoreName(collection, relativePath, displayName)
         val values = ContentValues().apply {
@@ -134,9 +137,11 @@ class AndroidStorageSink(context: Context) : StorageSink, StoredMediaReader {
         mimeType: String,
         sizeBytes: Long,
         folders: List<String>,
+        livePhotoPair: Boolean,
         writer: StorageStreamWriter,
     ): StoredMediaRef {
         val rootDirectory = when {
+            livePhotoPair -> Environment.DIRECTORY_DCIM
             mimeType.startsWith("video/") -> Environment.DIRECTORY_MOVIES
             mimeType.startsWith("image/") -> Environment.DIRECTORY_PICTURES
             else -> Environment.DIRECTORY_DOWNLOADS
@@ -525,12 +530,11 @@ class AndroidStorageSink(context: Context) : StorageSink, StoredMediaReader {
 
     private fun uniqueMediaStoreName(collection: Uri, relativePath: String, requestedName: String): String {
         if (!mediaStoreNameExists(collection, relativePath, requestedName)) return requestedName
-        val (base, extension) = splitExtension(requestedName)
         for (counter in 1 until MAX_UNIQUE_ATTEMPTS) {
-            val candidate = "${base}_($counter)$extension"
+            val candidate = appendNameSuffix(requestedName, "_($counter)")
             if (!mediaStoreNameExists(collection, relativePath, candidate)) return candidate
         }
-        return "${base}_${System.currentTimeMillis()}$extension"
+        return appendNameSuffix(requestedName, "_${System.currentTimeMillis()}")
     }
 
     private fun mediaStoreNameExists(collection: Uri, relativePath: String, name: String): Boolean {
@@ -712,12 +716,19 @@ class AndroidStorageSink(context: Context) : StorageSink, StoredMediaReader {
 
     private fun uniqueFileName(directory: File, requestedName: String): String {
         if (!File(directory, requestedName).exists()) return requestedName
-        val (base, extension) = splitExtension(requestedName)
         for (counter in 1 until MAX_UNIQUE_ATTEMPTS) {
-            val candidate = "${base}_($counter)$extension"
+            val candidate = appendNameSuffix(requestedName, "_($counter)")
             if (!File(directory, candidate).exists()) return candidate
         }
-        return "${base}_${System.currentTimeMillis()}$extension"
+        return appendNameSuffix(requestedName, "_${System.currentTimeMillis()}")
+    }
+
+    private fun appendNameSuffix(name: String, suffix: String): String {
+        val (base, extension) = splitExtension(name)
+        // Keep Google's required MP filename ending when allocating a coexistence name.
+        return if (base.endsWith("MP") && extension.lowercase() in setOf(".jpg", ".jpeg", ".mp4")) {
+            base.removeSuffix("MP") + suffix + "MP" + extension
+        } else base + suffix + extension
     }
 
     private fun splitExtension(name: String): Pair<String, String> {

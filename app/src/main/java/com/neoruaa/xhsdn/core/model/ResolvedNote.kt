@@ -37,6 +37,7 @@ data class MediaCandidate(
     val size: Long = 0,
     val codec: String = "",
     val original: Boolean = false,
+    val watermarked: Boolean = false,
 )
 
 @Serializable

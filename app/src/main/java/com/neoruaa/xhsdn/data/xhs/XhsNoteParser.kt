@@ -77,7 +77,8 @@ class XhsNoteParser(
                 (0 until info.length()).mapNotNull { info.optJSONObject(it)?.optString("url") }.firstOrNull { it.isNotBlank() }.orEmpty()
             }.ifBlank { item.optString("traceId").takeIf(String::isNotBlank)?.let { "https://sns-img-qc.xhscdn.com/$it" }.orEmpty() }
             if (!isHttp(original)) continue
-            val streams = candidates(item.optJSONObject("stream"))
+            val streams = (videoCandidates(item.optJSONObject("livePhoto")) + videoCandidates(item))
+                .distinctBy { it.url }.sortedWith(compareByDescending<MediaCandidate> { it.original }.thenBy { it.watermarked })
             val isCover = isVideoNote && streams.isEmpty()
             val image = ResolvedMedia.Image(
                 sourceUrl = urlTransformer(original), originalUrl = original,
@@ -92,12 +93,7 @@ class XhsNoteParser(
             } else items += image
         }
         if (mainVideo != null && (isVideoNote || !note.has("type"))) {
-            val streams = mutableListOf<MediaCandidate>()
-            mainVideo.optJSONObject("consumer")?.optString("originVideoKey")?.takeIf(String::isNotBlank)?.let {
-                streams += MediaCandidate("https://sns-video-bd.xhscdn.com/$it", original = true)
-            }
-            streams += candidates(mainVideo.optJSONObject("media")?.optJSONObject("stream"))
-            val distinct = streams.distinctBy { it.url }
+            val distinct = videoCandidates(mainVideo)
             if (distinct.isNotEmpty()) items += ResolvedMedia.Video(
                 distinct.first().url, id = "$noteId:video", previewUrl = items.firstOrNull()?.previewUrl.orEmpty(), candidates = distinct,
             )
@@ -122,6 +118,19 @@ class XhsNoteParser(
         )
     }
 
+    private fun videoCandidates(video: JSONObject?): List<MediaCandidate> {
+        if (video == null) return emptyList()
+        // Use only a supplied original key; stream/video IDs are not interchangeable with CDN keys.
+        val key = (video.optJSONObject("consumer")?.opt("originVideoKey") as? String)
+            ?.takeIf(String::isNotBlank) ?: (video.opt("originVideoKey") as? String)?.takeIf(String::isNotBlank)
+        val original = key?.let {
+            if (isHttp(it)) it else "https://sns-video-bd.xhscdn.com/${it.trimStart('/')}"
+        }
+        return (listOfNotNull(original?.let { MediaCandidate(it, original = true) }) +
+            candidates(video.optJSONObject("media")?.optJSONObject("stream")) +
+            candidates(video.optJSONObject("stream"))).distinctBy { it.url }.sortedBy { it.watermarked }
+    }
+
     private fun candidates(stream: JSONObject?): List<MediaCandidate> = buildList {
         stream?.keys()?.forEach { codec ->
             val array = stream.optJSONArray(codec) ?: return@forEach
@@ -135,6 +144,11 @@ class XhsNoteParser(
                 val urls = (0 until backups.length()).map { backups.optString(it) } + listOf(item.optString("masterUrl"), item.optString("url"))
                 urls.filter(::isHttp).distinct().forEach { url -> add(MediaCandidate(
                     url, item.optInt("width"), item.optInt("height"), item.optLong("videoBitrate"), item.optLong("size"), codec,
+                    // WEB_LIVEPHOTO_19 was confirmed to contain a logo in the reported live-photo case.
+                    // Other known download/miniprogram variants follow the media-parser reference.
+                    // Absence of this flag is not proof that the pixels are watermark-free.
+                    watermarked = item.optInt("streamType") in setOf(259, 309) ||
+                        item.optString("streamDesc").equals("WEB_LIVEPHOTO_19", ignoreCase = true),
                 )) }
             }
         }

@@ -34,7 +34,8 @@ object NoteOutput {
     }
 
     fun videoUrls(video: ResolvedMedia.Video, preference: VideoPreference): List<String> =
-        video.candidates.sortedWith(compareByDescending<com.neoruaa.xhsdn.core.model.MediaCandidate> {
+        video.candidates.sortedWith(compareBy<com.neoruaa.xhsdn.core.model.MediaCandidate> { it.watermarked }
+            .thenByDescending {
             if (preference == VideoPreference.COMPATIBILITY) it.codec.lowercase(Locale.ROOT) in setOf("h264", "avc", "avc1") else it.original
         }
             .thenByDescending { when (preference) {
@@ -71,6 +72,7 @@ object NoteOutput {
         val identity = listOf(noteId, mediaId, settings.customStorageTreeUri.orEmpty(),
             if (settings.useCustomNamingFormat) settings.customNamingTemplate else "{postId}",
             options.imageFormat.name, options.videoPreference.name, options.livePhotoMode.name,
+            options.livePhotoFormat.name,
             options.imageDownload.toString(), options.videoDownload.toString(), options.videoCoverDownload.toString(),
             options.writePublishTime.toString()) + folders
         return ResumableTransfer.fingerprint(DownloadJson.encodeToString(identity))

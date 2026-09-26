@@ -46,6 +46,8 @@ interface DownloadSessionDao {
         WHERE r.state IN ('COMPLETED','SKIPPED') AND r.media_id NOT LIKE '%:output:%'
         ORDER BY t.id, r.media_id LIMIT :limit OFFSET :offset""")
     suspend fun exportPage(limit: Int, offset: Int): List<DownloadRecord>
+    @Query("SELECT * FROM download_sessions WHERE task_id = :id") fun observeSession(id: Long): Flow<DownloadSessionEntity?>
+    @Query("SELECT * FROM download_resources WHERE task_id = :id") fun observeResources(id: Long): Flow<List<DownloadResourceEntity>>
     @Upsert suspend fun saveSession(session: DownloadSessionEntity)
     @Query("SELECT * FROM download_sessions WHERE task_id = :id") suspend fun session(id: Long): DownloadSessionEntity?
     @Upsert suspend fun saveResource(resource: DownloadResourceEntity)

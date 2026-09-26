@@ -62,6 +62,14 @@ import com.neoruaa.xhsdn.viewmodels.MediaType
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.distinctUntilChanged
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.neoruaa.xhsdn.feature.detail.DetailMediaCard
+import com.neoruaa.xhsdn.domain.download.MediaTransferProgress
+import com.neoruaa.xhsdn.data.TaskStatus
+import com.neoruaa.xhsdn.XHSApplication
+import top.yukonga.miuix.kmp.basic.LinearProgressIndicator
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Checkbox
 import top.yukonga.miuix.kmp.basic.Icon
@@ -85,22 +93,94 @@ fun DetailMediaWaterfall(
     modifier: Modifier = Modifier,
     mediaItems: List<MediaItem>,
     onMediaClick: (MediaItem) -> Unit,
-    onDeleteMedia: (MediaItem) -> Unit
+    onDeleteMedia: (MediaItem) -> Unit,
+    cards: List<DetailMediaCard> = emptyList(),
+    taskId: Long? = null,
 ) {
+    val entries = remember(cards, mediaItems) { cards.ifEmpty { mediaItems.map { DetailMediaCard(it.path, stored = it) } } }
     StagedBalancedTwoLaneLayout(
         modifier = modifier,
-        items = mediaItems,
-        itemKey = MediaItem::path
-    ) { item, layoutReady, imageVisible, loadEpoch, onThumbnailLoadComplete ->
-        DetailMediaPreview(
-            item = item,
-            onClick = { onMediaClick(item) },
-            onDelete = { onDeleteMedia(item) },
-            thumbnailLayoutReady = layoutReady,
-            thumbnailVisible = imageVisible,
-            thumbnailLoadEpoch = loadEpoch,
-            onThumbnailLoadComplete = onThumbnailLoadComplete
-        )
+        items = entries,
+        itemKey = { it.key }
+    ) { card, layoutReady, imageVisible, loadEpoch, onThumbnailLoadComplete ->
+        val stored = card.stored
+        if (stored != null) {
+            DetailMediaPreview(
+                item = stored,
+                onClick = { onMediaClick(stored) },
+                onDelete = { onDeleteMedia(stored) },
+                thumbnailLayoutReady = layoutReady,
+                thumbnailVisible = imageVisible,
+                thumbnailLoadEpoch = loadEpoch,
+                onThumbnailLoadComplete = onThumbnailLoadComplete
+            )
+        } else {
+            PendingMediaPreview(card = card, taskId = taskId, onThumbnailLoadComplete = onThumbnailLoadComplete)
+        }
+    }
+}
+
+@Composable
+private fun PendingMediaPreview(
+    modifier: Modifier = Modifier,
+    card: DetailMediaCard,
+    taskId: Long?,
+    onThumbnailLoadComplete: () -> Unit,
+) {
+    val thumbnail = rememberSelectableThumbnail(CachedMediaItem(card.key, "", card.type, card.previewUrl, card.width, card.height, card.live))
+    val onLoaded by rememberUpdatedState(onThumbnailLoadComplete)
+    LaunchedEffect(thumbnail.isComplete) { if (thumbnail.isComplete) onLoaded() }
+    val ratio = if (card.width > 0 && card.height > 0) (card.width.toFloat() / card.height).coerceIn(0.5f, 2f)
+        else thumbnail.bitmap.aspectRatioOrDefault()
+    Column(modifier.squircleSurface(MiuixTheme.colorScheme.surfaceVariant, 18.dp)) {
+        Box(Modifier.fillMaxWidth().aspectRatio(ratio), contentAlignment = Alignment.Center) {
+            SelectablePlaceholderMedia(card.type)
+            thumbnail.bitmap?.let { Image(it, contentDescription = null, modifier = Modifier.fillMaxSize()) }
+        }
+        MediaTransferFooter(card = card, taskId = taskId, modifier = Modifier.padding(12.dp))
+    }
+}
+
+@Composable
+private fun MediaTransferFooter(modifier: Modifier = Modifier, card: DetailMediaCard, taskId: Long?) {
+    val context = LocalContext.current
+    val queue = remember(context) { (context.applicationContext as XHSApplication).appContainer.downloadQueue }
+    val progress by remember(taskId, card.transferIds, card.checkpoint) {
+        queue.mediaProgress.map { tasks ->
+            val active = tasks[taskId]
+            MediaTransferProgress.combine(card.transferIds.map { active?.get(it) ?: card.checkpoint[it] ?: MediaTransferProgress() })
+        }.distinctUntilChanged()
+    }.collectAsStateWithLifecycle(initialValue = MediaTransferProgress.combine(card.transferIds.map { card.checkpoint[it] ?: MediaTransferProgress() }))
+    val failed = (card.resourceFailed && card.taskStatus == TaskStatus.PARTIAL) || progress.failed || card.taskStatus == TaskStatus.FAILED
+    val paused = card.taskStatus == TaskStatus.PAUSED
+    val cancelled = card.taskStatus == TaskStatus.CANCELLED
+    val status = when {
+        cancelled -> R.string.detail_transfer_cancelled
+        paused -> R.string.detail_transfer_paused
+        failed -> R.string.detail_transfer_failed
+        card.taskStatus == TaskStatus.WAITING_FOR_USER -> R.string.detail_transfer_selection
+        progress.complete -> if (card.live) R.string.detail_transfer_merging else R.string.detail_transfer_saving
+        progress.downloaded > 0 -> R.string.detail_transfer_downloading
+        else -> R.string.detail_transfer_waiting
+    }
+    val fraction = progress.fraction
+    Column(modifier) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Text(stringResource(status), style = MiuixTheme.textStyles.footnote1, modifier = Modifier.weight(1f))
+            if (fraction != null) Text(stringResource(R.string.detail_transfer_percent, (fraction * 100).toInt()), style = MiuixTheme.textStyles.footnote1)
+        }
+        if (fraction != null) {
+            LinearProgressIndicator(progress = fraction, modifier = Modifier.fillMaxWidth().padding(top = 6.dp))
+        } else if (!failed && !paused && !cancelled && card.taskStatus == TaskStatus.DOWNLOADING && progress.downloaded > 0) {
+            LinearProgressIndicator(modifier = Modifier.fillMaxWidth().padding(top = 6.dp))
+        }
+        if (progress.downloaded > 0 || progress.total > 0) {
+            val received = android.text.format.Formatter.formatShortFileSize(context, progress.downloaded)
+            Text(if (progress.total > 0) stringResource(R.string.detail_transfer_bytes, received,
+                android.text.format.Formatter.formatShortFileSize(context, progress.total)) else received,
+                style = MiuixTheme.textStyles.footnote1, color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                modifier = Modifier.padding(top = 4.dp))
+        }
     }
 }
 

@@ -379,4 +379,15 @@
     <string name="selective_type_video">Video</string>
     <string name="selective_type_live">Live Photo</string>
     <string name="selective_type_cover">Cover</string>
+    <string name="detail_media_files">Media files</string>
+    <string name="detail_transfer_cancelled">Cancelled</string>
+    <string name="detail_transfer_paused">Paused</string>
+    <string name="detail_transfer_failed">Failed</string>
+    <string name="detail_transfer_selection">Awaiting selection</string>
+    <string name="detail_transfer_merging">Merging / saving</string>
+    <string name="detail_transfer_saving">Saving</string>
+    <string name="detail_transfer_downloading">Downloading</string>
+    <string name="detail_transfer_waiting">Waiting</string>
+    <string name="detail_transfer_percent">%1$d%%</string>
+    <string name="detail_transfer_bytes">%1$s / %2$s</string>
 </resources>

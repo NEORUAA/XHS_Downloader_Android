@@ -41,6 +41,9 @@ class DownloadQueue(private val context: Context, private val container: AppCont
     private val _downloadSpeeds = MutableStateFlow<Map<Long, Long>>(emptyMap())
     val downloadSpeeds: StateFlow<Map<Long, Long>> = _downloadSpeeds.asStateFlow()
 
+    private val _mediaProgress = MutableStateFlow<Map<Long, Map<String, MediaTransferProgress>>>(emptyMap())
+    val mediaProgress: StateFlow<Map<Long, Map<String, MediaTransferProgress>>> = _mediaProgress.asStateFlow()
+
     suspend fun enqueue(input: String, selection: Boolean = false, infoOnly: Boolean = false): List<Long> {
         container.initialization.await()
         container.settingsRepository.awaitReady()
@@ -161,6 +164,14 @@ class DownloadQueue(private val context: Context, private val container: AppCont
     }
 
     private suspend fun execute(id: Long) {
+        val transfers = java.util.concurrent.ConcurrentHashMap<String, MediaTransferProgress>()
+        suspend fun persistTransfers() {
+            transfers.toMap().forEach { (partId, progress) ->
+                sessions.saveResource(DownloadResourceEntity(id, "$partId:transfer", "",
+                    state = when { progress.failed -> "TRANSFER_FAILED"; progress.complete -> "TRANSFERRED"; else -> "TRANSFERRING" },
+                    bytesDownloaded = progress.downloaded, totalBytes = progress.total))
+            }
+        }
         try {
             var session = sessions.session(id) ?: run { tasks.updateTaskStatus(id, TaskStatus.PAUSED); return }
             val settings = DownloadJson.decodeFromString<AppSettings>(session.settingsJson)
@@ -216,9 +227,11 @@ class DownloadQueue(private val context: Context, private val container: AppCont
             suspend fun publish(terminal: Boolean = false) = progressLock.withLock {
                 val fraction = fractions.values.sum().coerceAtMost((total - complete - failed).coerceAtLeast(0).toFloat())
                 _progress.update { it + (id to ((complete + fraction) / total).coerceIn(0f, 1f)) }
+                _mediaProgress.update { it + (id to transfers.toMap()) }
                 val now = android.os.SystemClock.elapsedRealtime()
                 if (terminal || now - lastPersist > 1000) {
                     lastPersist = now
+                    persistTransfers()
                     tasks.updateTask(id) { it.copy(completedFiles = complete, failedFiles = failed, currentFileProgress = fraction) }
                 }
             }
@@ -229,7 +242,10 @@ class DownloadQueue(private val context: Context, private val container: AppCont
                 try {
                     val (refs, notes) = if (previous != null && refsExist(previous.refsJson)) {
                         DownloadJson.decodeFromString<List<StoredMediaRef>>(previous.refsJson) to listOfNotNull(previous.warning)
-                    } else action()
+                    } else {
+                        sessions.saveResource(DownloadResourceEntity(id, mediaId, key, state = "DOWNLOADING"))
+                        action()
+                    }
                     currentCoroutineContext().ensureActive()
                     val didSkip = previous != null && existing == null
                     sessions.saveResource(DownloadResourceEntity(id, mediaId, key, if (didSkip) "SKIPPED" else "COMPLETED", DownloadJson.encodeToString(refs), warning = notes.joinToString("\n").ifBlank { null }))
@@ -262,8 +278,20 @@ class DownloadQueue(private val context: Context, private val container: AppCont
                         runResource(item.id) {
                             val refs = mutableListOf<StoredMediaRef>()
                             val notes = mutableListOf<String>()
-                            suspend fun fetch(partId: String, urls: List<String>): TransferredMedia = transfer.fetch(client, id, partId, urls, options.maxRetries, onBytesReceived = speedTracker::recordBytes) { bytes, length ->
-                                fractions[item.id] = if (length > 0) (bytes.toFloat() / length).coerceIn(0f, 0.98f) else 0f
+                            suspend fun fetch(partId: String, urls: List<String>): TransferredMedia {
+                                transfers[partId] = MediaTransferProgress()
+                                try {
+                                    val result = transfer.fetch(client, id, partId, urls, options.maxRetries, onBytesReceived = speedTracker::recordBytes) { bytes, length ->
+                                        transfers[partId] = MediaTransferProgress(bytes, length)
+                                        fractions[item.id] = if (length > 0) (bytes.toFloat() / length).coerceIn(0f, 0.98f) else 0f
+                                    }
+                                    transfers[partId] = MediaTransferProgress(result.file.length(), result.file.length(), complete = true)
+                                    return result
+                                } catch (cancelled: CancellationException) { throw cancelled
+                                } catch (error: Exception) {
+                                    transfers.compute(partId) { _, previous -> (previous ?: MediaTransferProgress()).copy(failed = true) }
+                                    throw error
+                                }
                             }
                             suspend fun save(file: File, type: MediaFileType, suffix: String) {
                                 currentCoroutineContext().ensureActive()
@@ -347,8 +375,13 @@ class DownloadQueue(private val context: Context, private val container: AppCont
             tasks.updateTaskStatus(id, TaskStatus.FAILED, errorMessage(error))
             debug(errorMessage(error))
         } finally {
-            _progress.update { it - id }
-            _downloadSpeeds.update { it - id }
+            try {
+                withContext(NonCancellable) { persistTransfers() }
+            } finally {
+                _progress.update { it - id }
+                _downloadSpeeds.update { it - id }
+                _mediaProgress.update { it - id }
+            }
         }
     }
 

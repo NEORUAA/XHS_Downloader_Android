@@ -120,7 +120,9 @@ data class DetailUiState(
     val mediaItems: List<MediaItem> = emptyList(),
     val taskTitle: String = "",
     val isDownloading: Boolean = false,
-    val noteContent: String? = null
+    val noteContent: String? = null,
+    val downloadCards: List<com.neoruaa.xhsdn.feature.detail.DetailMediaCard> = emptyList(),
+    val taskId: Long? = null,
 )
 
 class DetailActivity : ComponentActivity() {
@@ -207,9 +209,14 @@ class DetailActivity : ComponentActivity() {
             val controller = ThemeController(ColorSchemeMode.System)
             val uiState by viewModel.state.collectAsStateWithLifecycle()
             val topBarState = rememberTopAppBarState()
+            val container = (application as XHSApplication).appContainer
+            val cards by remember(taskId) {
+                taskId?.let { com.neoruaa.xhsdn.feature.detail.observeDetailMediaCards(container.taskRepository, container.taskDatabase.downloadSessionDao(), it) }
+                    ?: flowOf(emptyList())
+            }.collectAsStateWithLifecycle(initialValue = emptyList())
             MiuixTheme(controller = controller) {
                 DetailScreen(
-                    uiState = uiState,
+                    uiState = uiState.copy(downloadCards = cards, taskId = taskId),
                     onBack = { finish() },
                     onMediaClick = { openFile(it) },
                     onDeleteMedia = { mediaItem ->
@@ -305,9 +312,14 @@ internal fun DetailRoute(
         task?.let { uiState = uiState.copy(mediaItems = it.mediaRefs.map(::MediaItem), isDownloading = it.isActive, noteContent = it.noteContent) }
     }
     val topBarState = rememberTopAppBarState()
+    val container = remember(context) { (context.applicationContext as XHSApplication).appContainer }
+    val cards by remember(taskId) {
+        taskId?.let { com.neoruaa.xhsdn.feature.detail.observeDetailMediaCards(repository, container.taskDatabase.downloadSessionDao(), it) }
+            ?: flowOf(emptyList())
+    }.collectAsStateWithLifecycle(initialValue = emptyList())
 
     DetailScreen(
-        uiState = uiState,
+        uiState = uiState.copy(downloadCards = cards, taskId = taskId),
         onBack = onBack,
         onMediaClick = { item -> openRouteMedia(context, item) },
         onDeleteMedia = { mediaItem ->
@@ -540,13 +552,13 @@ private fun FilesPage(
             span = StaggeredGridItemSpan.FullLine
         ) {
             SmallTitle(
-                text = stringResource(R.string.downloaded_files_title_lower),
+                text = stringResource(if (uiState.downloadCards.any { it.stored == null }) R.string.detail_media_files else R.string.downloaded_files_title_lower),
                 insideMargin = PaddingValues(12.dp, 0.dp)
             )
         }
 
         // ===== 空态（单列 / 满行）=====
-        if (uiState.mediaItems.isEmpty()) {
+        if (uiState.mediaItems.isEmpty() && uiState.downloadCards.isEmpty()) {
             item(
                 key = "downloaded_files_empty",
                 span = StaggeredGridItemSpan.FullLine
@@ -573,7 +585,9 @@ private fun FilesPage(
                 DetailMediaWaterfall(
                     mediaItems = uiState.mediaItems,
                     onMediaClick = onMediaClick,
-                    onDeleteMedia = onDeleteMedia
+                    onDeleteMedia = onDeleteMedia,
+                    cards = uiState.downloadCards,
+                    taskId = uiState.taskId,
                 )
             }
         }

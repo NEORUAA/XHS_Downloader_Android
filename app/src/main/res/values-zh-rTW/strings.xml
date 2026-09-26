@@ -379,4 +379,15 @@
     <string name="selective_type_video">影片</string>
     <string name="selective_type_live">動態照片</string>
     <string name="selective_type_cover">封面</string>
+    <string name="detail_media_files">媒體檔案</string>
+    <string name="detail_transfer_cancelled">已取消</string>
+    <string name="detail_transfer_paused">已暫停</string>
+    <string name="detail_transfer_failed">下載失敗</string>
+    <string name="detail_transfer_selection">等待選擇</string>
+    <string name="detail_transfer_merging">合成／儲存中</string>
+    <string name="detail_transfer_saving">儲存中</string>
+    <string name="detail_transfer_downloading">下載中</string>
+    <string name="detail_transfer_waiting">等待下載</string>
+    <string name="detail_transfer_percent">%1$d%%</string>
+    <string name="detail_transfer_bytes">%1$s / %2$s</string>
 </resources>

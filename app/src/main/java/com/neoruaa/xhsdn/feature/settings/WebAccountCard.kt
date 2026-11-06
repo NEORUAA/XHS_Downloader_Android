@@ -46,7 +46,7 @@ internal fun WebAccountCard(modifier: Modifier = Modifier, onClick: () -> Unit) 
             summary = stringResource(if (account == null) R.string.settings_account_signed_out else R.string.settings_account_signed_in),
             insideMargin = PaddingValues(16.dp),
             startAction = {
-                Box(Modifier.padding(end = 16.dp).size(48.dp)
+                Box(Modifier.padding(end = 6.dp).size(48.dp)
                     .clip(CircleShape).background(colorResource(R.color.account_avatar_background)), contentAlignment = Alignment.Center) {
                     Icon(MiuixIcons.Regular.Contacts, contentDescription = null,
                         tint = Color.White, modifier = Modifier.size(28.dp))

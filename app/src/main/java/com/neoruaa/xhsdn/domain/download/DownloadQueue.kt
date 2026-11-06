@@ -5,6 +5,7 @@ import android.content.Intent
 import androidx.core.content.ContextCompat
 import androidx.room3.withWriteTransaction
 import com.neoruaa.xhsdn.LivePhotoCreator
+import com.neoruaa.xhsdn.NamingFormat
 import com.neoruaa.xhsdn.R
 import com.neoruaa.xhsdn.app.AppContainer
 import com.neoruaa.xhsdn.core.model.*
@@ -31,6 +32,7 @@ class DownloadQueue(private val context: Context, private val container: AppCont
     private val sessions get() = container.taskDatabase.downloadSessionDao()
     private val transfer = ResumableTransfer(File(context.filesDir, "transfers"))
     private val storage = AndroidStorageSink(context)
+    private val authorProfiles = XhsAuthorProfileResolver()
     private val drainLock = Mutex()
     private val controlLock = Mutex()
     private var activeJob: Job? = null
@@ -179,13 +181,24 @@ class DownloadQueue(private val context: Context, private val container: AppCont
             val task = tasks.getTaskById(id) ?: return
             tasks.updateTaskStatus(id, TaskStatus.RESOLVING)
             debug(context.getString(R.string.download_resolving))
-            val note = session.resolvedJson?.let { DownloadJson.decodeFromString<ResolvedNote>(it) } ?: run {
+            val parsedNote = session.resolvedJson?.let { DownloadJson.decodeFromString<ResolvedNote>(it) } ?: run {
                 val source = OkHttpXhsPageSource(container.network.client(options, media = false))
                 DefaultXhsContentRepository(source::fetchHtml, source::resolveShortUrl).resolve(task.noteUrl).also {
                     session = session.copy(resolvedJson = DownloadJson.encodeToString(it), noteId = it.noteId, authorName = it.authorName.orEmpty())
                     sessions.saveSession(session)
                 }
             }
+            val needsRedId = settings.useCustomNamingFormat &&
+                NamingFormat.containsToken(settings.customNamingTemplate, NamingFormat.TOKEN_RED_ID)
+            val note = if (needsRedId && parsedNote.authorRedId.isNullOrBlank()) {
+                val source = OkHttpXhsPageSource(container.network.client(options, media = false))
+                authorProfiles.resolveRedId(parsedNote, source::fetchPage)?.let { redId ->
+                    parsedNote.copy(authorRedId = redId).also {
+                        session = session.copy(resolvedJson = DownloadJson.encodeToString(it))
+                        sessions.saveSession(session)
+                    }
+                } ?: parsedNote
+            } else parsedNote
             note.authorId?.takeIf(String::isNotBlank)?.let { authorId ->
                 val author = sessions.author(authorId)
                 sessions.saveAuthor(NoteAuthorEntity(authorId, note.authorName.orEmpty(), author?.remark.orEmpty()))
@@ -223,6 +236,9 @@ class DownloadQueue(private val context: Context, private val container: AppCont
             var failed = 0
             var skipped = 0
             val warnings = mutableSetOf<String>()
+            if (needsRedId && note.authorRedId.isNullOrBlank()) {
+                warnings.add(context.getString(R.string.download_author_id_unavailable))
+            }
             if (!session.infoOnly) NoteOutput.commentWarning(note, options)?.let { warnings.add(context.getString(it)) }
             var lastPersist = 0L
             suspend fun publish(terminal: Boolean = false) = progressLock.withLock {
@@ -237,8 +253,10 @@ class DownloadQueue(private val context: Context, private val container: AppCont
                 }
             }
             suspend fun runResource(mediaId: String, action: suspend () -> Pair<List<StoredMediaRef>, List<String>>) {
-                val key = NoteOutput.recordKey(note.noteId, mediaId, settings, folders)
-                val existing = sessions.resources(id).firstOrNull { it.mediaId == mediaId && it.state in setOf("COMPLETED", "SKIPPED") }
+                val key = NoteOutput.recordKey(note.noteId, mediaId, settings, folders, note.authorRedId)
+                val existing = sessions.resources(id).firstOrNull {
+                    it.mediaId == mediaId && it.recordKey == key && it.state in setOf("COMPLETED", "SKIPPED")
+                }
                 val previous = existing ?: if (options.skipExisting) sessions.completedResources(key).firstOrNull { refsExist(it.refsJson) } else null
                 try {
                     val (refs, notes) = if (previous != null && refsExist(previous.refsJson)) {
@@ -297,7 +315,12 @@ class DownloadQueue(private val context: Context, private val container: AppCont
                             suspend fun save(file: File, type: MediaFileType, suffix: String, nameSuffix: String = suffix) {
                                 currentCoroutineContext().ensureActive()
                                 val pieceId = "${item.id}:output:$suffix"
-                                val piece = sessions.resources(id).firstOrNull { it.mediaId == pieceId && it.state == "COMPLETED" && refsExist(it.refsJson) }
+                                val pieceKey = NoteOutput.recordKey(note.noteId, pieceId, settings, folders, note.authorRedId)
+                                val piece = sessions.resources(id).firstOrNull {
+                                    // Legacy output rows can be reused unless public-ID naming needs repair.
+                                    it.mediaId == pieceId && (it.recordKey == pieceKey || it.recordKey.isEmpty() && !needsRedId) &&
+                                        it.state == "COMPLETED" && refsExist(it.refsJson)
+                                }
                                 val ref = if (piece != null) DownloadJson.decodeFromString<List<StoredMediaRef>>(piece.refsJson).single() else {
                                     val filename = NoteOutput.fileName(note, settings, index, type.extension, task.createdAt)
                                     val outputSuffix = if (item is ResolvedMedia.Image && item.commentId != null) "comment" else nameSuffix
@@ -316,7 +339,7 @@ class DownloadQueue(private val context: Context, private val container: AppCont
                                         }
                                     }
                                     withContext(NonCancellable) {
-                                        sessions.saveResource(DownloadResourceEntity(id, pieceId, "", "COMPLETED", DownloadJson.encodeToString(listOf(stored))))
+                                        sessions.saveResource(DownloadResourceEntity(id, pieceId, pieceKey, "COMPLETED", DownloadJson.encodeToString(listOf(stored))))
                                         tasks.addMediaRef(id, stored)
                                     }
                                     stored

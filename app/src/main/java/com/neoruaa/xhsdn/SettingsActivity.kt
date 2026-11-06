@@ -29,6 +29,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
@@ -36,6 +37,7 @@ import androidx.compose.foundation.layout.displayCutout
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
@@ -43,6 +45,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.runtime.Composable
@@ -85,6 +89,8 @@ import top.yukonga.miuix.kmp.basic.BasicComponent
 import top.yukonga.miuix.kmp.basic.BasicComponentDefaults
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.CardDefaults
+import top.yukonga.miuix.kmp.basic.ButtonDefaults
+import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.SmallTitle
 import top.yukonga.miuix.kmp.basic.Switch
@@ -103,6 +109,7 @@ import top.yukonga.miuix.kmp.theme.ColorSchemeMode
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.theme.ThemeController
 import top.yukonga.miuix.kmp.squircle.squircleBorder
+import top.yukonga.miuix.kmp.window.WindowDialog
 import android.graphics.Color as AndroidColor
 
 data class SettingsUiState(
@@ -135,7 +142,8 @@ class SettingsViewModel(
             repository.settings.collect { settings ->
                 val currentTemplate = _state.value.template
                 _state.value = settings.toUiState(
-                    templateValue = if (currentTemplate.text == settings.customNamingTemplate) {
+                    templateValue = if (currentTemplate.text == settings.customNamingTemplate ||
+                        NamingFormat.validationError(currentTemplate.text) != null) {
                         currentTemplate
                     } else {
                         TextFieldValue(settings.customNamingTemplate)
@@ -153,8 +161,11 @@ class SettingsViewModel(
         it.copy(useCustomNaming = enabled)
     }
 
-    fun onTemplateChange(value: TextFieldValue) = updateState {
-        it.copy(template = value)
+    fun onTemplateChange(value: TextFieldValue) {
+        _state.value = _state.value.copy(template = value)
+        if (NamingFormat.validationError(value.text) == null) {
+            persist { it.copy(template = value) }
+        }
     }
 
     fun onResetTemplate() = updateState {
@@ -739,6 +750,17 @@ private fun SettingsScreen(
     onOpenAccount: (() -> Unit)? = null,
 ) {
     val context = LocalContext.current
+    var timeToken by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf<String?>(null) }
+    var showTimeFormat by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
+    val insertToken: (String) -> Unit = { placeholder ->
+        val current = uiState.template
+        val start = current.selection.min.coerceIn(0, current.text.length)
+        val end = current.selection.max.coerceIn(start, current.text.length)
+        onTemplateChange(TextFieldValue(
+            text = current.text.replaceRange(start, end, placeholder),
+            selection = androidx.compose.ui.text.TextRange(start + placeholder.length)
+        ))
+    }
     var localAdvanced by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf<Int?>(null) }
     if (localAdvanced != null) {
         androidx.activity.compose.BackHandler { localAdvanced = null }
@@ -978,30 +1000,28 @@ private fun SettingsScreen(
                     )
                 }
 
-                item(key = "naming_token_grid") {
-                    TokenGrid(
-                        tokens = uiState.tokens,
-                        enabled = true,
-                        onInsert = { placeholder ->
-                            val current = uiState.template
-                            val selectionStart = current.selection.start.coerceAtLeast(0)
-                            val selectionEnd = current.selection.end.coerceAtLeast(0)
-                            val min = minOf(selectionStart, selectionEnd)
-                            val max = maxOf(selectionStart, selectionEnd)
-                            val newText = buildString {
-                                append(current.text.substring(0, min))
-                                append(placeholder)
-                                append(current.text.substring(max))
+                NamingFormat.validationError(uiState.template.text)?.let { error ->
+                    item(key = "naming_template_error") {
+                        Text(stringResource(error), color = MiuixTheme.colorScheme.error,
+                            modifier = Modifier.padding(horizontal = 16.dp).padding(bottom = 12.dp))
+                    }
+                }
+
+                uiState.tokens.chunked(2).forEach { row ->
+                    item(key = "naming_tokens_${row.first().key}") {
+                        Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp).padding(bottom = 12.dp),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            row.forEach { token ->
+                                TokenChip(token, onClick = {
+                                    if (NamingFormat.isTimeToken(token.key)) {
+                                        timeToken = token.key
+                                        showTimeFormat = true
+                                    } else insertToken(token.placeholder)
+                                }, modifier = Modifier.weight(1f))
                             }
-                            val newSelection = min + placeholder.length
-                            onTemplateChange(
-                                TextFieldValue(
-                                    text = newText,
-                                    selection = androidx.compose.ui.text.TextRange(newSelection)
-                                )
-                            )
+                            if (row.size == 1) Spacer(Modifier.weight(1f))
                         }
-                    )
+                    }
                 }
             }
 
@@ -1055,6 +1075,15 @@ private fun SettingsScreen(
             }
         }
     }
+    uiState.tokens.firstOrNull { it.key == timeToken }?.let { token ->
+        TimeFormatDialog(
+            token = token,
+            show = showTimeFormat,
+            onDismiss = { showTimeFormat = false },
+            onDismissFinished = { timeToken = null },
+            onInsert = { placeholder -> insertToken(placeholder); showTimeFormat = false }
+        )
+    }
 }
 
 @Composable
@@ -1082,63 +1111,83 @@ private fun MiuixSwitchWidget(
 }
 
 @Composable
-private fun TokenGrid(
-    tokens: List<NamingFormat.TokenDefinition>,
-    enabled: Boolean,
-    onInsert: (String) -> Unit
+private fun TokenChip(
+    token: NamingFormat.TokenDefinition,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
 ) {
-    FlowRow(
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp),
-        modifier = Modifier.padding(top = 0.dp, start = 12.dp, end = 12.dp, bottom = 16.dp)
+    Card(
+        modifier = modifier,
+        cornerRadius = 16.dp,
+        colors = CardDefaults.defaultColors(color = MiuixTheme.colorScheme.surfaceVariant),
+        onClick = onClick
     ) {
-        tokens.forEach { token ->
-            TokenChip(
-                token = token,
-                enabled = enabled,
-                onInsert = onInsert,
-                modifier = Modifier.fillMaxWidth(0.48f)
-            )
+        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(stringResource(token.labelResId), fontSize = 16.sp, color = MiuixTheme.colorScheme.onSurface)
+            Text(token.placeholder, fontSize = 14.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
         }
     }
 }
 
 @Composable
 @OptIn(ExperimentalLayoutApi::class)
-private fun TokenChip(
+private fun TimeFormatDialog(
     token: NamingFormat.TokenDefinition,
-    enabled: Boolean,
+    show: Boolean,
+    onDismiss: () -> Unit,
+    onDismissFinished: () -> Unit,
     onInsert: (String) -> Unit,
-    modifier: Modifier = Modifier
 ) {
-    val borderColor = MiuixTheme.colorScheme.surface
-    Card(
-        modifier = modifier,
-        cornerRadius = 16.dp,
-        colors = CardDefaults.defaultColors(
-            color = if (enabled) MiuixTheme.colorScheme.surfaceVariant else MiuixTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
-        ),
-        onClick = if (enabled) {
-            { onInsert(token.placeholder) }
-        } else {
-            null
-        }
+    var pattern by androidx.compose.runtime.saveable.rememberSaveable(token.key) { mutableStateOf("") }
+    val timestamp = remember(token.key) { System.currentTimeMillis() }
+    val valid = pattern.isEmpty() || NamingFormat.isValidDatePattern(pattern)
+    val preview = when {
+        pattern.isNotEmpty() -> NamingFormat.formatTimestamp(timestamp, pattern)
+        token.key == NamingFormat.TOKEN_DOWNLOAD_TIMESTAMP -> timestamp.toString()
+        else -> NamingFormat.formatTimestamp(timestamp, NamingFormat.DEFAULT_DATE_PATTERN)
+    }
+    WindowDialog(
+        title = stringResource(token.labelResId),
+        show = show,
+        onDismissRequest = onDismiss,
+        onDismissFinished = onDismissFinished
     ) {
-        Column(
-            modifier = Modifier
-                .padding(12.dp),
-            verticalArrangement = Arrangement.spacedBy(4.dp)
-        ) {
-            Text(
-                text = stringResource(token.labelResId),
-                fontSize = 16.sp,
-                color = if (enabled) MiuixTheme.colorScheme.onSurface else MiuixTheme.colorScheme.onSurface.copy(alpha = 0.5f)
-            )
-            Text(
-                text = token.placeholder,
-                fontSize = 14.sp,
-                color = if (enabled) MiuixTheme.colorScheme.onSurfaceVariantSummary else MiuixTheme.colorScheme.onSurfaceVariantSummary.copy(alpha = 0.5f)
-            )
+        Column(Modifier.heightIn(max = 500.dp)) {
+            Column(Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState())) {
+                FlowRow(Modifier.fillMaxWidth().padding(bottom = 12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf(
+                        R.string.settings_naming_time_default to "",
+                        R.string.settings_naming_time_date to "yyyy-MM-dd",
+                        R.string.settings_naming_time_month_day to "MM-dd",
+                        R.string.settings_naming_time_full to NamingFormat.DEFAULT_DATE_PATTERN,
+                    ).forEach { (label, value) ->
+                        TextButton(stringResource(label), { pattern = value },
+                            colors = if (pattern == value) ButtonDefaults.textButtonColorsPrimary()
+                                else ButtonDefaults.textButtonColors())
+                    }
+                }
+                TextField(value = pattern, onValueChange = { pattern = it },
+                    label = stringResource(R.string.settings_naming_time_pattern),
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp))
+                Text(stringResource(R.string.settings_naming_time_hint),
+                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                    fontSize = 14.sp, modifier = Modifier.padding(bottom = 12.dp))
+                Text(
+                    text = if (valid) stringResource(R.string.settings_naming_time_preview, preview.orEmpty())
+                        else stringResource(R.string.settings_naming_time_invalid),
+                    color = if (valid) MiuixTheme.colorScheme.onSurface else MiuixTheme.colorScheme.error,
+                    modifier = Modifier.padding(bottom = 16.dp)
+                )
+            }
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                TextButton(stringResource(R.string.cancel), onDismiss, Modifier.weight(1f))
+                TextButton(stringResource(R.string.common_insert), {
+                    onInsert(NamingFormat.buildPlaceholder(token.key, pattern.takeIf(String::isNotEmpty)))
+                }, Modifier.weight(1f), enabled = valid, colors = ButtonDefaults.textButtonColorsPrimary())
+            }
         }
     }
 }

@@ -63,17 +63,21 @@ class DefaultXhsContentRepository(
     }
 }
 
+data class XhsPage(val html: String, val finalUrl: String)
+
 class OkHttpXhsPageSource(
     private val client: OkHttpClient
 ) {
-    suspend fun fetchHtml(url: String): String? = execute(
+    suspend fun fetchHtml(url: String): String? = fetchPage(url)?.html
+
+    suspend fun fetchPage(url: String): XhsPage? = execute(
         Request.Builder()
             .url(url)
             .header("User-Agent", USER_AGENT)
             .header("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
             .build()
     ) { response ->
-        response.body.string().takeIf { response.isSuccessful }
+        if (response.isSuccessful) XhsPage(response.body.string(), response.request.url.toString()) else null
     }
 
     suspend fun resolveShortUrl(url: String): String? = execute(
@@ -143,6 +147,7 @@ internal fun ParsedXhsNote.toResolvedNote(canonicalUrl: String): ResolvedNote {
         description = description,
         authorName = metadata?.userName,
         authorId = metadata?.userId,
+        authorRedId = metadata?.redId,
         publishTime = metadata?.publishTime,
         images = images,
         videos = videos,

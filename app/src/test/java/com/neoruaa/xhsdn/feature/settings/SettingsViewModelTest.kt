@@ -1,6 +1,8 @@
 package com.neoruaa.xhsdn.feature.settings
 
 import androidx.lifecycle.viewModelScope
+import androidx.compose.ui.text.input.TextFieldValue
+import com.neoruaa.xhsdn.NamingFormat
 import com.neoruaa.xhsdn.SettingsViewModel
 import com.neoruaa.xhsdn.data.settings.AppSettings
 import com.neoruaa.xhsdn.data.settings.SettingsRepository
@@ -14,6 +16,31 @@ import org.junit.Test
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class SettingsViewModelTest {
+    @Test fun invalidNamingDraftDoesNotReplaceTheSavedTemplateOrDisappearOnSettingsEmission() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        val repository = DelayedSettings()
+        val model = SettingsViewModel(repository)
+        try {
+            runCurrent()
+            model.onTemplateChange(TextFieldValue("{redId}_{publishTime:MM-dd}"))
+            runCurrent()
+            assertEquals("{redId}_{publishTime:MM-dd}", repository.currentSettings.customNamingTemplate)
+            model.onTemplateChange(TextFieldValue("{redId}_{publishTime:"))
+            runCurrent()
+            assertEquals("{redId}_{publishTime:MM-dd}", repository.currentSettings.customNamingTemplate)
+            repository.settings.value = repository.currentSettings.copy(keepScreenOn = true)
+            runCurrent()
+            assertEquals("{redId}_{publishTime:", model.state.value.template.text)
+            assertNotNull(NamingFormat.validationError(model.state.value.template.text))
+            model.onTemplateChange(TextFieldValue("{redId}_{publishTime:yyyy-MM-dd}"))
+            runCurrent()
+            assertEquals("{redId}_{publishTime:yyyy-MM-dd}", repository.currentSettings.customNamingTemplate)
+        } finally {
+            model.viewModelScope.cancel()
+            Dispatchers.resetMain()
+        }
+    }
+
     @Test fun staleUiEmissionCannotResetPreviouslySavedSwitches() = runTest {
         Dispatchers.setMain(StandardTestDispatcher(testScheduler))
         val repository = DelayedSettings()

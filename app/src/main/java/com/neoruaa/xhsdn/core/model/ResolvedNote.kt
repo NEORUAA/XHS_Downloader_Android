@@ -24,6 +24,8 @@ data class ResolvedNote(
     val items: List<ResolvedMedia> = emptyList(),
     val commentsLoaded: Boolean = false,
     val commentsHasMore: Boolean = false,
+    val authorRedId: String? = null,
+    val authorProfileUrl: String? = null,
 ) {
     val orderedMedia: List<ResolvedMedia>
         get() = items.ifEmpty { images + videos + livePhotos }

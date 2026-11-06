@@ -1,6 +1,7 @@
 package com.neoruaa.xhsdn.data.xhs
 
 import com.neoruaa.xhsdn.core.model.ResolvedMedia
+import okhttp3.HttpUrl.Companion.toHttpUrl
 import org.json.JSONObject
 import org.junit.Assert.*
 import org.junit.Test
@@ -11,8 +12,76 @@ class StructuredNoteTest {
         val note = XhsNoteParser().parse(html, "target", "https://www.rednote.com/explore/target").resolved!!
         assertEquals("Right", note.title)
         assertEquals("stable-id", note.authorId)
+        assertEquals("display-id", note.authorRedId)
         assertEquals("Keep undefined and new Map() as text", note.body)
         assertNull(XhsNoteParser().parse(html, "missing").resolved)
+    }
+
+    @Test fun separatesPublicIdsAndPreservesOnlyTheAuthorsProfileContext() {
+        val parser = XhsNoteParser()
+        val note = parser.parseNote(JSONObject("""{"noteId":"note","user":{"user_id":"uid","red_id":"public-id","xsec_token":"a+b/c=","xsec_source":"pc_note"}}"""), "https://www.xiaohongshu.com/explore/note")
+        assertEquals("uid", note.authorId)
+        assertEquals("public-id", note.authorRedId)
+        val profile = note.authorProfileUrl!!.toHttpUrl()
+        assertEquals(listOf("user", "profile", "uid"), profile.pathSegments)
+        assertEquals("a+b/c=", profile.queryParameter("xsec_token"))
+        assertEquals("pc_note", profile.queryParameter("xsec_source"))
+        for (user in listOf("""{"redId":"public-id"}""", """{"userId":null,"redId":null}""")) {
+            val parsed = parser.parseNote(JSONObject("""{"noteId":"note","user":$user}"""), "")
+            assertNull(parsed.authorId)
+            assertNull(parsed.authorProfileUrl)
+        }
+        val empty = parser.parseNote(JSONObject("""{"noteId":"note","user":{"userId":null,"redId":null}}"""), "")
+        assertNull(empty.authorRedId)
+    }
+
+    @Test fun rejectsUnrelatedProfileLinksAndKeepsOnlyProfileSecurityParameters() {
+        val parser = XhsNoteParser()
+        for (url in listOf("https://xiaohongshu.com.evil/user/profile/uid", "https://www.xiaohongshu.com/user/profile/other")) {
+            val note = parser.parseNote(JSONObject("""{"noteId":"n","user":{"userId":"uid","profileUrl":"$url"}}"""), "")
+            assertNull(note.authorProfileUrl)
+        }
+        val note = parser.parseNote(JSONObject("""{"noteId":"n","user":{"userId":"uid","profileUrl":"https://www.xiaohongshu.com/user/profile/uid?xsec_token=token&xsec_source=app_share&tracking=ignored"}}"""), "")
+        assertEquals("https://www.xiaohongshu.com/user/profile/uid?xsec_token=token&xsec_source=app_share", note.authorProfileUrl)
+    }
+
+    @Test fun oldResolvedSnapshotsRemainReadableWithoutPublicIds() {
+        val note = com.neoruaa.xhsdn.data.settings.DownloadJson.decodeFromString<com.neoruaa.xhsdn.core.model.ResolvedNote>(
+            """{"canonicalUrl":"","title":null,"description":null,"authorName":null,"authorId":"uid","publishTime":null}"""
+        )
+        assertEquals("uid", note.authorId)
+        assertNull(note.authorRedId)
+        assertNull(note.authorProfileUrl)
+    }
+
+    @Test fun webViewDetailPreservesTheMatchingPageUrlAndItsSecurityContext() {
+        val parser = XhsNoteParser()
+        val detail = JSONObject("""{"note":{"noteId":"note","title":"Title","user":{"userId":"uid"}}}""")
+        for (pageUrl in listOf(
+            "https://www.xiaohongshu.com/explore/note?xsec_token=note-token&xsec_source=pc_share",
+            "https://www.rednote.com/discovery/item/note?xsec_token=note-token&xsec_source=app_share",
+            "https://www.xiaohongshu.com/user/profile/uid/note?xsec_token=note-token&xsec_source=pc_user",
+        )) {
+            detail.put("url", pageUrl)
+            val note = parser.parseDetail(detail, "Share https://xhslink.cn/o/short", "note")
+            assertEquals(pageUrl, note.canonicalUrl)
+            assertEquals("note", note.noteId)
+        }
+        for (pageUrl in listOf(
+            "https://www.xiaohongshu.com.evil/explore/note?xsec_token=bad",
+            "https://www.xiaohongshu.com/explore/other?xsec_token=bad",
+            "https://www.xiaohongshu.com/user/profile/uid/other?xsec_token=bad",
+            "https://www.xiaohongshu.com/user/profile//note?xsec_token=bad",
+            "https://www.xiaohongshu.com/user/profile/uid/note/extra?xsec_token=bad",
+            "https://user:password@www.xiaohongshu.com/explore/note?xsec_token=bad",
+            "https://www.xiaohongshu.com:8443/explore/note?xsec_token=bad",
+            "javascript:alert(1)",
+        )) {
+            detail.put("url", pageUrl)
+            assertEquals("https://xhslink.cn/o/short", parser.parseDetail(detail, "https://xhslink.cn/o/short", "note").canonicalUrl)
+        }
+        detail.put("url", "https://www.xiaohongshu.com/explore/note?xsec_token=note-token")
+        assertThrows(IllegalArgumentException::class.java) { parser.parseDetail(detail, "https://xhslink.cn/o/short", "other") }
     }
 
     @Test fun preservesLivePairAndAllCodecCandidatesInOrder() {

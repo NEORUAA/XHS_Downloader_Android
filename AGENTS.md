@@ -79,7 +79,7 @@
   - **不适用**：短小、纯静态的提示或说明卡可以保持单个 `item { Card }`；内容可能超过一屏时使用 `heightIn(min = 视口高)` 等可滚动布局，不要用 `fillParentMaxHeight()` 把内容钉死为一屏
 - **TextField 表单**：不包 Card，直接 `padding(horizontal = 12.dp).padding(bottom = 12.dp)`
 - **Edit Dialog 按钮顺序**：`not_modified | cancel | confirm`（三按钮 weight(1f) + `spacedBy(8.dp)`），confirm 用 `ButtonDefaults.textButtonColorsPrimary()`
-- **长内容 Dialog 滚动 + 按钮固定底部**：miuix `WindowDialog` 手机上不限 content 高度，过长会把底部按钮顶出屏。包 `Column(Modifier.heightIn(max = 500.dp))` 限高，滚动区 `Modifier.weight(1f, fill = false).verticalScroll(...)`（短内容自然收缩），按钮作为非加权子项固定底部；当前项目尚无长内容 Dialog 的标准实现，首次实现后再补充真实示例链接
+- **长内容 Dialog 滚动 + 按钮固定底部**：miuix `WindowDialog` 手机上不限 content 高度，过长会把底部按钮顶出屏。包 `Column(Modifier.heightIn(max = 500.dp))` 限高，滚动区 `Modifier.weight(1f, fill = false).verticalScroll(...)`（短内容自然收缩），按钮作为非加权子项固定底部；参考 [SettingsActivity.kt](app/src/main/java/com/neoruaa/xhsdn/SettingsActivity.kt) 中的 `TimeFormatDialog`
 - **用户反馈**：复用当前 Activity 的 `showToast` 或 Android `Toast` 显示轻量操作结果，消息必须来自字符串资源
 - **i18n**：所有用户字符串走 `stringResource(R.string.xxx)`（Composable）/ `appContext.getString(R.string.xxx)`（非 Composable），禁止硬编码；新增同时维护 `app/src/main/res/values`、`app/src/main/res/values-zh`、`app/src/main/res/values-zh-rTW`。key 命名 `{页面}_{描述}`，通用按钮 `common_` 前缀。日志消息与代码注释使用英文
 - **语义色 token**：状态、进度、按钮和错误色优先使用 `MiuixTheme.colorScheme.*`；同一语义色重复出现时再集中抽取到项目主题 token。**禁止屏幕里散落 `Color(0xFF...)`**

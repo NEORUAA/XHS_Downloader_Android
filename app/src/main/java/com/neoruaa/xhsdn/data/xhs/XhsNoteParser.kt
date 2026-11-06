@@ -11,7 +11,7 @@ import java.util.ArrayDeque
 /** Compatibility views for callers migrating to the immutable note model. */
 data class XhsMedia(val url: String, val isVideo: Boolean)
 data class XhsLivePhoto(val imageUrl: String, val videoUrl: String)
-data class XhsNoteMetadata(val userName: String?, val userId: String?, val title: String?, val publishTime: String?) {
+data class XhsNoteMetadata(val userName: String?, val userId: String?, val title: String?, val publishTime: String?, val redId: String? = null) {
     fun hasRequiredFields(): Boolean = !userName.isNullOrBlank() && !userId.isNullOrBlank()
 }
 data class ParsedXhsNote(
@@ -59,18 +59,39 @@ class XhsNoteParser(
         } }.toMap()
         return ParsedXhsNote(
             urls, note.livePhotos.map { XhsLivePhoto(it.image.sourceUrl, it.video.sourceUrl) }, note.description,
-            XhsNoteMetadata(note.authorName, note.authorId, note.title, note.publishTime),
+            XhsNoteMetadata(note.authorName, note.authorId, note.title, note.publishTime, note.authorRedId),
             note.videos.isNotEmpty() || note.livePhotos.isNotEmpty(), originals, note,
         )
     }
 
     fun description(html: String?): String? = parse(html).description
 
+    /** Read only the requested profile, never the signed-in account or recommended authors. */
+    fun parseAuthorRedId(html: String, expectedUserId: String): String? {
+        val root = parseInitialStateRootFromHtml(html) ?: return null
+        val mobile = root.optJSONObject("profile")?.optJSONObject("userInfo")
+        val desktop = root.optJSONObject("user")?.optJSONObject("userPageData")?.let { page ->
+            var data = page
+            repeat(3) {
+                data = data.optJSONObject("value") ?: data.optJSONObject("_value")
+                    ?: data.optJSONObject("_rawValue") ?: data
+            }
+            data.optJSONObject("basicInfo") ?: data.optJSONObject("basic_info")
+        }
+        val profile = mobile?.takeIf { it.xhsText("redId", "red_id") != null } ?: desktop ?: return null
+        val userId = profile.xhsText("userId", "user_id")
+        if (userId != null && userId != expectedUserId) return null
+        // Mobile userInfo.id is the public redId, not the internal UID.
+        return profile.xhsText("redId", "red_id")
+    }
+
     /** Preserve the sibling comments when decoding a noteDetailMap entry or WebView result. */
     fun parseDetail(detail: JSONObject, canonicalUrl: String, expectedNoteId: String? = null): ResolvedNote {
         val note = detail.optJSONObject("note") ?: detail.optJSONObject("noteData") ?: detail
         val comments = detail.optJSONObject("comments") ?: detail.optJSONObject("commentData") ?: note.optJSONObject("comments")
-        return parseNote(note, canonicalUrl, expectedNoteId, comments)
+        val noteId = note.xhsText("noteId") ?: expectedNoteId
+        val pageUrl = noteId?.let { id -> detail.xhsText("url")?.let { trustedNoteUrl(it, id) } }
+        return parseNote(note, pageUrl?.toString() ?: canonicalUrl, expectedNoteId, comments)
     }
 
     fun parseNote(note: JSONObject, canonicalUrl: String, expectedNoteId: String? = null, comments: JSONObject? = note.optJSONObject("comments")): ResolvedNote {
@@ -112,6 +133,7 @@ class XhsNoteParser(
         val commentMedia = parseCommentImages(comments, noteId)
         items += commentMedia.first
         val user = note.optJSONObject("user") ?: note.optJSONObject("user_info") ?: JSONObject()
+        val authorId = user.xhsText("userId", "user_id", "id")
         val title = note.optString("title").takeIf(String::isNotBlank)
         val body = note.optString("desc").ifBlank { note.optString("description") }
         val tags = note.optJSONArray("tagList") ?: JSONArray()
@@ -120,8 +142,10 @@ class XhsNoteParser(
         return ResolvedNote(
             canonicalUrl = canonicalUrl, noteId = noteId, type = type,
             title = title, body = body, description = listOfNotNull(title, body.takeIf(String::isNotBlank)).joinToString("\n").takeIf(String::isNotBlank),
-            authorName = listOf("nickname", "nickName", "name", "userName").firstNotNullOfOrNull { user.optString(it).takeIf(String::isNotBlank) },
-            authorId = listOf("userId", "user_id", "id", "redId").firstNotNullOfOrNull { user.optString(it).takeIf(String::isNotBlank) },
+            authorName = user.xhsText("nickname", "nickName", "name", "userName"),
+            authorId = authorId,
+            authorRedId = user.xhsText("redId", "red_id"),
+            authorProfileUrl = authorId?.let { authorProfileUrl(user, it, canonicalUrl) },
             publishTime = published?.toString() ?: note.optString("timeText").takeIf(String::isNotBlank),
             publishedAt = published, updatedAt = note.optLong("lastUpdateTime").takeIf { it > 0 },
             tags = (0 until tags.length()).mapNotNull { tags.optJSONObject(it)?.optString("name")?.takeIf(String::isNotBlank) },

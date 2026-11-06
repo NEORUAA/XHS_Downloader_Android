@@ -31,13 +31,13 @@
     <string name="available_tokens_label">可用欄位</string>
     <string name="custom_format_drag_hint">長按欄位可拖曳到上方，點選則在游標位置插入。</string>
     <string name="token_username">使用者名稱</string>
-    <string name="token_user_id">小紅書號</string>
+    <string name="token_user_id">內部使用者 UID</string>
     <string name="token_title">標題</string>
     <string name="token_post_id">筆記ID</string>
     <string name="token_publish_time">發布時間</string>
     <string name="token_index">第幾張（自然數）</string>
     <string name="token_index_padded">第幾張（二位數）</string>
-    <string name="token_download_timestamp">開始下載時的時間戳</string>
+    <string name="token_download_timestamp">下載時間</string>
     <string name="webview_title">透過網頁爬取</string>
     <string name="webview_enter_url">網頁連結</string>
     <string name="webview_go">前往</string>
@@ -114,7 +114,7 @@
     <string name="enable_custom_naming_desc">使用範本命名檔案</string>
     <string name="naming_template">命名範本</string>
     <string name="reset_template">重設範本</string>
-    <string name="insert_placeholder_hint">點選下方預留位置可插入到游標處</string>
+    <string name="insert_placeholder_hint">點選欄位插入，時間欄位可選擇格式。</string>
 
     <!-- About section strings -->
     <string name="version">版本號</string>
@@ -413,4 +413,17 @@
     <string name="settings_default_storage_active">目前使用預設儲存位置</string>
     <string name="settings_default_storage_help">查看預設下載位置</string>
     <string name="settings_help_symbol">?</string>
+    <string name="token_red_id">小紅書號</string>
+    <string name="download_author_id_unavailable">未能取得作者的小紅書號，檔名中已省略該欄位。</string>
+    <string name="settings_naming_invalid_template">尚未儲存。請檢查欄位名稱和成對的大括號，例如 {redId}_{publishTime:MM-dd}。</string>
+    <string name="settings_naming_invalid_time_format">尚未儲存。請使用有效的時間格式，例如 {publishTime:MM-dd} 或 {downloadTimestamp:yyyy-MM-dd}。</string>
+    <string name="settings_naming_time_pattern">時間格式</string>
+    <string name="settings_naming_time_default">預設</string>
+    <string name="settings_naming_time_date">年月日</string>
+    <string name="settings_naming_time_month_day">月日</string>
+    <string name="settings_naming_time_full">完整時間</string>
+    <string name="settings_naming_time_hint">yyyy：年 · MM：月 · dd：日 · HH：時 · mm：分 · ss：秒</string>
+    <string name="settings_naming_time_invalid">請使用 MM-dd 或 yyyy-MM-dd_HH-mm-ss 等時間格式。</string>
+    <string name="settings_naming_time_preview">預覽：%1$s</string>
+    <string name="common_insert">插入</string>
 </resources>

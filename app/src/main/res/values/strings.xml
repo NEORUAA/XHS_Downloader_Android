@@ -31,13 +31,13 @@
     <string name="available_tokens_label">Available fields</string>
     <string name="custom_format_drag_hint">Long press a field to drag it above, tap to insert at the cursor.</string>
     <string name="token_username">Username</string>
-    <string name="token_user_id">Xiaohongshu ID</string>
+    <string name="token_user_id">Internal user UID</string>
     <string name="token_title">Title</string>
     <string name="token_post_id">Note ID</string>
     <string name="token_publish_time">Publish time</string>
     <string name="token_index">Index (natural number)</string>
     <string name="token_index_padded">Index (two digits)</string>
-    <string name="token_download_timestamp">Download start timestamp</string>
+    <string name="token_download_timestamp">Download time</string>
     <string name="webview_title">Fetch Via WebView</string>
     <string name="webview_enter_url">Enter a URL</string>
     <string name="webview_go">Go</string>
@@ -114,7 +114,7 @@
     <string name="enable_custom_naming_desc">Use template to name files</string>
     <string name="naming_template">Naming Template</string>
     <string name="reset_template">Reset Template</string>
-    <string name="insert_placeholder_hint">Click on placeholders below to insert at cursor position</string>
+    <string name="insert_placeholder_hint">Tap a field to insert it. Time fields let you choose a format.</string>
 
     <!-- About section strings -->
     <string name="version">Version</string>
@@ -413,4 +413,17 @@
     <string name="settings_default_storage_active">Currently using the default storage location</string>
     <string name="settings_default_storage_help">Show default download locations</string>
     <string name="settings_help_symbol">?</string>
+    <string name="token_red_id">Xiaohongshu ID</string>
+    <string name="download_author_id_unavailable">The author’s Xiaohongshu ID could not be retrieved and was omitted from the filename.</string>
+    <string name="settings_naming_invalid_template">Not saved. Check the field names and matching braces, for example {redId}_{publishTime:MM-dd}.</string>
+    <string name="settings_naming_invalid_time_format">Not saved. Use a valid time format, such as {publishTime:MM-dd} or {downloadTimestamp:yyyy-MM-dd}.</string>
+    <string name="settings_naming_time_pattern">Time format</string>
+    <string name="settings_naming_time_default">Default</string>
+    <string name="settings_naming_time_date">Year, month, day</string>
+    <string name="settings_naming_time_month_day">Month, day</string>
+    <string name="settings_naming_time_full">Date and time</string>
+    <string name="settings_naming_time_hint">yyyy: year · MM: month · dd: day · HH: hour · mm: minute · ss: second</string>
+    <string name="settings_naming_time_invalid">Use a format such as MM-dd or yyyy-MM-dd_HH-mm-ss.</string>
+    <string name="settings_naming_time_preview">Preview: %1$s</string>
+    <string name="common_insert">Insert</string>
 </resources>

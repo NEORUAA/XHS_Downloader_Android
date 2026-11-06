@@ -27,6 +27,139 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class DownloadQueueTest {
+    @Test fun customNamingUsesPublicIdAndFormattedDatesForPersistedNotes() = runBlocking {
+        val app = ApplicationProvider.getApplicationContext<XHSApplication>()
+        val container = app.appContainer
+        container.initialization.await()
+        val note = ResolvedNote(
+            canonicalUrl = "https://www.xiaohongshu.com/explore/naming-fixture",
+            title = "Naming fixture", description = "Fixture", authorName = "Author",
+            authorId = "internal-uid", publishTime = null, noteId = "naming_${System.nanoTime()}",
+            body = "Naming fixture body", publishedAt = 1_700_000_000_000L,
+            authorRedId = "public-number",
+        )
+        val settings = AppSettings(
+            useCustomNamingFormat = true,
+            customNamingTemplate = "{redId}_{userId}_{publishTime:MM-dd}_{downloadTimestamp:yyyy}",
+            downloadOptions = com.neoruaa.xhsdn.data.settings.DownloadOptions(
+                noteFormat = com.neoruaa.xhsdn.data.settings.NoteFormat.TXT,
+            ),
+        )
+        val id = container.taskRepository.createTask(note.canonicalUrl, note.title, NoteType.UNKNOWN, 0)
+        try {
+            container.taskDatabase.downloadSessionDao().saveSession(DownloadSessionEntity(
+                id, DownloadJson.encodeToString(settings), resolvedJson = DownloadJson.encodeToString(note), infoOnly = true,
+            ))
+            container.downloadQueue.drain()
+            val completed = container.taskRepository.getTaskById(id)!!
+            assertEquals(completed.errorMessage, TaskStatus.COMPLETED, completed.status)
+            val published = java.text.SimpleDateFormat("MM-dd", java.util.Locale.ROOT).format(java.util.Date(note.publishedAt!!))
+            val downloaded = java.text.SimpleDateFormat("yyyy", java.util.Locale.ROOT).format(java.util.Date(completed.createdAt))
+            assertEquals("public-number_internal-uid_${published}_${downloaded}_01.txt", completed.mediaRefs.single().displayName)
+            assertEquals("public-number", container.downloadQueue.resolved(id)?.authorRedId)
+            assertNull(completed.errorMessage)
+        } finally {
+            container.taskRepository.getTaskById(id)?.mediaRefs?.forEach { app.deleteStoredMedia(it) }
+            container.downloadQueue.delete(id)
+            withContext(Dispatchers.IO) {
+                androidx.sqlite.driver.AndroidSQLiteDriver()
+                    .open(app.getDatabasePath(com.neoruaa.xhsdn.data.tasks.TaskDatabaseConstants.DATABASE_NAME).path).use { connection ->
+                        connection.prepare("DELETE FROM note_authors WHERE id = ?").use { statement ->
+                            statement.bindText(1, "internal-uid")
+                            statement.step()
+                        }
+                    }
+            }
+        }
+    }
+
+    @Test fun resumedLivePhotoUsesRecoveredPublicIdForItsSavedStill() = runBlocking {
+        val app = ApplicationProvider.getApplicationContext<XHSApplication>()
+        val container = app.appContainer
+        container.initialization.await()
+        val bitmap = android.graphics.Bitmap.createBitmap(2, 2, android.graphics.Bitmap.Config.ARGB_8888)
+        val bytes = try {
+            bitmap.eraseColor(android.graphics.Color.BLUE)
+            java.io.ByteArrayOutputStream().use { output ->
+                assertTrue(bitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG, 90, output))
+                output.toByteArray()
+            }
+        } finally {
+            bitmap.recycle()
+        }
+        val server = ServerSocket(0)
+        val running = AtomicBoolean(true)
+        val requests = CopyOnWriteArrayList<String>()
+        val serverThread = thread(isDaemon = true) {
+            while (running.get()) {
+                val socket = runCatching { server.accept() }.getOrNull() ?: break
+                socket.use { connection -> runCatching {
+                    connection.soTimeout = 2_000
+                    val input = connection.getInputStream().bufferedReader()
+                    val path = input.readLine().split(' ')[1]
+                    while (!input.readLine().isNullOrEmpty()) { }
+                    requests += path
+                    val output = connection.getOutputStream()
+                    if (path == "/still200") {
+                        output.write(("HTTP/1.1 200 OK\r\nContent-Length: ${bytes.size}\r\n" +
+                            "Content-Type: image/jpeg\r\nConnection: close\r\n\r\n").toByteArray())
+                        output.write(bytes)
+                    } else {
+                        output.write("HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\nConnection: close\r\n\r\n".toByteArray())
+                    }
+                    output.flush()
+                } }
+            }
+        }
+        var taskId: Long? = null
+        try {
+            val noteId = "naming_recovery_${System.nanoTime()}"
+            val note = ResolvedNote("https://www.xiaohongshu.com/explore/$noteId", "Naming recovery", "Fixture", null, null, null,
+                noteId = noteId, items = listOf(ResolvedMedia.LivePhoto(
+                    ResolvedMedia.Image("http://127.0.0.1:${server.localPort}/still200", id = "still"),
+                    ResolvedMedia.Video("http://127.0.0.1:${server.localPort}/blocked403", id = "motion"),
+                )))
+            val id = container.taskRepository.createTask(note.canonicalUrl, note.title, NoteType.IMAGE, 1)
+            taskId = id
+            val settings = AppSettings(useCustomNamingFormat = true, customNamingTemplate = "{redId}_{postId}",
+                downloadOptions = com.neoruaa.xhsdn.data.settings.DownloadOptions(maxRetries = 0))
+            val sessions = container.taskDatabase.downloadSessionDao()
+            val session = DownloadSessionEntity(id, DownloadJson.encodeToString(settings), resolvedJson = DownloadJson.encodeToString(note))
+            sessions.saveSession(session)
+            withTimeout(15_000) { container.downloadQueue.drain() }
+            val fallback = container.taskRepository.getTaskById(id)!!
+            assertEquals(fallback.errorMessage, TaskStatus.PARTIAL, fallback.status)
+            val fallbackStill = fallback.mediaRefs.single()
+            assertEquals("_${noteId}_01.jpg", fallbackStill.displayName)
+
+            // The same task must save a new piece when its public ID becomes available.
+            sessions.saveSession(session.copy(resolvedJson = DownloadJson.encodeToString(note.copy(authorRedId = "public-number"))))
+            container.taskRepository.updateTaskStatus(id, TaskStatus.QUEUED)
+            withTimeout(15_000) { container.downloadQueue.drain() }
+            val recovered = container.taskRepository.getTaskById(id)!!
+            assertEquals(recovered.errorMessage, TaskStatus.PARTIAL, recovered.status)
+            val recoveredStill = recovered.mediaRefs.single { it.displayName == "public-number_${noteId}_01.jpg" }
+            assertNotEquals(fallbackStill.path, recoveredStill.path)
+            val storedBytes = com.neoruaa.xhsdn.data.storage.AndroidStorageSink(app).open(recoveredStill)!!.use { it.readBytes() }
+            assertArrayEquals(bytes, storedBytes)
+            assertEquals(2, requests.count { it == "/blocked403" })
+        } finally {
+            try {
+                withContext(NonCancellable) {
+                    taskId?.let { id ->
+                        container.downloadQueue.cancel(id)
+                        container.taskRepository.getTaskById(id)?.mediaRefs?.forEach { app.deleteStoredMedia(it) }
+                        container.downloadQueue.delete(id)
+                    }
+                }
+            } finally {
+                running.set(false)
+                server.close()
+                serverThread.join(3_000)
+            }
+        }
+    }
+
     @Test fun selectionDefersFullTransferAndPausedTaskResumesItsRange() = runBlocking {
         val app = ApplicationProvider.getApplicationContext<XHSApplication>()
         val container = app.appContainer

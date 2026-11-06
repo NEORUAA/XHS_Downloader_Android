@@ -76,12 +76,30 @@ class XhsNoteParserTest {
         assertEquals(emptyList<String>(), parseErrors)
         assertEquals("Title\nDescription", parsed.description)
         assertEquals("Alice", parsed.metadata?.userName)
-        assertEquals("alice-id", parsed.metadata?.userId)
+        assertEquals(null, parsed.metadata?.userId)
+        assertEquals("alice-id", parsed.metadata?.redId)
+        assertEquals("alice-id", parsed.resolved?.authorRedId)
         assertTrue(parsed.containsVideo)
         assertEquals(1, parsed.livePhotos.size)
         assertEquals(3, parsed.mediaUrls.size)
         assertEquals("https://ci.xiaohongshu.com/path/token", parsed.mediaUrls.first())
         assertEquals("https://sns-video-bd.xhscdn.com/path/main.mp4", parsed.mediaUrls.last())
+    }
+
+    @Test fun parsesPublicProfileIdsWithoutConfusingMobileIdWithUid() {
+        val parser = XhsNoteParser()
+        val mobile = """<script>window.__INITIAL_STATE__={"profile":{"userInfo":{"id":"public-id","redId":"public-id"}},"user":{"userInfo":{"redId":"signed-in-user"}}};</script>"""
+        assertEquals("public-id", parser.parseAuthorRedId(mobile, "uid"))
+        for (wrapper in listOf("value", "_value", "_rawValue")) {
+            val desktop = """<script>window.__INITIAL_STATE__={"user":{"userPageData":{"$wrapper":{"basicInfo":{"userId":"uid","redId":"public-id"}}}}};</script>"""
+            assertEquals("public-id", parser.parseAuthorRedId(desktop, "uid"))
+            assertEquals(null, parser.parseAuthorRedId(desktop, "other"))
+        }
+        val direct = """<script>window.__INITIAL_STATE__={"profile":{"userInfo":{}},"user":{"userPageData":{"basic_info":{"red_id":"public-id"}}}};</script>"""
+        assertEquals("public-id", parser.parseAuthorRedId(direct, "uid"))
+        val unavailable = """<script>window.__INITIAL_STATE__={"profile":{"userInfo":{"redId":null}},"user":{"userInfo":{"redId":"signed-in-user"}}};</script>"""
+        assertEquals(null, parser.parseAuthorRedId(unavailable, "uid"))
+        assertEquals(null, parser.parseAuthorRedId("<html>Login required</html>", "uid"))
     }
 
     @Test

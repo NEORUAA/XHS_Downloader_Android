@@ -1,25 +1,64 @@
 package com.neoruaa.xhsdn.feature.main
 
 import android.view.accessibility.AccessibilityNodeInfo
+import androidx.activity.compose.setContent
+import androidx.compose.runtime.SideEffect
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.test.core.app.ActivityScenario
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.neoruaa.xhsdn.MainActivity
 import com.neoruaa.xhsdn.R
+import com.neoruaa.xhsdn.SettingsActivity
 import com.neoruaa.xhsdn.XHSApplication
+import com.neoruaa.xhsdn.ui.AdaptiveTopAppBar
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
+import top.yukonga.miuix.kmp.basic.MiuixScrollBehavior
+import top.yukonga.miuix.kmp.basic.ScrollBehavior
+import top.yukonga.miuix.kmp.basic.rememberTopAppBarState
+import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 @RunWith(AndroidJUnit4::class)
 class HomeSettingsTest {
     private val app = ApplicationProvider.getApplicationContext<XHSApplication>()
-    private val automation = InstrumentationRegistry.getInstrumentation().uiAutomation
+    private val automation by lazy { InstrumentationRegistry.getInstrumentation().uiAutomation }
+
+    @Test
+    fun wideTopBarLeavesUpwardDragAvailableForItsNestedContent() {
+        val scenario = ActivityScenario.launch(SettingsActivity::class.java)
+        try {
+            lateinit var behavior: ScrollBehavior
+            val composed = CountDownLatch(1)
+            scenario.onActivity { activity ->
+                activity.setContent {
+                    MiuixTheme {
+                        behavior = MiuixScrollBehavior(rememberTopAppBarState())
+                        AdaptiveTopAppBar(app.getString(R.string.app_name), isWideScreen = true, scrollBehavior = behavior)
+                        SideEffect { composed.countDown() }
+                    }
+                }
+            }
+            assertTrue("Wide top bar did not finish composition", composed.await(5, TimeUnit.SECONDS))
+            scenario.onActivity {
+                assertEquals(0f, behavior.state.heightOffsetLimit, 0f)
+                assertEquals(Offset.Zero, behavior.nestedScrollConnection.onPreScroll(Offset(0f, -100f), NestedScrollSource.UserInput))
+                assertEquals(0f, behavior.state.heightOffset, 0f)
+            }
+        } finally {
+            scenario.close()
+        }
+    }
 
     @Test
     fun activeHomeReceivesSettingsWithoutNavigationOrResume() = runBlocking<Unit> {

@@ -100,7 +100,7 @@ internal fun DownloadSettingsRoute(section: Int, onBack: () -> Unit, onOpenBrows
     Scaffold(
         contentWindowInsets = WindowInsets.statusBars.union(WindowInsets.displayCutout),
         topBar = { AdaptiveTopAppBar(stringResource(title), layout.isWideScreen, backdrop = backdrop,
-            scrollBehavior = if (layout.isWideScreen) null else scrollBehavior,
+            scrollBehavior = scrollBehavior,
             navigationIcon = {
                 TopAppBarIconButton(
                     imageVector = MiuixIcons.Back,

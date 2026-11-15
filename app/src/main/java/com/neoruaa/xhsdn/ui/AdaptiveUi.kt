@@ -96,7 +96,7 @@ fun AdaptiveTopAppBar(
             navigationIcon = navigationIcon,
             actions = actions,
             bottomContent = bottomContent,
-            scrollBehavior = null
+            scrollBehavior = scrollBehavior
         )
     } else {
         TopAppBar(

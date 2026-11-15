@@ -15,14 +15,21 @@ import androidx.activity.compose.setContent
 import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.requiredWidth
+import androidx.compose.foundation.lazy.staggeredgrid.LazyStaggeredGridLayoutInfo
+import androidx.compose.foundation.lazy.staggeredgrid.LazyStaggeredGridState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.LayoutCoordinates
@@ -30,7 +37,9 @@ import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.lifecycleScope
 import androidx.test.core.app.ActivityScenario
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -39,6 +48,7 @@ import com.neoruaa.xhsdn.*
 import com.neoruaa.xhsdn.ui.LocalMiuixComponentScope
 import com.neoruaa.xhsdn.ui.MiuixBottomSheet
 import com.neoruaa.xhsdn.ui.MiuixComponentHost
+import com.neoruaa.xhsdn.ui.SelectableMediaWaterfall
 import com.neoruaa.xhsdn.ui.TopAppBarIconButton
 import com.neoruaa.xhsdn.ui.miuixBackdropSource
 import com.neoruaa.xhsdn.viewmodels.*
@@ -47,6 +57,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicReference
 import kotlin.math.abs
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.*
 import org.junit.Test
@@ -62,6 +73,118 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 class MediaPreviewSheetTest {
     private val app = ApplicationProvider.getApplicationContext<XHSApplication>()
     private val automation = InstrumentationRegistry.getInstrumentation().uiAutomation
+
+    @Test fun waterfallKeepsEqualPixelColumnsAndLongerPhysicalLeftLaneAcrossDensities() {
+        val directory = File(app.cacheDir, "waterfall-density-fixture").apply { mkdirs() }
+        val dimensions = List(6) { 4672 to 7008 } + listOf(7008 to 4672, 6828 to 4553, 4672 to 7008)
+        val bitmap = Bitmap.createBitmap(40, 60, Bitmap.Config.ARGB_8888)
+        bitmap.eraseColor(Color.rgb(42, 111, 180))
+        val items = try {
+            dimensions.mapIndexed { index, (width, height) ->
+                val file = File(directory, "waterfall-$index.jpg")
+                file.outputStream().use { bitmap.compress(Bitmap.CompressFormat.JPEG, 90, it) }
+                CachedMediaItem(file.path, "Waterfall image $index", MediaType.IMAGE,
+                    width = width, height = height, sizeBytes = file.length())
+            }
+        } finally {
+            bitmap.recycle()
+        }
+        val itemKeys = items.map { it.path }.toSet()
+        val scenario = ActivityScenario.launch(MainActivity::class.java)
+        try {
+            val configurations = listOf(Triple(1120, 3f, 0), Triple(1220, 3.25f, 0), Triple(401, 165 / 160f, 1))
+            for ((viewportWidth, scale, extraInsetPixels) in configurations) {
+                val density = Density(scale, fontScale = 1f)
+                val horizontalInset = 24.dp + with(density) { extraInsetPixels.toDp() }
+                val gridState = LazyStaggeredGridState()
+                val reachedEnd = AtomicBoolean(false)
+                fun gridInfo(): LazyStaggeredGridLayoutInfo {
+                    var info: LazyStaggeredGridLayoutInfo? = null
+                    scenario.onActivity { info = gridState.layoutInfo }
+                    return checkNotNull(info)
+                }
+                scenario.onActivity { activity ->
+                    activity.setContent {
+                        CompositionLocalProvider(LocalDensity provides density) {
+                            MiuixTheme {
+                                MiuixComponentHost {
+                                    SelectableMediaWaterfall(
+                                        modifier = Modifier.requiredWidth(with(density) { viewportWidth.toDp() })
+                                            .height(480.dp),
+                                        items = items,
+                                        selectedPaths = itemKeys,
+                                        onToggle = {},
+                                        state = gridState,
+                                        contentPadding = PaddingValues(horizontal = horizontalInset, vertical = 24.dp),
+                                        header = {
+                                            Text(stringResource(R.string.selective_download_title, items.size, items.size))
+                                        }
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+                awaitCondition("Waterfall did not measure at width=$viewportWidth, density=$scale") {
+                    val info = gridInfo()
+                    info.viewportSize.width == viewportWidth && info.totalItemsCount == items.size + 1 &&
+                        items.take(2).all { item -> info.visibleItemsInfo.any { it.key == item.path } }
+                }
+                val initialCards = gridInfo().visibleItemsInfo.filter { it.key in itemKeys }
+                val firstCard = initialCards.first { it.key == items[0].path }
+                val secondCard = initialCards.first { it.key == items[1].path }
+                val firstBounds = android.graphics.Rect()
+                val secondBounds = android.graphics.Rect()
+                awaitText(items[0].displayName).getBoundsInScreen(firstBounds)
+                awaitText(items[1].displayName).getBoundsInScreen(secondBounds)
+                val initialGeometry = initialCards.joinToString { card ->
+                    "key=${File(card.key.toString()).name}, lane=${card.lane}, offset=${card.offset}, size=${card.size}"
+                }
+                val initialDiagnostic = "width=$viewportWidth, density=$scale, initial=[$initialGeometry], " +
+                    "firstBounds=$firstBounds, secondBounds=$secondBounds"
+                Log.i("WaterfallPlacementTest", initialDiagnostic)
+                assertEquals("Column widths: $initialDiagnostic", firstCard.size.width, secondCard.size.width)
+                assertNotEquals("The first cards must occupy distinct columns: $initialDiagnostic",
+                    firstBounds.left, secondBounds.left)
+                val physicalLeftLane = if (firstBounds.left < secondBounds.left) firstCard.lane else secondCard.lane
+
+                scenario.onActivity { activity ->
+                    activity.lifecycleScope.launch {
+                        val scrollStep = gridState.layoutInfo.viewportSize.height / 2f
+                        while (gridState.canScrollForward) {
+                            if (gridState.scrollBy(scrollStep) <= 0f) break
+                        }
+                        reachedEnd.set(true)
+                    }
+                }
+                awaitCondition("Waterfall did not reach the last card at width=$viewportWidth, density=$scale") {
+                    reachedEnd.get() && !gridState.isScrollInProgress && !gridState.canScrollForward &&
+                        gridInfo().visibleItemsInfo.any { it.key == items.last().path }
+                }
+                val finalInfo = gridInfo()
+                val finalCards = finalInfo.visibleItemsInfo.filter { it.key in itemKeys }
+                val laneBottoms = finalCards.groupBy { it.lane }.mapValues { (_, cards) ->
+                    cards.maxOf { it.offset.y + it.size.height }
+                }
+                val finalGeometry = finalCards.joinToString { card ->
+                    "key=${File(card.key.toString()).name}, lane=${card.lane}, offset=${card.offset}, size=${card.size}"
+                }
+                val finalDiagnostic = "$initialDiagnostic, physicalLeftLane=$physicalLeftLane, " +
+                    "final=[$finalGeometry], laneBottoms=$laneBottoms"
+                Log.i("WaterfallPlacementTest", finalDiagnostic)
+                assertEquals("Both lane endings must remain visible", 2, laneBottoms.size)
+                assertTrue("The physical left lane must be longer: $finalDiagnostic",
+                    laneBottoms.getValue(physicalLeftLane) >= laneBottoms.getValue(1 - physicalLeftLane))
+                val lastCard = finalCards.first { it.key == items.last().path }
+                assertTrue("The last footer must clear the internal bottom padding",
+                    lastCard.offset.y + lastCard.size.height <= finalInfo.viewportEndOffset - finalInfo.afterContentPadding)
+                awaitText(items.last().displayName)
+            }
+        } finally {
+            scenario.close()
+            directory.deleteRecursively()
+        }
+    }
 
     @Test fun displaysSizeResolutionAndMediaRolesAndKeepsSelectionInteractive() {
         val directory = File(app.cacheDir, "selection-ui-fixture").apply { mkdirs() }

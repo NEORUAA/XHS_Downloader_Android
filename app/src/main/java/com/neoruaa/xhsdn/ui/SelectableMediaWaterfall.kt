@@ -212,16 +212,22 @@ fun SelectableMediaWaterfall(
     val footerHeight = with(density) { (primaryHeight + secondaryHeight).toDp() }.coerceAtLeast(26.dp) + 20.dp
     val leftPadding = contentPadding.calculateLeftPadding(contentDirection)
     val rightPadding = contentPadding.calculateRightPadding(contentDirection)
-    val gridPadding = PaddingValues.Absolute(
-        left = leftPadding,
-        top = contentPadding.calculateTopPadding(),
-        right = rightPadding,
-        bottom = contentPadding.calculateBottomPadding()
-    )
     BoxWithConstraints(modifier.fillMaxSize()) {
         val spacing = with(density) { 10.dp.roundToPx() }
-        val horizontalPadding = with(density) { leftPadding.roundToPx() + rightPadding.roundToPx() }
-        val columnWidth = (constraints.maxWidth - horizontalPadding - spacing).coerceAtLeast(0) / 2
+        val horizontalPadding = with(density) { (leftPadding + rightPadding).roundToPx() }
+        val availableWidth = (constraints.maxWidth - horizontalPadding - spacing).coerceAtLeast(0)
+        val columnWidth = availableWidth / 2
+        // Fixed(2) gives an odd spare pixel to one lane, changing its item heights.
+        // Keep both lanes equal so the native placement matches our height prediction.
+        val gridRightPadding = if (availableWidth % 2 == 0) rightPadding else with(density) {
+            (horizontalPadding + 1).toDp() - leftPadding
+        }
+        val gridPadding = PaddingValues.Absolute(
+            left = leftPadding,
+            top = contentPadding.calculateTopPadding(),
+            right = gridRightPadding,
+            bottom = contentPadding.calculateBottomPadding()
+        )
         val footerPixels = with(density) { footerHeight.roundToPx() }
         val placement = remember(items, columnWidth, footerPixels, spacing) {
             calculateBalancedWaterfallPlacement(items.map {

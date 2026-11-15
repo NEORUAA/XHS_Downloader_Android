@@ -49,12 +49,13 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
+import com.neoruaa.xhsdn.ui.MiuixComponentHost
+import com.neoruaa.xhsdn.ui.LocalMiuixComponentScope
 import com.neoruaa.xhsdn.ui.AdaptiveTopAppBar
 import com.neoruaa.xhsdn.ui.TopAppBarIconButton
 import com.neoruaa.xhsdn.ui.miuixBackdropSource
@@ -77,7 +78,6 @@ import top.yukonga.miuix.kmp.theme.ColorSchemeMode
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.theme.ThemeController
 import androidx.compose.ui.res.stringResource
-import com.kyant.capsule.ContinuousRoundedRectangle
 import top.yukonga.miuix.kmp.squircle.squircleSurface
 
 class WebViewActivity : ComponentActivity() {
@@ -104,24 +104,26 @@ class WebViewActivity : ComponentActivity() {
         val taskId = intent?.getLongExtra("task_id", -1L) ?: -1L
 
         setContent {
-            val controller = ThemeController(ColorSchemeMode.System)
+            val controller = remember { ThemeController(ColorSchemeMode.System) }
             val localInitialUrl = initialUrl // Capture the variable in the composition scope
             val activity = this@WebViewActivity
             MiuixTheme(controller = controller) {
-                WebViewScreen(
-                    initialUrl = localInitialUrl,
-                    onBack = { finish() },
-                    onResult = { urls, content, taskId ->
-                        val resultIntent = Intent().apply {
-                            putStringArrayListExtra("image_urls", ArrayList(urls))
-                            putExtra("note_json", content)
-                            putExtra("url", localInitialUrl ?: "")
-                            taskId?.let { id -> putExtra("task_id", id) }
+                MiuixComponentHost {
+                    WebViewScreen(
+                        initialUrl = localInitialUrl,
+                        onBack = { finish() },
+                        onResult = { urls, content, taskId ->
+                            val resultIntent = Intent().apply {
+                                putStringArrayListExtra("image_urls", ArrayList(urls))
+                                putExtra("note_json", content)
+                                putExtra("url", localInitialUrl ?: "")
+                                taskId?.let { id -> putExtra("task_id", id) }
+                            }
+                            activity.setResult(RESULT_OK, resultIntent)
+                            activity.finish()
                         }
-                        activity.setResult(RESULT_OK, resultIntent)
-                        activity.finish()
-                    }
-                )
+                    )
+                }
             }
         }
     }
@@ -225,6 +227,7 @@ private fun WebViewScreen(
     }
 
     Scaffold(
+        modifier = Modifier.miuixBackdropSource(LocalMiuixComponentScope.current.pageBackdrop),
         contentWindowInsets = WindowInsets.statusBars.union(WindowInsets.displayCutout),
         topBar = {
             AdaptiveTopAppBar(
@@ -235,9 +238,7 @@ private fun WebViewScreen(
                     TopAppBarIconButton(
                         imageVector = MiuixIcons.Back,
                         contentDescription = stringResource(R.string.back_content_description),
-                        onClick = onBack,
-                        modifier = Modifier
-                            .padding(start = 4.dp)
+                        onClick = onBack
                     )
                 },
                 scrollBehavior = scrollBehavior
@@ -328,9 +329,7 @@ private fun WebViewScreen(
                 } else {
                     androidx.compose.ui.viewinterop.AndroidView(
                         factory = { webView.apply { layoutParams = android.view.ViewGroup.LayoutParams(android.view.ViewGroup.LayoutParams.MATCH_PARENT, android.view.ViewGroup.LayoutParams.MATCH_PARENT) } },
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .clip(ContinuousRoundedRectangle(18.dp)),
+                        modifier = Modifier.fillMaxSize(),
 
                         update = { }
                     )

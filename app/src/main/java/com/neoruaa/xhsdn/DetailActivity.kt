@@ -13,6 +13,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -55,6 +56,11 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.neoruaa.xhsdn.ui.MiuixDialog
+import com.neoruaa.xhsdn.ui.MiuixDialogButton
+import com.neoruaa.xhsdn.ui.MiuixComponentHost
+import com.neoruaa.xhsdn.ui.LocalMiuixComponentScope
+import com.neoruaa.xhsdn.ui.useMiuixOs4
 import com.neoruaa.xhsdn.ui.AdaptiveTopAppBar
 import com.neoruaa.xhsdn.ui.TopAppBarIconButton
 import com.neoruaa.xhsdn.ui.DetailMediaWaterfall
@@ -66,14 +72,12 @@ import com.neoruaa.xhsdn.ui.navigation.AppRoute
 import com.neoruaa.xhsdn.viewmodels.DetailViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.CardDefaults
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.SmallTitle
 import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.Text
-import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.basic.TopAppBar
 import top.yukonga.miuix.kmp.basic.TopAppBarState
 import top.yukonga.miuix.kmp.basic.rememberTopAppBarState
@@ -102,14 +106,23 @@ import androidx.lifecycle.repeatOnLifecycle
 import androidx.lifecycle.Lifecycle
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.flowOf
-import top.yukonga.miuix.kmp.window.WindowDialog
 import top.yukonga.miuix.kmp.window.WindowListPopup
+import top.yukonga.miuix.kmp.basic.DropdownEntry
+import top.yukonga.miuix.kmp.basic.DropdownItem
+import top.yukonga.miuix.kmp.glass.GlassIconDropdownMenu
+import top.yukonga.miuix.kmp.glass.GlassPopupDefaults
+import top.yukonga.miuix.kmp.glass.GlassTopAppBarDefaults
+import top.yukonga.miuix.kmp.glass.glassPopupAnchor
+import top.yukonga.miuix.kmp.glass.glassPopupAnchorContent
+import top.yukonga.miuix.kmp.glass.rememberGlassPopupAnchor
+import top.yukonga.miuix.kmp.icon.glass.More
+import top.yukonga.miuix.kmp.icon.glass.Copy
+import top.yukonga.miuix.kmp.material.GlassDefaults
 import top.yukonga.miuix.kmp.icon.extended.Info
 import top.yukonga.miuix.kmp.icon.extended.MoreCircle
 import top.yukonga.miuix.kmp.icon.extended.Play
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
-import com.neoruaa.xhsdn.ui.rememberOffsetPopupPositionProvider
 import top.yukonga.miuix.kmp.basic.DropdownImpl
 import top.yukonga.miuix.kmp.basic.ListPopupColumn
 import top.yukonga.miuix.kmp.basic.PopupPositionProvider
@@ -206,7 +219,7 @@ class DetailActivity : ComponentActivity() {
         )
 
         setContent {
-            val controller = ThemeController(ColorSchemeMode.System)
+            val controller = remember { ThemeController(ColorSchemeMode.System) }
             val uiState by viewModel.state.collectAsStateWithLifecycle()
             val topBarState = rememberTopAppBarState()
             val container = (application as XHSApplication).appContainer
@@ -215,42 +228,44 @@ class DetailActivity : ComponentActivity() {
                     ?: flowOf(emptyList())
             }.collectAsStateWithLifecycle(initialValue = emptyList())
             MiuixTheme(controller = controller) {
-                DetailScreen(
-                    uiState = uiState.copy(downloadCards = cards, taskId = taskId),
-                    onBack = { finish() },
-                    onMediaClick = { openFile(it) },
-                    onDeleteMedia = { mediaItem ->
-                        if (deleteStoredMedia(mediaItem.media)) {
-                            taskId?.let { id -> lifecycleScope.launch { (application as XHSApplication).appContainer.taskRepository.removeMediaRef(id, mediaItem.path) } }
-                            viewModel.removeMediaItem(mediaItem)
-                        } else {
-                            showToast(getString(R.string.delete_file_failed, mediaItem.media.displayName))
-                        }
-                    },
-                    onCopyUrl = {
-                        if (!noteUrl.isNullOrEmpty()) {
-                            val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                            clipboard.setPrimaryClip(ClipData.newPlainText("xhs_url", noteUrl))
-                            Toast.makeText(this, R.string.link_copied, Toast.LENGTH_SHORT).show()
-                        }
-                    },
-                    onWebCrawl = {
-                        if (!noteUrl.isNullOrEmpty()) {
-                            val cleanUrl = com.neoruaa.xhsdn.utils.UrlUtils.extractFirstUrl(noteUrl)
-                            if (cleanUrl != null) {
-                                startActivity(
-                                    Intent(this, WebViewActivity::class.java).apply {
-                                        putExtra("url", cleanUrl)
-                                    }
-                                )
-                                finish()
+                MiuixComponentHost {
+                    DetailScreen(
+                        uiState = uiState.copy(downloadCards = cards, taskId = taskId),
+                        onBack = { finish() },
+                        onMediaClick = { openFile(it) },
+                        onDeleteMedia = { mediaItem ->
+                            if (deleteStoredMedia(mediaItem.media)) {
+                                taskId?.let { id -> lifecycleScope.launch { (application as XHSApplication).appContainer.taskRepository.removeMediaRef(id, mediaItem.path) } }
+                                viewModel.removeMediaItem(mediaItem)
                             } else {
-                                Toast.makeText(this, R.string.no_valid_link_found, Toast.LENGTH_SHORT).show()
+                                showToast(getString(R.string.delete_file_failed, mediaItem.media.displayName))
                             }
-                        }
-                    },
-                    topBarState = topBarState
-                )
+                        },
+                        onCopyUrl = {
+                            if (!noteUrl.isNullOrEmpty()) {
+                                val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                clipboard.setPrimaryClip(ClipData.newPlainText("xhs_url", noteUrl))
+                                Toast.makeText(this, R.string.link_copied, Toast.LENGTH_SHORT).show()
+                            }
+                        },
+                        onWebCrawl = {
+                            if (!noteUrl.isNullOrEmpty()) {
+                                val cleanUrl = com.neoruaa.xhsdn.utils.UrlUtils.extractFirstUrl(noteUrl)
+                                if (cleanUrl != null) {
+                                    startActivity(
+                                        Intent(this, WebViewActivity::class.java).apply {
+                                            putExtra("url", cleanUrl)
+                                        }
+                                    )
+                                    finish()
+                                } else {
+                                    Toast.makeText(this, R.string.no_valid_link_found, Toast.LENGTH_SHORT).show()
+                                }
+                            }
+                        },
+                        topBarState = topBarState
+                    )
+                }
             }
         }
     }
@@ -400,85 +415,105 @@ private fun DetailScreen(
     val windowLayoutInfo = rememberWindowLayoutInfo()
     val topBarBackdrop = rememberMiuixTopBarBackdrop()
 
-    // Actions menu state
+    val componentScope = LocalMiuixComponentScope.current
+    val useOs4 = useMiuixOs4()
+    val menuAnchor = rememberGlassPopupAnchor()
+    val moreIcon = if (useOs4) MiuixIcons.Glass.More else MiuixIcons.MoreCircle
     var menuExpanded by remember { mutableStateOf(false) }
+    val copyLabel = stringResource(R.string.copy_link)
+    val menuEntries = listOf(DropdownEntry(items = listOf(
+        DropdownItem(
+            text = copyLabel,
+            icon = { modifier -> Icon(MiuixIcons.Glass.Copy, null, modifier = modifier) },
+            onClick = {
+                menuExpanded = false
+                onCopyUrl()
+            }
+        )
+    )))
 
-    Scaffold(
-        contentWindowInsets = WindowInsets.statusBars.union(WindowInsets.displayCutout),
-        topBar = {
-            AdaptiveTopAppBar(
-                title = uiState.taskTitle,
-                isWideScreen = windowLayoutInfo.isWideScreen,
-                backdrop = topBarBackdrop,
-                navigationIcon = {
-                    TopAppBarIconButton(
-                        imageVector = MiuixIcons.Back,
-                        contentDescription = stringResource(R.string.back_content_description),
-                        onClick = onBack,
-                        modifier = Modifier
-                            .padding(start = 4.dp)
-                    )
-                },
-                actions = {
-                    Box(
-                        modifier = Modifier.padding(end = 4.dp),
-                            contentAlignment = Alignment.Center
-                    ) {
+    Box(Modifier.fillMaxSize()) {
+        Scaffold(
+            modifier = Modifier.miuixBackdropSource(componentScope.pageBackdrop),
+            contentWindowInsets = WindowInsets.statusBars.union(WindowInsets.displayCutout),
+            topBar = {
+                AdaptiveTopAppBar(
+                    title = uiState.taskTitle,
+                    isWideScreen = windowLayoutInfo.isWideScreen,
+                    backdrop = topBarBackdrop,
+                    navigationIcon = {
                         TopAppBarIconButton(
-                            imageVector = MiuixIcons.MoreCircle,
-                            contentDescription = stringResource(R.string.more_options),
-                            onClick = { menuExpanded = true }
+                            imageVector = MiuixIcons.Back,
+                            contentDescription = stringResource(R.string.back_content_description),
+                            onClick = onBack
                         )
-
-                        val menuItems = listOf(
-                            stringResource(R.string.copy_link),
-//                            stringResource(R.string.web_crawl_action)
-                        )
-
-                        WindowListPopup(
-                            show = menuExpanded,
-                            popupPositionProvider = rememberOffsetPopupPositionProvider(x = (-20).dp),
-                            alignment = PopupPositionProvider.Align.TopEnd,
-                            onDismissRequest = { menuExpanded = false }
-                        ) {
-                            ListPopupColumn {
-                                menuItems.forEachIndexed { index, item ->
-                                    DropdownImpl(
-                                        text = item,
-                                        optionSize = menuItems.size,
-                                        isSelected = false,
-                                        onSelectedIndexChange = {
-                                            menuExpanded = false
-                                            if (index == 0) {
+                    },
+                    actions = {
+                        Box(contentAlignment = Alignment.Center) {
+                            TopAppBarIconButton(
+                                imageVector = moreIcon,
+                                contentDescription = stringResource(R.string.more_options),
+                                onClick = { menuExpanded = true },
+                                modifier = if (useOs4) Modifier.glassPopupAnchor(
+                                    anchor = menuAnchor,
+                                    cornerRadius = GlassTopAppBarDefaults.ButtonSize / 2,
+                                    floating = topBarState.contentOffset < 0f
+                                ) else Modifier,
+                                iconModifier = if (useOs4) Modifier.glassPopupAnchorContent(menuAnchor) else Modifier
+                            )
+                            if (!useOs4) {
+                                WindowListPopup(
+                                    show = menuExpanded,
+                                    alignment = PopupPositionProvider.Align.TopEnd,
+                                    onDismissRequest = { menuExpanded = false }
+                                ) {
+                                    ListPopupColumn {
+                                        DropdownImpl(
+                                            text = copyLabel,
+                                            optionSize = 1,
+                                            isSelected = false,
+                                            onSelectedIndexChange = {
+                                                menuExpanded = false
                                                 onCopyUrl()
-                                            } else if (index == 1) {
-                                                onWebCrawl()
-                                            }
-                                        },
-                                        index = index
-                                    )
+                                            },
+                                            index = 0
+                                        )
+                                    }
                                 }
                             }
                         }
-                    }
+                    },
+                    scrollBehavior = scrollBehavior
+                )
+            }
+        ) { padding ->
+            Box(Modifier.fillMaxSize().miuixBackdropSource(topBarBackdrop)) {
+                FilesPage(
+                    uiState = uiState,
+                    onMediaClick = onMediaClick,
+                    onDeleteMedia = onDeleteMedia,
+                    topPadding = padding.calculateTopPadding(),
+                    contentStartPadding = windowLayoutInfo.contentStartPadding,
+                    contentEndPadding = windowLayoutInfo.contentEndPadding,
+                    modifier = Modifier.fillMaxSize()
+                        .miuixVerticalScrollEffects()
+                        .nestedScroll(scrollBehavior.nestedScrollConnection)
+                )
+            }
+        }
+        if (useOs4) {
+            GlassIconDropdownMenu(
+                show = menuExpanded,
+                onDismissRequest = { menuExpanded = false },
+                anchor = menuAnchor,
+                anchorContent = {
+                    Icon(moreIcon, stringResource(R.string.more_options), modifier = Modifier.size(24.dp))
                 },
-                scrollBehavior = scrollBehavior
+                entries = menuEntries,
+                backdrop = componentScope.pageBackdrop,
+                visuals = GlassPopupDefaults.visuals(style = GlassDefaults.style(isSystemInDarkTheme()))
             )
         }
-    ) { padding ->
-        FilesPage(
-            uiState = uiState,
-            onMediaClick = onMediaClick,
-            onDeleteMedia = onDeleteMedia,
-            topPadding = padding.calculateTopPadding(),
-            contentStartPadding = windowLayoutInfo.contentStartPadding,
-            contentEndPadding = windowLayoutInfo.contentEndPadding,
-            modifier = Modifier
-                .fillMaxSize()
-                .miuixBackdropSource(topBarBackdrop)
-                .miuixVerticalScrollEffects()
-                .nestedScroll(scrollBehavior.nestedScrollConnection)
-        )
     }
 }
 
@@ -803,7 +838,7 @@ private fun MediaPreview(item: MediaItem, onClick: () -> Unit, onDelete: (MediaI
         }
     }
 
-    WindowDialog(
+    MiuixDialog(
         title = stringResource(R.string.delete_file_dialog_title),
         summary = stringResource(R.string.delete_file_dialog_message, fileName),
         show = showDeleteDialog,
@@ -823,20 +858,20 @@ private fun MediaPreview(item: MediaItem, onClick: () -> Unit, onDelete: (MediaI
             horizontalArrangement = Arrangement.SpaceBetween,
             modifier = Modifier.padding(top = 8.dp)
         ) {
-            TextButton(
+            MiuixDialogButton(
                 text = stringResource(R.string.cancel),
                 onClick = { showDeleteDialog = false },
                 modifier = Modifier.weight(1f)
             )
             Spacer(Modifier.width(12.dp))
-            TextButton(
+            MiuixDialogButton(
                 text = stringResource(R.string.apply),
                 onClick = {
                     deleteAfterDismiss = true
                     showDeleteDialog = false
                 },
                 modifier = Modifier.weight(1f),
-                colors = ButtonDefaults.textButtonColorsPrimary()
+                primary = true
             )
         }
     }

@@ -92,6 +92,7 @@
     <!-- Download option strings -->
     <string name="create_live_photos_desc">關閉後 Live Photo 將作為圖片+影片分別下載</string>
     <string name="selective_download">選擇性下載</string>
+    <string name="selective_download_title">選擇性下載 %1$d/%2$d</string>
     <string name="selective_download_desc">先預覽縮圖，再下載選取的媒體</string>
     <string name="selective_download_caching">正在快取媒體...</string>
     <string name="selective_download_ready">已選擇 %1$d/%2$d</string>
@@ -290,6 +291,8 @@
     <string name="download_refresh">重新整理筆記</string>
     <string name="download_select_all">全選 / 全不選</string>
     <string name="history_load_more">載入更多</string>
+    <string name="common_download">下載</string>
+    <string name="common_save_info">儲存資訊</string>
     <string name="common_copy_link">複製連結</string>
     <string name="settings_media_title">媒體與格式</string>
     <string name="settings_archive_title">封存與記錄</string>
@@ -368,7 +371,7 @@
     <string name="update_error_version">版本號格式無法識別，無法判斷是否有更新。</string>
     <string name="update_notes_empty">此版本未提供更新說明。</string>
     <string name="update_later">稍後</string>
-    <string name="update_open_release">前往下載</string>
+    <string name="update_open_release">下載</string>
     <string name="update_open_failed">無法開啟版本下載頁面。</string>
     <string name="update_close">關閉</string>
     <string name="selective_dimensions">%1$d × %2$d</string>

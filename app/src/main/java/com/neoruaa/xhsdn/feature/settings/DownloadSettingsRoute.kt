@@ -16,7 +16,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
-import top.yukonga.miuix.kmp.preference.WindowSpinnerPreference
+import top.yukonga.miuix.kmp.preference.SwitchPreference
 import top.yukonga.miuix.kmp.preference.ArrowPreference
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.neoruaa.xhsdn.R
@@ -36,7 +36,6 @@ import top.yukonga.miuix.kmp.icon.extended.Link
 import top.yukonga.miuix.kmp.icon.extended.FileDownloads
 import top.yukonga.miuix.kmp.icon.extended.Refresh
 import top.yukonga.miuix.kmp.theme.MiuixTheme
-import top.yukonga.miuix.kmp.window.WindowDialog
 
 @Composable
 internal fun DownloadSettingsRoute(section: Int, onBack: () -> Unit, onOpenBrowser: () -> Unit) {
@@ -98,6 +97,7 @@ internal fun DownloadSettingsRoute(section: Int, onBack: () -> Unit, onOpenBrows
         else -> listOf("timeout", "retries", "proxy", "proxy_media", "web_session", "login") + SessionCredentials.HOSTS.map { "cookie:$it" }
     }
     Scaffold(
+        modifier = Modifier.miuixBackdropSource(LocalMiuixComponentScope.current.pageBackdrop),
         contentWindowInsets = WindowInsets.statusBars.union(WindowInsets.displayCutout),
         topBar = { AdaptiveTopAppBar(stringResource(title), layout.isWideScreen, backdrop = backdrop,
             scrollBehavior = scrollBehavior,
@@ -105,82 +105,88 @@ internal fun DownloadSettingsRoute(section: Int, onBack: () -> Unit, onOpenBrows
                 TopAppBarIconButton(
                     imageVector = MiuixIcons.Back,
                     contentDescription = stringResource(R.string.back_content_description),
-                    onClick = onBack,
-                    modifier = Modifier.padding(start = 4.dp)
+                    onClick = onBack
                 )
             }) }
     ) { padding ->
-        LazyColumn(
-            modifier = Modifier.fillMaxSize().background(MiuixTheme.colorScheme.surface).miuixBackdropSource(backdrop)
-                .miuixVerticalScrollEffects().nestedScroll(scrollBehavior.nestedScrollConnection),
-            overscrollEffect = null,
-            contentPadding = PaddingValues(start = layout.contentStartPadding, end = layout.contentEndPadding, top = padding.calculateTopPadding())
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(MiuixTheme.colorScheme.surface)
+                .miuixBackdropSource(backdrop)
         ) {
-            item("snapshot_hint") { SmallTitle(stringResource(R.string.settings_snapshot_hint)) }
-            groupedCardItems(rows, key = { "setting_$it" }) { row ->
-                when (row) {
-                    "images" -> OptionSwitch(R.string.settings_download_images, checked = options.imageDownload) { update { it.copy(imageDownload = !it.imageDownload) } }
-                    "videos" -> OptionSwitch(R.string.settings_download_videos, checked = options.videoDownload) { update { it.copy(videoDownload = !it.videoDownload) } }
-                    "cover" -> OptionSwitch(R.string.settings_download_cover, checked = options.videoCoverDownload) { update { it.copy(videoCoverDownload = !it.videoCoverDownload) } }
-                    "comment_images" -> OptionSwitch(R.string.settings_download_comment_images,
-                        R.string.settings_download_comment_images_desc, options.commentImageDownload) {
-                        update { it.copy(commentImageDownload = !it.commentImageDownload) }
-                    }
-                    "image_format" -> OptionSelector(R.string.settings_image_format, imageLabels, options.imageFormat.ordinal) { index ->
-                        update { it.copy(imageFormat = ImageFormat.entries[index]) }
-                    }
-                    "video_quality" -> OptionSelector(R.string.settings_video_quality, videoLabels, options.videoPreference.ordinal) { index ->
-                        update { it.copy(videoPreference = VideoPreference.entries[index]) }
-                    }
-                    "live" -> OptionSelector(R.string.settings_live_mode, liveLabels, options.livePhotoMode.ordinal) { index ->
-                        update { it.copy(livePhotoMode = LivePhotoMode.entries[index]) }
-                    }
-                    "live_format" -> OptionSelector(R.string.settings_live_format, liveFormatLabels, options.livePhotoFormat.ordinal) { index ->
-                        update { it.copy(livePhotoFormat = LivePhotoFormat.entries[index]) }
-                    }
-                    "skip" -> OptionSwitch(R.string.settings_skip_existing, R.string.settings_skip_hint, options.skipExisting) { update { it.copy(skipExisting = !it.skipExisting) } }
-                    "author_archive" -> OptionSwitch(R.string.settings_author_archive, checked = options.authorArchive) { update { it.copy(authorArchive = !it.authorArchive) } }
-                    "note_archive" -> OptionSwitch(R.string.settings_note_archive, checked = options.noteArchive) { update { it.copy(noteArchive = !it.noteArchive) } }
-                    "note_format" -> OptionSelector(R.string.settings_note_format, noteLabels, options.noteFormat.ordinal) { index ->
-                        update { it.copy(noteFormat = NoteFormat.entries[index]) }
-                    }
-                    "publish_time" -> OptionSwitch(R.string.settings_publish_time, R.string.settings_publish_time_hint, options.writePublishTime) { update { it.copy(writePublishTime = !it.writePublishTime) } }
-                    "export_json" -> BasicComponent(title = stringResource(R.string.settings_export_json), summary = stringResource(R.string.settings_export_hint), onClick = { exportJson.launch("xhs-download-records.json") },
-                        endActions = { ActionIconButton(MiuixIcons.Regular.FileDownloads, stringResource(R.string.settings_export_json), { exportJson.launch("xhs-download-records.json") }) })
-                    "export_csv" -> BasicComponent(title = stringResource(R.string.settings_export_csv), onClick = { exportCsv.launch("xhs-download-records.csv") },
-                        endActions = { ActionIconButton(MiuixIcons.Regular.FileDownloads, stringResource(R.string.settings_export_csv), { exportCsv.launch("xhs-download-records.csv") }) })
-                    "timeout", "retries" -> ArrowPreference(title = stringResource(if (row == "timeout") R.string.settings_timeout else R.string.settings_retries),
-                        summary = (if (row == "timeout") options.timeoutSeconds else options.maxRetries).toString(),
-                        onClick = { openEditor(row, (if (row == "timeout") options.timeoutSeconds else options.maxRetries).toString()) })
-                    "proxy" -> ArrowPreference(title = stringResource(R.string.settings_proxy), summary = options.proxy.ifBlank { stringResource(R.string.settings_proxy_hint) }, onClick = { openEditor(row, options.proxy) })
-                    "proxy_media" -> OptionSwitch(R.string.settings_proxy_media, checked = options.proxyDownload) { update { it.copy(proxyDownload = !it.proxyDownload) } }
-                    "web_session" -> OptionSwitch(R.string.settings_web_session, checked = options.useWebSession) { update { it.copy(useWebSession = !it.useWebSession) } }
-                    "login" -> BasicComponent(title = stringResource(R.string.settings_open_login), onClick = onOpenBrowser,
-                        endActions = { ActionIconButton(MiuixIcons.Regular.Link, stringResource(R.string.settings_open_login), onOpenBrowser) })
-                    else -> if (row.startsWith("cookie:")) {
-                        val host = row.substringAfter(':')
-                        ArrowPreference(title = stringResource(R.string.settings_cookie, host),
-                            summary = stringResource(if (sessionStates[host] == true) R.string.settings_session_saved else R.string.settings_session_empty),
-                            onClick = { openEditor(row, "") })
+            LazyColumn(
+                modifier = Modifier.fillMaxSize()
+                    .miuixVerticalScrollEffects().nestedScroll(scrollBehavior.nestedScrollConnection),
+                overscrollEffect = null,
+                contentPadding = PaddingValues(start = layout.contentStartPadding, end = layout.contentEndPadding, top = padding.calculateTopPadding())
+            ) {
+                item("snapshot_hint") { SmallTitle(stringResource(R.string.settings_snapshot_hint)) }
+                groupedCardItems(rows, key = { "setting_$it" }) { row ->
+                    when (row) {
+                        "images" -> OptionSwitch(R.string.settings_download_images, checked = options.imageDownload) { update { it.copy(imageDownload = !it.imageDownload) } }
+                        "videos" -> OptionSwitch(R.string.settings_download_videos, checked = options.videoDownload) { update { it.copy(videoDownload = !it.videoDownload) } }
+                        "cover" -> OptionSwitch(R.string.settings_download_cover, checked = options.videoCoverDownload) { update { it.copy(videoCoverDownload = !it.videoCoverDownload) } }
+                        "comment_images" -> OptionSwitch(R.string.settings_download_comment_images,
+                            R.string.settings_download_comment_images_desc, options.commentImageDownload) {
+                            update { it.copy(commentImageDownload = !it.commentImageDownload) }
+                        }
+                        "image_format" -> OptionSelector(R.string.settings_image_format, imageLabels, options.imageFormat.ordinal) { index ->
+                            update { it.copy(imageFormat = ImageFormat.entries[index]) }
+                        }
+                        "video_quality" -> OptionSelector(R.string.settings_video_quality, videoLabels, options.videoPreference.ordinal) { index ->
+                            update { it.copy(videoPreference = VideoPreference.entries[index]) }
+                        }
+                        "live" -> OptionSelector(R.string.settings_live_mode, liveLabels, options.livePhotoMode.ordinal) { index ->
+                            update { it.copy(livePhotoMode = LivePhotoMode.entries[index]) }
+                        }
+                        "live_format" -> OptionSelector(R.string.settings_live_format, liveFormatLabels, options.livePhotoFormat.ordinal) { index ->
+                            update { it.copy(livePhotoFormat = LivePhotoFormat.entries[index]) }
+                        }
+                        "skip" -> OptionSwitch(R.string.settings_skip_existing, R.string.settings_skip_hint, options.skipExisting) { update { it.copy(skipExisting = !it.skipExisting) } }
+                        "author_archive" -> OptionSwitch(R.string.settings_author_archive, checked = options.authorArchive) { update { it.copy(authorArchive = !it.authorArchive) } }
+                        "note_archive" -> OptionSwitch(R.string.settings_note_archive, checked = options.noteArchive) { update { it.copy(noteArchive = !it.noteArchive) } }
+                        "note_format" -> OptionSelector(R.string.settings_note_format, noteLabels, options.noteFormat.ordinal) { index ->
+                            update { it.copy(noteFormat = NoteFormat.entries[index]) }
+                        }
+                        "publish_time" -> OptionSwitch(R.string.settings_publish_time, R.string.settings_publish_time_hint, options.writePublishTime) { update { it.copy(writePublishTime = !it.writePublishTime) } }
+                        "export_json" -> BasicComponent(title = stringResource(R.string.settings_export_json), summary = stringResource(R.string.settings_export_hint), onClick = { exportJson.launch("xhs-download-records.json") },
+                            endActions = { ActionIconButton(MiuixIcons.Regular.FileDownloads, stringResource(R.string.settings_export_json), { exportJson.launch("xhs-download-records.json") }) })
+                        "export_csv" -> BasicComponent(title = stringResource(R.string.settings_export_csv), onClick = { exportCsv.launch("xhs-download-records.csv") },
+                            endActions = { ActionIconButton(MiuixIcons.Regular.FileDownloads, stringResource(R.string.settings_export_csv), { exportCsv.launch("xhs-download-records.csv") }) })
+                        "timeout", "retries" -> ArrowPreference(title = stringResource(if (row == "timeout") R.string.settings_timeout else R.string.settings_retries),
+                            summary = (if (row == "timeout") options.timeoutSeconds else options.maxRetries).toString(),
+                            onClick = { openEditor(row, (if (row == "timeout") options.timeoutSeconds else options.maxRetries).toString()) })
+                        "proxy" -> ArrowPreference(title = stringResource(R.string.settings_proxy), summary = options.proxy.ifBlank { stringResource(R.string.settings_proxy_hint) }, onClick = { openEditor(row, options.proxy) })
+                        "proxy_media" -> OptionSwitch(R.string.settings_proxy_media, checked = options.proxyDownload) { update { it.copy(proxyDownload = !it.proxyDownload) } }
+                        "web_session" -> OptionSwitch(R.string.settings_web_session, checked = options.useWebSession) { update { it.copy(useWebSession = !it.useWebSession) } }
+                        "login" -> BasicComponent(title = stringResource(R.string.settings_open_login), onClick = onOpenBrowser,
+                            endActions = { ActionIconButton(MiuixIcons.Regular.Link, stringResource(R.string.settings_open_login), onOpenBrowser) })
+                        else -> if (row.startsWith("cookie:")) {
+                            val host = row.substringAfter(':')
+                            ArrowPreference(title = stringResource(R.string.settings_cookie, host),
+                                summary = stringResource(if (sessionStates[host] == true) R.string.settings_session_saved else R.string.settings_session_empty),
+                                onClick = { openEditor(row, "") })
+                        }
                     }
                 }
-            }
-            if (section == 0) item("media_hint") {
-                Column(Modifier.padding(horizontal = 24.dp).padding(bottom = 12.dp)) {
-                    listOf(R.string.settings_format_hint, R.string.settings_video_hint, R.string.settings_live_hint, R.string.settings_live_format_hint).forEach {
-                        Text(stringResource(it), modifier = Modifier.padding(bottom = 8.dp), style = MiuixTheme.textStyles.body2, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
+                if (section == 0) item("media_hint") {
+                    Column(Modifier.padding(horizontal = 24.dp).padding(bottom = 12.dp)) {
+                        listOf(R.string.settings_format_hint, R.string.settings_video_hint, R.string.settings_live_hint, R.string.settings_live_format_hint).forEach {
+                            Text(stringResource(it), modifier = Modifier.padding(bottom = 8.dp), style = MiuixTheme.textStyles.body2, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
+                        }
                     }
                 }
-            }
-            if (section == 1) {
-                item("authors_title") { SmallTitle(stringResource(R.string.settings_author_remarks)) }
-                item("authors_hint") { Text(stringResource(if (authors.isEmpty()) R.string.settings_author_empty else R.string.settings_author_remarks_hint), modifier = Modifier.padding(horizontal = 24.dp).padding(bottom = 12.dp), color = MiuixTheme.colorScheme.onSurfaceVariantSummary) }
-                groupedCardItems(authors, key = { "author_${it.id}" }) { author ->
-                    ArrowPreference(title = author.remark.ifBlank { author.nickname }, summary = stringResource(R.string.settings_author_identity, author.nickname, author.id),
-                        onClick = { openEditor("author:${author.id}", author.remark) })
+                if (section == 1) {
+                    item("authors_title") { SmallTitle(stringResource(R.string.settings_author_remarks)) }
+                    item("authors_hint") { Text(stringResource(if (authors.isEmpty()) R.string.settings_author_empty else R.string.settings_author_remarks_hint), modifier = Modifier.padding(horizontal = 24.dp).padding(bottom = 12.dp), color = MiuixTheme.colorScheme.onSurfaceVariantSummary) }
+                    groupedCardItems(authors, key = { "author_${it.id}" }) { author ->
+                        ArrowPreference(title = author.remark.ifBlank { author.nickname }, summary = stringResource(R.string.settings_author_identity, author.nickname, author.id),
+                            onClick = { openEditor("author:${author.id}", author.remark) })
+                    }
                 }
+                item("bottom") { Spacer(Modifier.height(24.dp).navigationBarsPadding()) }
             }
-            item("bottom") { Spacer(Modifier.height(24.dp).navigationBarsPadding()) }
         }
     }
     edit?.let { key ->
@@ -198,7 +204,7 @@ internal fun DownloadSettingsRoute(section: Int, onBack: () -> Unit, onOpenBrows
             "proxy" -> stringResource(R.string.settings_proxy_hint)
             else -> null
         }
-        WindowDialog(
+        MiuixDialog(
             title = if (cookie) stringResource(R.string.settings_cookie, key.substringAfter(':')) else stringResource(label),
             summary = summary,
             show = showEdit,
@@ -218,8 +224,8 @@ internal fun DownloadSettingsRoute(section: Int, onBack: () -> Unit, onOpenBrows
                     },
                     modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp))
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    TextButton(stringResource(R.string.cancel), { showEdit = false }, Modifier.weight(1f))
-                    TextButton(stringResource(R.string.apply), {
+                    MiuixDialogButton(stringResource(R.string.cancel), { showEdit = false }, Modifier.weight(1f))
+                    MiuixDialogButton(stringResource(R.string.apply), {
                         val value = input.trim()
                         val valid = when (key) {
                             "timeout" -> value.toIntOrNull() in 5..180
@@ -248,7 +254,7 @@ internal fun DownloadSettingsRoute(section: Int, onBack: () -> Unit, onOpenBrows
                                 catch (_: Exception) { message(R.string.download_error_storage) }
                             }
                         }
-                    }, Modifier.weight(1f), colors = ButtonDefaults.textButtonColorsPrimary())
+                    }, Modifier.weight(1f), primary = true)
                 }
             }
         }
@@ -257,19 +263,22 @@ internal fun DownloadSettingsRoute(section: Int, onBack: () -> Unit, onOpenBrows
 
 @Composable
 private fun OptionSelector(title: Int, labels: List<Int>, selectedIndex: Int, onSelect: (Int) -> Unit) {
-    WindowSpinnerPreference(
+    MiuixSpinnerPreference(
         title = stringResource(title),
         items = labels.map { DropdownItem(text = stringResource(it)) },
         selectedIndex = selectedIndex,
-        dialogButtonString = stringResource(R.string.cancel),
         onSelectedIndexChange = onSelect,
     )
 }
 
 @Composable
 private fun OptionSwitch(title: Int, summary: Int? = null, checked: Boolean, onToggle: () -> Unit) {
-    BasicComponent(title = stringResource(title), summary = summary?.let { stringResource(it) }, onClick = onToggle,
-        endActions = { Switch(checked = checked, onCheckedChange = { onToggle() }) })
+    SwitchPreference(
+        title = stringResource(title),
+        summary = summary?.let { stringResource(it) },
+        checked = checked,
+        onCheckedChange = { onToggle() },
+    )
 }
 
 private val imageLabels = listOf(R.string.settings_image_auto, R.string.settings_format_jpeg, R.string.settings_format_png, R.string.settings_format_webp, R.string.settings_format_heic, R.string.settings_format_avif)

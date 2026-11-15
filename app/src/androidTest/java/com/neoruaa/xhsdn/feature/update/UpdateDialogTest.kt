@@ -16,6 +16,9 @@ import com.neoruaa.xhsdn.R
 import com.neoruaa.xhsdn.XHSApplication
 import com.neoruaa.xhsdn.data.update.GitHubRelease
 import com.neoruaa.xhsdn.data.update.UpdateCheckResult
+import com.neoruaa.xhsdn.ui.LocalMiuixComponentScope
+import com.neoruaa.xhsdn.ui.MiuixComponentHost
+import com.neoruaa.xhsdn.ui.miuixBackdropSource
 import java.io.File
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -40,7 +43,15 @@ class UpdateDialogTest {
             scenario.onActivity { activity ->
                 activity.setContent {
                     MiuixTheme {
-                        Box(Modifier.fillMaxSize().background(MiuixTheme.colorScheme.surface)) { UpdateDialog(controller) }
+                        MiuixComponentHost {
+                            Box(
+                                Modifier.fillMaxSize()
+                                    .background(MiuixTheme.colorScheme.surface)
+                                    .miuixBackdropSource(LocalMiuixComponentScope.current.pageBackdrop)
+                            ) {
+                                UpdateDialog(controller)
+                            }
+                        }
                     }
                 }
                 controller.checkOnStartup()
@@ -86,7 +97,9 @@ class UpdateDialogTest {
 
     private fun find(text: String, node: AccessibilityNodeInfo? = automation.rootInActiveWindow): AccessibilityNodeInfo? {
         if (node == null) return null
-        if (node.text?.toString() == text || node.contentDescription?.toString() == text) return node
+        if (node.isVisibleToUser &&
+            (node.text?.toString() == text || node.contentDescription?.toString() == text)
+        ) return node
         for (index in 0 until node.childCount) find(text, node.getChild(index))?.let { return it }
         return null
     }
@@ -94,22 +107,29 @@ class UpdateDialogTest {
     private fun awaitText(text: String): AccessibilityNodeInfo {
         var match: AccessibilityNodeInfo? = null
         awaitCondition {
-            match = find(text)?.takeIf { it.isVisibleToUser }
+            match = find(text)
             match != null
         }
         return checkNotNull(match)
     }
 
     private fun click(text: String) {
-        var node = awaitText(text)
-        while (!node.isClickable) node = node.parent ?: error("No clickable parent for $text")
-        assertTrue(node.performAction(AccessibilityNodeInfo.ACTION_CLICK))
+        // Dialog transitions can replace Compose accessibility nodes between lookup and click.
+        awaitCondition("Timed out clicking update dialog action '$text'") {
+            var node = find(text)
+            while (node != null && !node.isClickable) node = node.parent
+            node?.takeIf { it.refresh() && it.isVisibleToUser && it.isEnabled && it.isClickable }
+                ?.performAction(AccessibilityNodeInfo.ACTION_CLICK) == true
+        }
     }
 
-    private fun awaitCondition(condition: () -> Boolean) {
+    private fun awaitCondition(
+        message: String = "Timed out waiting for update dialog",
+        condition: () -> Boolean
+    ) {
         val deadline = System.nanoTime() + 5_000_000_000L
         while (!condition()) {
-            if (System.nanoTime() >= deadline) fail("Timed out waiting for update dialog")
+            if (System.nanoTime() >= deadline) fail(message)
             Thread.sleep(50)
         }
     }

@@ -23,11 +23,10 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.neoruaa.xhsdn.BuildConfig
 import com.neoruaa.xhsdn.R
 import com.neoruaa.xhsdn.data.update.UpdateCheckResult
-import top.yukonga.miuix.kmp.basic.ButtonDefaults
+import com.neoruaa.xhsdn.ui.MiuixDialog
+import com.neoruaa.xhsdn.ui.MiuixDialogButton
 import top.yukonga.miuix.kmp.basic.Text
-import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.theme.MiuixTheme
-import top.yukonga.miuix.kmp.window.WindowDialog
 
 @Composable
 internal fun UpdateDialog(controller: UpdateCheckController, modifier: Modifier = Modifier) {
@@ -53,7 +52,7 @@ internal fun UpdateDialog(controller: UpdateCheckController, modifier: Modifier 
             UpdateCheckResult.Reason.INVALID_VERSION -> stringResource(R.string.update_error_version)
         }
     }
-    WindowDialog(
+    MiuixDialog(
         show = state.showDialog,
         modifier = modifier,
         title = title,
@@ -72,8 +71,8 @@ internal fun UpdateDialog(controller: UpdateCheckController, modifier: Modifier 
                 }
                 Spacer(Modifier.height(16.dp))
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    TextButton(stringResource(R.string.update_later), controller::dismiss, Modifier.weight(1f))
-                    TextButton(stringResource(R.string.update_open_release), {
+                    MiuixDialogButton(stringResource(R.string.update_later), controller::dismiss, Modifier.weight(1f))
+                    MiuixDialogButton(stringResource(R.string.update_open_release), {
                         try {
                             context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(result.release.url)))
                             controller.dismiss()
@@ -82,11 +81,11 @@ internal fun UpdateDialog(controller: UpdateCheckController, modifier: Modifier 
                         } catch (_: SecurityException) {
                             Toast.makeText(context, R.string.update_open_failed, Toast.LENGTH_SHORT).show()
                         }
-                    }, Modifier.weight(1f), colors = ButtonDefaults.textButtonColorsPrimary())
+                    }, Modifier.weight(1f), primary = true)
                 }
             } else {
-                TextButton(stringResource(R.string.update_close), controller::dismiss,
-                    Modifier.fillMaxWidth(), colors = ButtonDefaults.textButtonColorsPrimary())
+                MiuixDialogButton(stringResource(R.string.update_close), controller::dismiss,
+                    Modifier.fillMaxWidth(), primary = true)
             }
         }
     }

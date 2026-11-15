@@ -14,6 +14,23 @@ dependencyResolutionManagement {
     repositories {
         google()
         mavenCentral()
+        maven {
+            name = 'MiuixSnapshots'
+            url = uri('https://maven.pkg.github.com/compose-miuix-ui/miuix')
+            def packageUser = providers.gradleProperty('gpr.user')
+                .orElse(providers.environmentVariable('GITHUB_ACTOR'))
+            def packageKey = providers.gradleProperty('gpr.key')
+                .orElse(providers.environmentVariable('GITHUB_TOKEN'))
+            if (packageUser.isPresent() && packageKey.isPresent()) {
+                credentials {
+                    username = packageUser.get()
+                    password = packageKey.get()
+                }
+            }
+            content {
+                includeGroup 'top.yukonga.miuix.kmp'
+            }
+        }
     }
 }
 

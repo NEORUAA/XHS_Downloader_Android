@@ -31,7 +31,10 @@ import androidx.compose.animation.scaleOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -55,6 +58,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.lazy.staggeredgrid.rememberLazyStaggeredGridState
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.runtime.Composable
@@ -66,6 +70,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.mutableStateOf
@@ -77,11 +82,18 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.layout.boundsInWindow
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.foundation.layout.WindowInsets
@@ -90,19 +102,24 @@ import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntRect
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.navigation3.runtime.NavEntry
-import androidx.navigation3.runtime.rememberNavBackStack
-import androidx.navigation3.ui.NavDisplay
-import androidx.navigation3.ui.NavDisplayTransitionEffects
+import top.yukonga.miuix.kmp.nav.core.rememberNavBackStack
+import top.yukonga.miuix.kmp.nav.core.NavDisplay
+import top.yukonga.miuix.kmp.nav.core.NavDisplayEffects
+import top.yukonga.miuix.kmp.nav.core.rememberNavSystemCornerRadius
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -111,7 +128,6 @@ import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import top.yukonga.miuix.kmp.basic.Button
-import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.CardDefaults
 import top.yukonga.miuix.kmp.basic.Icon
@@ -134,11 +150,17 @@ import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.combinedClickable
 import java.io.File
+import kotlin.math.roundToInt
 import android.util.LruCache
 import androidx.compose.foundation.layout.statusBars
 import com.neoruaa.xhsdn.ui.AdaptiveTopAppBar
+import com.neoruaa.xhsdn.ui.MiuixComponentHost
+import com.neoruaa.xhsdn.ui.useMiuixOs4
 import com.neoruaa.xhsdn.ui.TopAppBarIconButton
-import com.neoruaa.xhsdn.ui.TabRowWithContour
+import com.neoruaa.xhsdn.ui.CapsuleTabRow
+import com.neoruaa.xhsdn.ui.HistorySearchOverlay
+import com.neoruaa.xhsdn.ui.historySearchBarTransition
+import com.neoruaa.xhsdn.ui.rememberHistorySearchBarAlpha
 import com.neoruaa.xhsdn.ui.SelectableMediaWaterfall
 import com.neoruaa.xhsdn.ui.miuixBackdropSource
 import com.neoruaa.xhsdn.ui.miuixVerticalScrollEffects
@@ -156,23 +178,47 @@ import com.neoruaa.xhsdn.feature.history.HistoryViewModel
 import com.neoruaa.xhsdn.data.settings.SettingsRepository
 import com.neoruaa.xhsdn.data.xhs.XhsUrlParser
 import top.yukonga.miuix.kmp.basic.DropdownItem
+import top.yukonga.miuix.kmp.basic.DropdownEntry
 import top.yukonga.miuix.kmp.basic.DropdownImpl
 import top.yukonga.miuix.kmp.basic.ListPopupColumn
 import top.yukonga.miuix.kmp.basic.ListPopupDefaults
 import top.yukonga.miuix.kmp.basic.PopupPositionProvider
-import top.yukonga.miuix.kmp.window.WindowDialog
+import com.neoruaa.xhsdn.ui.MiuixDialog
+import com.neoruaa.xhsdn.ui.MiuixDialogButton
+import com.neoruaa.xhsdn.ui.LocalMiuixComponentScope
 import top.yukonga.miuix.kmp.window.WindowListPopup
 import top.yukonga.miuix.kmp.icon.extended.More
 import androidx.compose.ui.res.stringResource
 import android.util.Log
 import androidx.compose.ui.text.font.FontWeight
-import com.kyant.capsule.ContinuousRoundedRectangle
 import com.neoruaa.xhsdn.ui.rememberOffsetPopupPositionProvider
 import top.yukonga.miuix.kmp.basic.TextField
-import top.yukonga.miuix.kmp.basic.InputField
-import top.yukonga.miuix.kmp.basic.SearchBar
 import top.yukonga.miuix.kmp.basic.IconButton
 import top.yukonga.miuix.kmp.blur.LayerBackdrop
+import top.yukonga.miuix.kmp.blur.layerBackdrop
+import top.yukonga.miuix.kmp.blur.rememberLayerBackdrop
+import top.yukonga.miuix.kmp.glass.GlassIconButton
+import top.yukonga.miuix.kmp.glass.GlassIconDropdownMenu
+import top.yukonga.miuix.kmp.glass.GlassPopup
+import top.yukonga.miuix.kmp.glass.GlassPopupDefaults
+import top.yukonga.miuix.kmp.glass.GlassPopupItem
+import top.yukonga.miuix.kmp.glass.GlassTopAppBarDefaults
+import top.yukonga.miuix.kmp.glass.glassPanel
+import top.yukonga.miuix.kmp.glass.glassPress
+import top.yukonga.miuix.kmp.glass.glassPopupAnchor
+import top.yukonga.miuix.kmp.glass.glassPopupAnchorContent
+import top.yukonga.miuix.kmp.glass.rememberGlassPopupAnchor
+import top.yukonga.miuix.kmp.material.GlassDefaults
+import top.yukonga.miuix.kmp.material.GlassShape
+import top.yukonga.miuix.kmp.material.GlassStyles
+import top.yukonga.miuix.kmp.icon.glass.SettingsOutline
+import top.yukonga.miuix.kmp.icon.glass.Search
+import top.yukonga.miuix.kmp.icon.glass.More
+import top.yukonga.miuix.kmp.icon.glass.Copy
+import top.yukonga.miuix.kmp.icon.glass.Delete
+import top.yukonga.miuix.kmp.icon.glass.Close
+import top.yukonga.miuix.kmp.icon.glass.Download
+import top.yukonga.miuix.kmp.icon.glass.SelectAll
 import top.yukonga.miuix.kmp.icon.extended.File
 import top.yukonga.miuix.kmp.icon.extended.Link
 import top.yukonga.miuix.kmp.icon.extended.Close
@@ -184,13 +230,13 @@ import top.yukonga.miuix.kmp.icon.extended.Copy
 import top.yukonga.miuix.kmp.icon.extended.Delete
 import top.yukonga.miuix.kmp.icon.extended.SelectAll
 import com.neoruaa.xhsdn.ui.ActionIconButton
+import com.kyant.capsule.ContinuousCapsule
 import com.neoruaa.xhsdn.data.TaskStatus
 import top.yukonga.miuix.kmp.icon.extended.Download
 import top.yukonga.miuix.kmp.icon.extended.Ok
 import top.yukonga.miuix.kmp.icon.basic.Search
-import top.yukonga.miuix.kmp.icon.basic.SearchCleanup
 import top.yukonga.miuix.kmp.icon.extended.Notes
-import top.yukonga.miuix.kmp.window.WindowBottomSheet
+import com.neoruaa.xhsdn.ui.MiuixBottomSheet
 import top.yukonga.miuix.kmp.squircle.squircleBackground
 import top.yukonga.miuix.kmp.squircle.squircleSurface
 
@@ -268,7 +314,7 @@ class MainActivity : ComponentActivity() {
         WindowCompat.setDecorFitsSystemWindows(window, false)
 
         setContent {
-            val controller = ThemeController(ColorSchemeMode.System)
+            val controller = remember { ThemeController(ColorSchemeMode.System) }
             val uiState by viewModel.uiState.collectAsStateWithLifecycle()
             val historyUiState by historyViewModel.uiState.collectAsStateWithLifecycle()
             val appSettings by settingsRepository.settings.collectAsStateWithLifecycle(
@@ -431,207 +477,231 @@ class MainActivity : ComponentActivity() {
             }
 
             MiuixTheme(controller = controller) {
-                val backStack = rememberNavBackStack(AppRoute.Main)
-                val navigateBack = remember(backStack) {
-                    { if (backStack.size > 1) backStack.removeLastOrNull() }
-                }
-                val navigateTo = remember(backStack) {
-                    { route: AppRoute ->
-                        if (backStack.lastOrNull() != route) backStack.add(route)
+                MiuixComponentHost {
+                    val backStack = rememberNavBackStack<AppRoute>(AppRoute.Main)
+                    val navigateBack = remember(backStack) {
+                        { if (backStack.size > 1) backStack.removeLastOrNull() }
                     }
-                }
-                val requestedRoute = pendingRoute.value
-                LaunchedEffect(requestedRoute) {
-                    requestedRoute?.let {
-                        if (it == AppRoute.Main) {
-                            while (backStack.size > 1) backStack.removeLastOrNull()
-                        } else navigateTo(it)
-                        pendingRoute.value = null
+                    val navigateTo = remember(backStack) {
+                        { route: AppRoute ->
+                            if (backStack.lastOrNull() != route) backStack.add(route)
+                        }
                     }
-                }
-                val transitionEffects = remember {
-                    NavDisplayTransitionEffects(
-                        enableCornerClip = true,
-                        dimAmount = 0.5f,
-                        blockInputDuringTransition = false
-                    )
-                }
-
-                NavDisplay(
-                    backStack = backStack,
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(MiuixTheme.colorScheme.surface),
-                    onBack = navigateBack,
-                    transitionEffects = transitionEffects,
-                    entryProvider = { route ->
-                        NavEntry(route) { destination ->
-                            when (val appRoute = destination as AppRoute) {
-                                AppRoute.Main -> {
-                                    var showInputDialog by remember { mutableStateOf(false) }
-
-                                    // Read observable settings inside the retained navigation content.
-                                    MainScreen(
-                    uiState = uiState,
-                    historyUiState = historyUiState,
-                    downloadSpeeds = viewModel.downloadSpeeds,
-                    manualInputLinks = appSettings.manualInputLinks,
-                    showInputDialog = showInputDialog,
-                    onShowInputDialogChange = { showInputDialog = it },
-                    scrollBehavior = scrollBehavior,
-                    onDownload = {
-                        if (!appSettings.manualInputLinks) {
-                            ensureStoragePermission {
-                                // 先读取剪贴板
-                                val clipboard = getSystemService(CLIPBOARD_SERVICE) as android.content.ClipboardManager
-                                val clipText = clipboard.primaryClip?.getItemAt(0)?.text?.toString() ?: ""
-                                // 提取有效链接
-                                val url = UrlUtils.extractFirstUrl(clipText)
-                                if (UrlUtils.isXhsLink(url)) {
-                                    viewModel.updateUrl(clipText)
-
-                                    if (appSettings.selectiveDownload) {
-                                        viewModel.startSelectiveDownload { showToast(it) }
-                                    } else {
-                                        // 先开始下载（创建任务）
-                                        viewModel.startDownload { showToast(it) }
-
-
-                                    }
-                                } else {
-                                    showToast(getString(R.string.clipboard_no_xhs_link))
-                                }
-                            }
+                    val requestedRoute = pendingRoute.value
+                    LaunchedEffect(requestedRoute) {
+                        requestedRoute?.let {
+                            if (it == AppRoute.Main) {
+                                while (backStack.size > 1) backStack.removeLastOrNull()
+                            } else navigateTo(it)
+                            pendingRoute.value = null
                         }
-                    },
-                    onCopyText = { inputLink ->
-                        viewModel.updateUrl(inputLink)
-                        ensureStoragePermission {
-                            viewModel.copyDescription({ showToast(getString(R.string.copied_description)) }, { showToast(it) })
-                        }
-                    },
-                    onOpenSettings = { navigateTo(AppRoute.Settings) },
-                    onWebCrawl = { inputLink ->
-                        val cleanUrl = UrlUtils.extractFirstUrl(inputLink)
-                        if (cleanUrl != null) {
-                            viewModel.resetWebCrawlFlag()
-                            navigateTo(AppRoute.WebView(cleanUrl))
-                            detectedXhsLink = null
-                        } else {
-                            showToast(getString(R.string.invalid_link_please_reenter))
-                        }
-                    },
-                    onMediaClick = { openFile(it) },
-                    onCopyUrl = { url ->
-                        val clipboard = getSystemService(CLIPBOARD_SERVICE) as android.content.ClipboardManager
-                        clipboard.setPrimaryClip(android.content.ClipData.newPlainText("xhs_url", url))
-                        showToast(getString(R.string.link_copied))
-                    },
-                    onBrowseUrl = { url ->
-                        lifecycleScope.launch {
-                            withContext(Dispatchers.Main) {
-                                try {
-                                    // 使用通用URL提取
-                                    val cleanUrl = UrlUtils.extractFirstUrl(url)
-                                    if (cleanUrl != null) {
-                                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(cleanUrl))
-                                        startActivity(intent)
-                                    } else {
-                                        showToast(getString(R.string.no_valid_link_found))
-                                    }
-                                } catch (e: Exception) {
-                                    showToast(getString(R.string.unable_to_open_browser, e.message))
-                                }
-                            }
-                        }
-                    },
-                    onRetryTask = { task ->
-                        ensureStoragePermission {
-                            viewModel.retryTask(task) { showToast(it) }
-                        }
-                    },
-                    onDeleteTask = { task ->
-                        viewModel.deleteTask(task.id)
-                    },
-                    onContinueTask = { task -> 
-                        ensureStoragePermission {
-                            viewModel.continueTask(task)
-                        }
-                    },
-                    onWebCrawlTask = { task ->
-                        viewModel.updateUrl(task.noteUrl)
-                        val cleanUrl = UrlUtils.extractFirstUrl(task.noteUrl)
-                        if (cleanUrl != null) {
-                            viewModel.resetWebCrawlFlag()
-                            navigateTo(AppRoute.WebView(cleanUrl, task.id))
-                        } else {
-                            showToast(getString(R.string.invalid_link_please_reenter))
-                        }
-                    },
-                    onCancelTask = { task -> viewModel.cancelTask(task.id) },
-                    onLoadMore = historyViewModel::loadMore,
-                    onSaveInfo = { inputLink ->
-                        viewModel.updateUrl(inputLink)
-                        ensureStoragePermission { viewModel.saveNoteInformation { showToast(it) } }
-                    },
-                    onStopTask = { task ->
-                        viewModel.pauseTask(task.id)
-                    },
-                    onClearHistory = { viewModel.clearHistory() },
-                    onManualInputDownload = { inputLink ->
-                        ensureStoragePermission {
-                            viewModel.updateUrl(inputLink)
-                            if (appSettings.selectiveDownload) {
-                                viewModel.startSelectiveDownload { showToast(it) }
-                            } else {
-                                viewModel.startDownload { showToast(it) }
-
-
-                            }
-                        }
-                    },
-                    detectedXhsLink = detectedXhsLink,
-                    onDismissPrompt = { detectedXhsLink = null },
-                    onCancelSelectiveDownload = viewModel::cancelSelectiveDownload,
-                    onSaveSelectedMedia = {
-                        ensureStoragePermission {
-                            viewModel.saveSelectedMedia { showToast(it) }
-                        }
-                    },
-                    onToggleSelectiveItem = viewModel::toggleSelectiveItem,
-                    onHistoryQueryChange = historyViewModel::updateQuery,
-                    onHistoryQueryClear = historyViewModel::clearQuery,
-                    onHistoryFilterChange = historyViewModel::selectFilter,
-                    onOpenDetail = { task ->
-                        navigateTo(
-                            AppRoute.Detail(
-                                taskId = task.id.toString(),
-                                taskTitle = task.displayTitle,
-                                filePaths = task.filePaths,
-                                noteContent = task.noteContent,
-                                noteUrl = task.noteUrl
-                            )
+                    }
+                    val cornerClipRadius = rememberNavSystemCornerRadius()
+                    val transitionEffects = remember(cornerClipRadius) {
+                        NavDisplayEffects(
+                            enableCornerClip = true,
+                            cornerClipRadius = cornerClipRadius,
+                            dimAmount = 0.5f,
+                            blockInputDuringTransition = false
                         )
                     }
-                )
 
-                                }
+                    NavDisplay(
+                        backStack = backStack,
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .miuixBackdropSource(LocalMiuixComponentScope.current.pageBackdrop)
+                            .background(MiuixTheme.colorScheme.surface),
+                        onBack = navigateBack,
+                        effects = transitionEffects,
+                    ) {
+                        entry<AppRoute.Main> {
+                            MiuixComponentHost {
+                                var showInputDialog by remember { mutableStateOf(false) }
 
-                                AppRoute.Settings -> SettingsRoute(onBack = navigateBack, onOpenAdvanced = { navigateTo(AppRoute.DownloadSettings(it)) },
-                                    onOpenAccount = { navigateTo(AppRoute.WebView(com.neoruaa.xhsdn.data.account.XhsWebSession.HOME)) })
-                                is AppRoute.DownloadSettings -> com.neoruaa.xhsdn.feature.settings.DownloadSettingsRoute(
-                                    appRoute.section, onBack = navigateBack, onOpenBrowser = { navigateTo(AppRoute.WebView("https://www.xiaohongshu.com")) })
+                                // Read observable settings inside the retained navigation content.
+                                MainScreen(
+                                    uiState = uiState,
+                                    historyUiState = historyUiState,
+                                    downloadSpeeds = viewModel.downloadSpeeds,
+                                    manualInputLinks = appSettings.manualInputLinks,
+                                    showInputDialog = showInputDialog,
+                                    onShowInputDialogChange = { showInputDialog = it },
+                                    scrollBehavior = scrollBehavior,
+                                    onDownload = {
+                                        if (!appSettings.manualInputLinks) {
+                                            ensureStoragePermission {
+                                                // 先读取剪贴板
+                                                val clipboard = getSystemService(CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                                                val clipText = clipboard.primaryClip?.getItemAt(0)?.text?.toString() ?: ""
+                                                // 提取有效链接
+                                                val url = UrlUtils.extractFirstUrl(clipText)
+                                                if (UrlUtils.isXhsLink(url)) {
+                                                    viewModel.updateUrl(clipText)
 
-                                is AppRoute.Detail -> DetailRoute(
-                                    route = appRoute,
+                                                    if (appSettings.selectiveDownload) {
+                                                        viewModel.startSelectiveDownload { showToast(it) }
+                                                    } else {
+                                                        // 先开始下载（创建任务）
+                                                        viewModel.startDownload { showToast(it) }
+
+
+                                                    }
+                                                } else {
+                                                    showToast(getString(R.string.clipboard_no_xhs_link))
+                                                }
+                                            }
+                                        }
+                                    },
+                                    onCopyText = { inputLink ->
+                                        viewModel.updateUrl(inputLink)
+                                        ensureStoragePermission {
+                                            viewModel.copyDescription({ showToast(getString(R.string.copied_description)) }, { showToast(it) })
+                                        }
+                                    },
+                                    onOpenSettings = { navigateTo(AppRoute.Settings) },
+                                    onWebCrawl = { inputLink ->
+                                        val cleanUrl = UrlUtils.extractFirstUrl(inputLink)
+                                        if (cleanUrl != null) {
+                                            viewModel.resetWebCrawlFlag()
+                                            navigateTo(AppRoute.WebView(cleanUrl))
+                                            detectedXhsLink = null
+                                        } else {
+                                            showToast(getString(R.string.invalid_link_please_reenter))
+                                        }
+                                    },
+                                    onMediaClick = { openFile(it) },
+                                    onCopyUrl = { url ->
+                                        val clipboard = getSystemService(CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                                        clipboard.setPrimaryClip(android.content.ClipData.newPlainText("xhs_url", url))
+                                        showToast(getString(R.string.link_copied))
+                                    },
+                                    onBrowseUrl = { url ->
+                                        lifecycleScope.launch {
+                                            withContext(Dispatchers.Main) {
+                                                try {
+                                                    // 使用通用URL提取
+                                                    val cleanUrl = UrlUtils.extractFirstUrl(url)
+                                                    if (cleanUrl != null) {
+                                                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(cleanUrl))
+                                                        startActivity(intent)
+                                                    } else {
+                                                        showToast(getString(R.string.no_valid_link_found))
+                                                    }
+                                                } catch (e: Exception) {
+                                                    showToast(getString(R.string.unable_to_open_browser, e.message))
+                                                }
+                                            }
+                                        }
+                                    },
+                                    onRetryTask = { task ->
+                                        ensureStoragePermission {
+                                            viewModel.retryTask(task) { showToast(it) }
+                                        }
+                                    },
+                                    onDeleteTask = { task ->
+                                        viewModel.deleteTask(task.id)
+                                    },
+                                    onContinueTask = { task ->
+                                        ensureStoragePermission {
+                                            viewModel.continueTask(task)
+                                        }
+                                    },
+                                    onWebCrawlTask = { task ->
+                                        viewModel.updateUrl(task.noteUrl)
+                                        val cleanUrl = UrlUtils.extractFirstUrl(task.noteUrl)
+                                        if (cleanUrl != null) {
+                                            viewModel.resetWebCrawlFlag()
+                                            navigateTo(AppRoute.WebView(cleanUrl, task.id))
+                                        } else {
+                                            showToast(getString(R.string.invalid_link_please_reenter))
+                                        }
+                                    },
+                                    onCancelTask = { task -> viewModel.cancelTask(task.id) },
+                                    onLoadMore = historyViewModel::loadMore,
+                                    onSaveInfo = { inputLink ->
+                                        viewModel.updateUrl(inputLink)
+                                        ensureStoragePermission { viewModel.saveNoteInformation { showToast(it) } }
+                                    },
+                                    onStopTask = { task ->
+                                        viewModel.pauseTask(task.id)
+                                    },
+                                    onClearHistory = { viewModel.clearHistory() },
+                                    onManualInputDownload = { inputLink ->
+                                        ensureStoragePermission {
+                                            viewModel.updateUrl(inputLink)
+                                            if (appSettings.selectiveDownload) {
+                                                viewModel.startSelectiveDownload { showToast(it) }
+                                            } else {
+                                                viewModel.startDownload { showToast(it) }
+
+
+                                            }
+                                        }
+                                    },
+                                    detectedXhsLink = detectedXhsLink,
+                                    onDismissPrompt = { detectedXhsLink = null },
+                                    onCancelSelectiveDownload = viewModel::cancelSelectiveDownload,
+                                    onSaveSelectedMedia = {
+                                        ensureStoragePermission {
+                                            viewModel.saveSelectedMedia { showToast(it) }
+                                        }
+                                    },
+                                    onToggleSelectiveItem = viewModel::toggleSelectiveItem,
+                                    onHistoryQueryChange = historyViewModel::updateQuery,
+                                    onHistoryQueryClear = historyViewModel::clearQuery,
+                                    onHistoryFilterChange = historyViewModel::selectFilter,
+                                    onOpenDetail = { task ->
+                                        navigateTo(
+                                            AppRoute.Detail(
+                                                taskId = task.id.toString(),
+                                                taskTitle = task.displayTitle,
+                                                filePaths = task.filePaths,
+                                                noteContent = task.noteContent,
+                                                noteUrl = task.noteUrl
+                                            )
+                                        )
+                                    }
+                                )
+
+                            }
+                        }
+
+                        entry<AppRoute.Settings> {
+                            MiuixComponentHost {
+                                SettingsRoute(
+                                    onBack = navigateBack,
+                                    onOpenAdvanced = { navigateTo(AppRoute.DownloadSettings(it)) },
+                                    onOpenAccount = {
+                                        navigateTo(AppRoute.WebView(com.neoruaa.xhsdn.data.account.XhsWebSession.HOME))
+                                    }
+                                )
+                            }
+                        }
+                        entry<AppRoute.DownloadSettings> { route ->
+                            MiuixComponentHost {
+                                com.neoruaa.xhsdn.feature.settings.DownloadSettingsRoute(
+                                    route.section,
+                                    onBack = navigateBack,
+                                    onOpenBrowser = { navigateTo(AppRoute.WebView(com.neoruaa.xhsdn.data.account.XhsWebSession.HOME)) }
+                                )
+                            }
+                        }
+                        entry<AppRoute.Detail> { route ->
+                            MiuixComponentHost {
+                                DetailRoute(
+                                    route = route,
                                     onBack = navigateBack,
                                     onOpenWebView = { url ->
                                         backStack[backStack.lastIndex] = AppRoute.WebView(url)
                                     }
                                 )
-
-                                is AppRoute.WebView -> WebViewRoute(
-                                    route = appRoute,
+                            }
+                        }
+                        entry<AppRoute.WebView> { route ->
+                            MiuixComponentHost {
+                                WebViewRoute(
+                                    route = route,
                                     onBack = navigateBack,
                                     onResult = { urls, content, taskId, url ->
                                         handleWebViewResult(urls, content, taskId, url)
@@ -641,8 +711,8 @@ class MainActivity : ComponentActivity() {
                             }
                         }
                     }
-                )
-                com.neoruaa.xhsdn.feature.update.UpdateDialog(updateChecker)
+                    com.neoruaa.xhsdn.feature.update.UpdateDialog(updateChecker)
+                }
             }
         }
     }
@@ -856,11 +926,19 @@ private fun MainScreen(
 ) {
     val windowLayoutInfo = rememberWindowLayoutInfo()
     val topBarBackdrop = rememberMiuixTopBarBackdrop()
+    val useOs4 = useMiuixOs4()
+    val componentScope = LocalMiuixComponentScope.current
     val statusListState = rememberLazyListState()
     var searchExpanded by rememberSaveable {
-        mutableStateOf(historyUiState.query.isNotEmpty())
+        mutableStateOf(false)
     }
-    val focusManager = LocalFocusManager.current
+    val searchBarAlpha = rememberHistorySearchBarAlpha(searchExpanded)
+    val searchListState = rememberLazyListState()
+    var lastSearchQuery by rememberSaveable { mutableStateOf("") }
+    val closeSearch = {
+        searchExpanded = false
+        onHistoryQueryClear()
+    }
     val filterLabels = listOf(
         stringResource(R.string.tab_all),
         stringResource(
@@ -873,8 +951,52 @@ private fun MainScreen(
     // 清除历史记录确认对话框状态
     var showClearHistoryDialog by remember { mutableStateOf(false) }
 
-    Box(modifier = Modifier.fillMaxSize()) {
-        WindowDialog(
+    val historyContent: @Composable (Dp, Boolean) -> Unit = { topPadding, searchMode ->
+        HistoryPage(
+            uiState = uiState,
+            historyUiState = historyUiState,
+            downloadSpeeds = downloadSpeeds,
+            manualInputLinks = manualInputLinks,
+            showInputDialog = showInputDialog,
+            onShowInputDialogChange = onShowInputDialogChange,
+            statusListState = if (searchMode) searchListState else statusListState,
+            onDownload = onDownload,
+            onManualInputDownload = onManualInputDownload,
+            onCopyText = onCopyText,
+            onWebCrawl = onWebCrawl,
+            onRequestClearHistory = { showClearHistoryDialog = true },
+            onMediaClick = onMediaClick,
+            onCopyUrl = onCopyUrl,
+            onBrowseUrl = onBrowseUrl,
+            onRetryTask = onRetryTask,
+            onContinueTask = onContinueTask,
+            onWebCrawlTask = onWebCrawlTask,
+            onStopTask = onStopTask,
+            onCancelTask = onCancelTask,
+            onLoadMore = onLoadMore,
+            onSaveInfo = onSaveInfo,
+            onDeleteTask = onDeleteTask,
+            detectedXhsLink = detectedXhsLink,
+            onDismissPrompt = onDismissPrompt,
+            onOpenDetail = { task ->
+                if (searchMode) closeSearch()
+                onOpenDetail(task)
+            },
+            backdrop = if (searchMode) null else topBarBackdrop,
+            contentStartPadding = windowLayoutInfo.contentStartPadding,
+            contentEndPadding = windowLayoutInfo.contentEndPadding,
+            topContentPadding = topPadding,
+            modifier = Modifier
+                .fillMaxSize(),
+            nestedScrollConnection = if (searchMode) null else scrollBehavior.nestedScrollConnection,
+            searchMode = searchMode
+        )
+    }
+
+    Box(
+        modifier = Modifier.fillMaxSize().miuixBackdropSource(componentScope.pageBackdrop)
+    ) {
+        MiuixDialog(
             title = stringResource(R.string.clear_history_dialog_title),
             summary = stringResource(R.string.clear_history_dialog_message),
             show = showClearHistoryDialog,
@@ -884,25 +1006,28 @@ private fun MainScreen(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 modifier = Modifier.padding(top = 8.dp)
             ) {
-                TextButton(
+                MiuixDialogButton(
                     text = stringResource(R.string.cancel),
                     onClick = { showClearHistoryDialog = false },
                     modifier = Modifier.weight(1f)
                 )
                 Spacer(Modifier.width(12.dp))
-                TextButton(
+                MiuixDialogButton(
                     text = stringResource(R.string.apply),
                     onClick = {
                         onClearHistory()
                         showClearHistoryDialog = false
                     },
                     modifier = Modifier.weight(1f),
-                    colors = ButtonDefaults.textButtonColorsPrimary()
+                    primary = true
                 )
             }
         }
 
         Scaffold(
+            modifier = Modifier
+                .graphicsLayer { alpha = searchBarAlpha.value }
+                .then(if (searchExpanded) Modifier.clearAndSetSemantics { } else Modifier),
             contentWindowInsets = WindowInsets.statusBars.union(WindowInsets.displayCutout),
             topBar = {
                 val title = stringResource(R.string.app_full_name)
@@ -911,154 +1036,60 @@ private fun MainScreen(
                     isWideScreen = windowLayoutInfo.isWideScreen,
                     backdrop = topBarBackdrop,
                     scrollBehavior = scrollBehavior,
+                    contentModifier = Modifier.historySearchBarTransition(searchExpanded) { 1f },
                     actions = {
-                        Box(
-                            modifier = Modifier.padding(end = 4.dp),
-                            contentAlignment = Alignment.Center
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
                             TopAppBarIconButton(
-                                imageVector = MiuixIcons.Settings,
+                                imageVector = if (useOs4) MiuixIcons.Glass.Search else MiuixIcons.Basic.Search,
+                                contentDescription = stringResource(R.string.main_search_history),
+                                iconModifier = Modifier.size(28.dp),
+                                onClick = { searchExpanded = true }
+                            )
+                            TopAppBarIconButton(
+                                imageVector = if (useOs4) MiuixIcons.Glass.SettingsOutline else MiuixIcons.Settings,
                                 contentDescription = stringResource(R.string.settings),
                                 onClick = onOpenSettings
                             )
                         }
                     },
                     bottomContent = {
-                        Column(modifier = Modifier.fillMaxWidth()) {
-                            SearchBar(
-                                inputField = {
-                                    InputField(
-                                        query = historyUiState.query,
-                                        onQueryChange = onHistoryQueryChange,
-                                        onSearch = { focusManager.clearFocus() },
-                                        expanded = searchExpanded,
-                                        onExpandedChange = { searchExpanded = it },
-                                        label = stringResource(R.string.main_search_history),
-                                        leadingIcon = {
-                                            Icon(
-                                                imageVector = MiuixIcons.Basic.Search,
-                                                contentDescription = stringResource(
-                                                    R.string.main_search_history
-                                                ),
-                                                modifier = Modifier.padding(
-                                                    start = 16.dp,
-                                                    end = 8.dp
-                                                ),
-                                                tint = MiuixTheme.colorScheme.onSurfaceContainerHigh
-                                            )
-                                        },
-                                        trailingIcon = {
-                                            AnimatedVisibility(
-                                                visible = historyUiState.query.isNotEmpty()
-                                            ) {
-                                                IconButton(
-                                                    onClick = onHistoryQueryClear,
-                                                    minHeight = 35.dp,
-                                                    minWidth = 35.dp,
-                                                    cornerRadius = 35.dp,
-                                                    modifier = Modifier.padding(end = 8.dp)
-                                                ) {
-                                                    Icon(
-                                                        imageVector = MiuixIcons.Basic.SearchCleanup,
-                                                        contentDescription = stringResource(
-                                                            R.string.common_clear_search
-                                                        ),
-                                                        tint = MiuixTheme.colorScheme
-                                                            .onSurfaceContainerHighest
-                                                    )
-                                                }
-                                            }
-                                        },
-                                        modifier = Modifier.fillMaxWidth()
-                                    )
-                                },
-                                outsideEndAction = {
-                                    Text(
-                                        modifier = Modifier
-                                            .padding(
-                                                end = windowLayoutInfo.topBarContentEndPadding +
-                                                    12.dp
-                                            )
-                                            .clickable(
-                                                interactionSource = null,
-                                                indication = null
-                                            ) {
-                                                searchExpanded = false
-                                            },
-                                        text = stringResource(R.string.cancel),
-                                        color = MiuixTheme.colorScheme.primary
-                                    )
-                                },
-                                onExpandedChange = { searchExpanded = it },
-                                expanded = searchExpanded,
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(
-                                        start = windowLayoutInfo.topBarContentStartPadding,
-                                        end = windowLayoutInfo.topBarContentEndPadding,
-                                        top = 10.dp
-                                    )
-                            ) {}
-
-                            TabRowWithContour(
-                                tabs = filterLabels,
-                                selectedTabIndex = historyUiState.selectedFilter.ordinal,
-                                fontSize = 14.sp,
-                                height = 40.dp,
-                                itemSpacing = 2.dp,
-                                onTabSelected = { index ->
-                                    HistoryFilter.entries.getOrNull(index)
-                                        ?.let(onHistoryFilterChange)
-                                },
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(
-                                        start = windowLayoutInfo.topBarContentStartPadding + 12.dp,
-                                        top = 10.dp,
-                                        end = windowLayoutInfo.topBarContentEndPadding + 12.dp,
-                                        bottom = 10.dp
-                                    )
+                        CapsuleTabRow(
+                            tabs = filterLabels,
+                            selectedIndex = historyUiState.selectedFilter.ordinal,
+                            onSelect = { index ->
+                                HistoryFilter.entries.getOrNull(index)?.let(onHistoryFilterChange)
+                            },
+                            backdrop = topBarBackdrop,
+                            modifier = Modifier.fillMaxWidth().padding(
+                                start = windowLayoutInfo.topBarContentStartPadding + 12.dp,
+                                end = windowLayoutInfo.topBarContentEndPadding + 12.dp,
+                                top = 6.dp,
+                                bottom = 12.dp
                             )
-                        }
+                        )
                     }
                 )
             }
         ) { padding ->
-            HistoryPage(
-                uiState = uiState,
-                historyUiState = historyUiState,
-                downloadSpeeds = downloadSpeeds,
-                manualInputLinks = manualInputLinks,
-                showInputDialog = showInputDialog,
-                onShowInputDialogChange = onShowInputDialogChange,
-                statusListState = statusListState,
-                onDownload = onDownload,
-                onManualInputDownload = onManualInputDownload,
-                onCopyText = onCopyText,
-                onWebCrawl = onWebCrawl,
-                onRequestClearHistory = { showClearHistoryDialog = true },
-                onMediaClick = onMediaClick,
-                onCopyUrl = onCopyUrl,
-                onBrowseUrl = onBrowseUrl,
-                onRetryTask = onRetryTask,
-                onContinueTask = onContinueTask,
-                onWebCrawlTask = onWebCrawlTask,
-                onStopTask = onStopTask,
-                onCancelTask = onCancelTask,
-                onLoadMore = onLoadMore,
-                onSaveInfo = onSaveInfo,
-                onDeleteTask = onDeleteTask,
-                detectedXhsLink = detectedXhsLink,
-                onDismissPrompt = onDismissPrompt,
-                onOpenDetail = onOpenDetail,
-                backdrop = topBarBackdrop,
-                contentStartPadding = windowLayoutInfo.contentStartPadding,
-                contentEndPadding = windowLayoutInfo.contentEndPadding,
-                topContentPadding = padding.calculateTopPadding(),
-                modifier = Modifier
-                    .fillMaxSize(),
-                nestedScrollConnection = scrollBehavior.nestedScrollConnection
-            )
+            historyContent(padding.calculateTopPadding(), false)
+        }
+
+        HistorySearchOverlay(
+            expanded = searchExpanded,
+            onQueryChange = onHistoryQueryChange,
+            onQueryClear = onHistoryQueryClear,
+            onDismissRequest = closeSearch
+        ) { query ->
+            LaunchedEffect(query) {
+                if (lastSearchQuery != query) {
+                    lastSearchQuery = query
+                    searchListState.scrollToItem(0)
+                }
+            }
+            if (query.isNotBlank() && historyUiState.query == query) historyContent(0.dp, true)
         }
 
         SelectiveDownloadSheet(
@@ -1077,41 +1108,74 @@ internal fun SelectiveDownloadSheet(
     onSave: () -> Unit,
     onToggleItem: (String) -> Unit
 ) {
+    val useOs4 = useMiuixOs4()
     val selectiveState = uiState.selectiveDownload
+    val gridState = key(selectiveState.items.firstOrNull()?.path) {
+        rememberLazyStaggeredGridState()
+    }
+    val commentNotice = selectiveState.commentNotice
     val canSave = selectiveState.phase == SelectiveDownloadPhase.Ready &&
         selectiveState.selectedPaths.isNotEmpty()
-    WindowBottomSheet(
+    MiuixBottomSheet(
         show = selectiveState.show,
-        title = stringResource(R.string.selective_download),
+        title = stringResource(R.string.selective_download_title,
+            selectiveState.selectedPaths.size, selectiveState.items.size),
         allowDismiss = true,
         onDismissRequest = onCancel,
-        backgroundColor = MiuixTheme.colorScheme.surface,
-        startAction = { TopAppBarIconButton(imageVector = MiuixIcons.Close, contentDescription = stringResource(R.string.cancel), onClick = onCancel) },
-        endAction = { TopAppBarIconButton(imageVector = MiuixIcons.Regular.Download, contentDescription = stringResource(R.string.download_button), onClick = onSave, enabled = canSave) }
-    ) {
-        Row(Modifier.fillMaxWidth().padding(bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text(stringResource(R.string.selective_download_ready, selectiveState.selectedPaths.size, selectiveState.items.size), modifier = Modifier.weight(1f))
-            ActionIconButton(imageVector = MiuixIcons.Regular.SelectAll, contentDescription = stringResource(R.string.download_select_all), onClick = {
-                val all = selectiveState.selectedPaths.size == selectiveState.items.size
-                selectiveState.items.filter { all || it.path !in selectiveState.selectedPaths }.forEach { onToggleItem(it.path) }
-            })
+        visualContentOffset = {
+            -(gridState.scrollIndicatorState?.scrollOffset ?: gridState.firstVisibleItemScrollOffset).toFloat()
+        },
+        startAction = {
+            TopAppBarIconButton(
+                imageVector = if (useOs4) MiuixIcons.Glass.Close else MiuixIcons.Close,
+                contentDescription = stringResource(R.string.cancel),
+                onClick = onCancel
+            )
+        },
+        endAction = {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                TopAppBarIconButton(
+                    imageVector = if (useOs4) MiuixIcons.Glass.SelectAll else MiuixIcons.Regular.SelectAll,
+                    contentDescription = stringResource(R.string.download_select_all),
+                    onClick = {
+                        val all = selectiveState.selectedPaths.size == selectiveState.items.size
+                        selectiveState.items.filter { all || it.path !in selectiveState.selectedPaths }
+                            .forEach { onToggleItem(it.path) }
+                    }
+                )
+                TopAppBarIconButton(
+                    imageVector = if (useOs4) MiuixIcons.Glass.Download else MiuixIcons.Regular.Download,
+                    contentDescription = stringResource(R.string.download_button),
+                    onClick = onSave,
+                    enabled = canSave
+                )
+            }
         }
-        selectiveState.commentNotice?.let { Text(stringResource(it),
-            color = MiuixTheme.colorScheme.onSurfaceVariantSummary, modifier = Modifier.padding(bottom = 12.dp)) }
+    ) { contentPadding ->
         com.neoruaa.xhsdn.ui.SelectableMediaWaterfall(
-            modifier = Modifier.fillMaxWidth().heightIn(max = 560.dp),
+            modifier = Modifier.fillMaxSize(),
             items = selectiveState.items,
             selectedPaths = selectiveState.selectedPaths,
             onToggle = onToggleItem,
+            state = gridState,
+            contentPadding = contentPadding,
+            header = if (commentNotice == null) null else {
+                {
+                    Text(
+                        text = stringResource(commentNotice),
+                        color = MiuixTheme.colorScheme.onSurfaceVariantSummary
+                    )
+                }
+            }
         )
     }
 }
 
-private enum class LinkInputAction(val labelRes: Int) {
-    DOWNLOAD(R.string.download_button),
-    COPY_TEXT(R.string.copy_description),
-    WEB_CRAWL(R.string.web_crawl_option),
-    SAVE_INFO(R.string.download_info_only)
+private enum class LinkInputAction(val labelRes: Int, val actionLabelRes: Int) {
+    DOWNLOAD(R.string.download_button, R.string.common_download),
+    COPY_TEXT(R.string.copy_description, R.string.copy_text_button),
+    WEB_CRAWL(R.string.web_crawl_option, R.string.webview_crawl),
+    SAVE_INFO(R.string.download_info_only, R.string.common_save_info)
 }
 
 @Composable
@@ -1148,8 +1212,22 @@ private fun HistoryPage(
     contentStartPadding: androidx.compose.ui.unit.Dp,
     contentEndPadding: androidx.compose.ui.unit.Dp,
     topContentPadding: androidx.compose.ui.unit.Dp,
-    nestedScrollConnection: androidx.compose.ui.input.nestedscroll.NestedScrollConnection? = null
+    nestedScrollConnection: androidx.compose.ui.input.nestedscroll.NestedScrollConnection? = null,
+    searchMode: Boolean = false
 ) {
+    val useOs4 = useMiuixOs4()
+    val isDark = isSystemInDarkTheme()
+    val sceneColor = MiuixTheme.colorScheme.surface
+    val menuBackdrop = if (useOs4) {
+        rememberLayerBackdrop {
+            drawRect(sceneColor)
+            drawContent()
+        }
+    } else null
+    val menuAnchor = rememberGlassPopupAnchor()
+    var taskMenuTarget by remember { mutableStateOf<com.neoruaa.xhsdn.data.DownloadTask?>(null) }
+    var taskMenuBounds by remember { mutableStateOf(Rect.Zero) }
+    var showTaskMenu by remember { mutableStateOf(false) }
     val tasks = historyUiState.allTasks
     val filteredTasks = historyUiState.filteredTasks
     val firstFilteredTask = filteredTasks.firstOrNull()
@@ -1185,7 +1263,7 @@ private fun HistoryPage(
     }
     var taskToDelete by remember { mutableStateOf<com.neoruaa.xhsdn.data.DownloadTask?>(null) }
 
-    WindowDialog(
+    MiuixDialog(
         title = stringResource(R.string.delete_task_dialog_title),
         summary = stringResource(R.string.delete_task_dialog_message),
         show = taskToDelete != null,
@@ -1195,433 +1273,560 @@ private fun HistoryPage(
             horizontalArrangement = Arrangement.SpaceBetween,
             modifier = Modifier.padding(top = 8.dp)
         ) {
-            TextButton(
+            MiuixDialogButton(
                 text = stringResource(R.string.cancel),
                 onClick = { taskToDelete = null },
                 modifier = Modifier.weight(1f)
             )
             Spacer(Modifier.width(12.dp))
-            TextButton(
+            MiuixDialogButton(
                 text = stringResource(R.string.apply),
                 onClick = {
                     taskToDelete?.let { onDeleteTask(it) }
                     taskToDelete = null
                 },
                 modifier = Modifier.weight(1f),
-                colors = ButtonDefaults.textButtonColorsPrimary()
+                primary = true
             )
         }
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
-        Card(
-            modifier = modifier,
-            cornerRadius = 18.dp,
-            colors = CardDefaults.defaultColors(
-                color = MiuixTheme.colorScheme.surface
-            )
+        Box(
+            modifier = Modifier.fillMaxSize()
+                .then(menuBackdrop?.let { Modifier.layerBackdrop(it) } ?: Modifier)
         ) {
-            LaunchedEffect(
-                historyUiState.query,
-                historyUiState.selectedFilter,
-                firstFilteredTaskId
+            Card(
+                modifier = modifier.miuixBackdropSource(backdrop),
+                cornerRadius = 18.dp,
+                colors = CardDefaults.defaultColors(
+                    color = MiuixTheme.colorScheme.surface
+                )
             ) {
-                val scrollTriggerChanged =
-                    lastScrollQuery != historyUiState.query ||
-                        lastScrollFilterOrdinal != historyUiState.selectedFilter.ordinal ||
-                        lastFirstFilteredTaskId != firstFilteredTaskId
+                LaunchedEffect(
+                    historyUiState.query,
+                    historyUiState.selectedFilter,
+                    firstFilteredTaskId
+                ) {
+                    val scrollTriggerChanged =
+                        lastScrollQuery != historyUiState.query ||
+                            lastScrollFilterOrdinal != historyUiState.selectedFilter.ordinal ||
+                            lastFirstFilteredTaskId != firstFilteredTaskId
 
-                lastScrollQuery = historyUiState.query
-                lastScrollFilterOrdinal = historyUiState.selectedFilter.ordinal
-                lastFirstFilteredTaskId = firstFilteredTaskId
+                    lastScrollQuery = historyUiState.query
+                    lastScrollFilterOrdinal = historyUiState.selectedFilter.ordinal
+                    lastFirstFilteredTaskId = firstFilteredTaskId
 
-                if (scrollTriggerChanged && firstFilteredTaskId != null) {
-                    statusListState.animateScrollToItem(0)
+                    if (scrollTriggerChanged && firstFilteredTaskId != null) {
+                        statusListState.animateScrollToItem(0)
+                    }
                 }
-            }
-            LazyColumn(
-                state = statusListState,
-                overscrollEffect = null,
-                contentPadding = PaddingValues(top = topContentPadding),
-                modifier = if (nestedScrollConnection != null) {
-                    Modifier
-                        .fillMaxSize()
-                        .miuixBackdropSource(backdrop)
-                        .miuixVerticalScrollEffects()
-                        .nestedScroll(nestedScrollConnection)
-                } else {
-                    Modifier
-                        .fillMaxSize()
-                        .miuixBackdropSource(backdrop)
-                        .miuixVerticalScrollEffects()
-                }
-            ) {
-                    if (filteredTasks.isEmpty()) {
-                        item(key = "history_empty") {
-                            val hasNoHistory = tasks.isEmpty()
-                            Column(
+                LazyColumn(
+                    state = statusListState,
+                    overscrollEffect = null,
+                    contentPadding = PaddingValues(top = topContentPadding),
+                    modifier = if (nestedScrollConnection != null) {
+                        Modifier
+                            .fillMaxSize()
+                            .miuixVerticalScrollEffects()
+                            .nestedScroll(nestedScrollConnection)
+                    } else {
+                        Modifier
+                            .fillMaxSize()
+                            .miuixVerticalScrollEffects()
+                    }
+                ) {
+                        if (filteredTasks.isEmpty()) {
+                            item(key = "history_empty") {
+                                val hasNoHistory = tasks.isEmpty() && !historyUiState.hasActiveSearch
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(
+                                            start = contentStartPadding + 12.dp,
+                                            end = contentEndPadding + 12.dp
+                                        )
+                                        .squircleBackground(
+                                            color = MiuixTheme.colorScheme.surfaceVariant,
+                                            cornerRadius = 18.dp
+                                        )
+                                        .padding(32.dp),
+                                    horizontalAlignment = Alignment.CenterHorizontally
+                                ) {
+                                    Icon(
+                                        imageVector = MiuixIcons.Info,
+                                        contentDescription = stringResource(
+                                            if (hasNoHistory) {
+                                                R.string.no_downloaded_files
+                                            } else {
+                                                R.string.main_search_no_results
+                                            }
+                                        ),
+                                        modifier = Modifier.size(48.dp),
+                                        tint = MiuixTheme.colorScheme.onSurfaceVariantSummary
+                                    )
+                                    Spacer(modifier = Modifier.height(16.dp))
+                                    Text(
+                                        text = stringResource(
+                                            if (hasNoHistory) {
+                                                R.string.no_downloaded_files
+                                            } else {
+                                                R.string.main_search_no_results
+                                            }
+                                        ),
+                                        fontWeight = FontWeight.Medium,
+                                        fontSize = MiuixTheme.textStyles.headline1.fontSize,
+                                        color = MiuixTheme.colorScheme.onSurfaceVariantSummary
+                                    )
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    Text(
+                                        text = stringResource(
+                                            if (hasNoHistory) {
+                                                R.string.ready_to_download
+                                            } else {
+                                                R.string.main_search_adjust_query
+                                            }
+                                        ),
+                                        fontSize = MiuixTheme.textStyles.body2.fontSize,
+                                        color = MiuixTheme.colorScheme.onSurfaceVariantSummary
+                                    )
+                                }
+                            }
+                        } else {
+                            itemsIndexed(filteredTasks, key = { _, task -> task.id }) { _, task ->
+                                val creationVisibility = remember(task.id) {
+                                    MutableTransitionState(task.id != newlyInsertedTaskId).apply {
+                                        targetState = true
+                                    }
+                                }
+                                AnimatedVisibility(
+                                    visibleState = creationVisibility,
+                                    enter = fadeIn(
+                                        animationSpec = tween(
+                                            durationMillis = 180,
+                                            delayMillis = 30
+                                        )
+                                    ) + scaleIn(
+                                        animationSpec = spring(
+                                            dampingRatio = 0.58f,
+                                            stiffness = 420f
+                                        ),
+                                        initialScale = 0.86f
+                                    ) + expandVertically(
+                                        animationSpec = spring(
+                                            dampingRatio = 0.82f,
+                                            stiffness = 460f
+                                        ),
+                                        expandFrom = Alignment.Top,
+                                        clip = false
+                                    ),
+                                    exit = fadeOut(animationSpec = tween(durationMillis = 120))
+                                ) {
+                                    TaskCell(
+                                        task = task,
+                                        downloadSpeeds = downloadSpeeds,
+                                        // 只有正在下载的任务才使用 uiState.mediaItems
+                                        mediaItems = if (task.mediaRefs.isNotEmpty()) {
+                                            task.mediaRefs.map(::MediaItem)
+                                        } else if (task.status == com.neoruaa.xhsdn.data.TaskStatus.DOWNLOADING && uiState.mediaItems.isNotEmpty()) {
+                                            uiState.mediaItems
+                                        } else {
+                                            emptyList()
+                                        },
+
+                                        onShowActions = if (useOs4) {
+                                            { bounds ->
+                                                taskMenuTarget = task
+                                                taskMenuBounds = bounds
+                                                showTaskMenu = true
+                                            }
+                                        } else null,
+                                        onCopyUrl = { onCopyUrl(task.noteUrl) },
+                                        onBrowseUrl = { onBrowseUrl(task.noteUrl) },
+                                        onRetry = { onRetryTask(task) },
+                                        onContinue = { onContinueTask(task) },
+                                        onWebCrawl = { onWebCrawlTask(task) },
+                                        onStop = { onStopTask(task) },
+                                        onCancel = { onCancelTask(task) },
+                                        onDelete = { taskToDelete = task },
+                                        onMediaClick = onMediaClick,
+                                        onClick = {
+                                            onOpenDetail(task)
+                                        },
+                                        modifier = Modifier.padding(
+                                            start = contentStartPadding + 12.dp,
+                                            end = contentEndPadding + 12.dp,
+                                            bottom = 12.dp
+                                        )
+                                    )
+                                }
+                            }
+                        }
+
+                        if (historyUiState.canLoadMore) item(key = "history_load_more") {
+                            TextButton(text = stringResource(R.string.history_load_more), onClick = onLoadMore,
+                                modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp))
+                        }
+                        item(key = "history_bottom_spacer") {
+                            Spacer(
                                 modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(
-                                        start = contentStartPadding + 12.dp,
-                                        end = contentEndPadding + 12.dp
+                                    .height(if (searchMode) 24.dp else 116.dp)
+                                    .navigationBarsPadding()
+                            )
+                        }
+                    }
+                }
+
+            if (!searchMode) {
+                // Floating bottom actions
+                Row(
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .zIndex(1f)
+                        .padding(
+                            start = contentStartPadding + 24.dp,
+                            end = contentEndPadding + 24.dp,
+                            bottom = navPadding + 16.dp
+                        )
+                        .fillMaxWidth()
+                        .height(IntrinsicSize.Min),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    val onDownloadClick = {
+                        if (manualInputLinks) {
+                            inputAction = LinkInputAction.DOWNLOAD
+                            onShowInputDialogChange(true)
+                        } else onDownload()
+                    }
+                    val downloadContent: @Composable () -> Unit = {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(all = 16.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    imageVector = if (manualInputLinks) MiuixIcons.Regular.Link else MiuixIcons.File,
+                                    contentDescription = null,
+                                    modifier = Modifier.padding(end = 8.dp),
+                                    tint = MiuixTheme.colorScheme.onPrimary
+                                )
+                                Text(
+                                    text = if (manualInputLinks) {
+                                        stringResource(R.string.manual_input_links)
+                                    } else {
+                                        stringResource(R.string.start_download_from_clipboard)
+                                    },
+                                    maxLines = 1,
+                                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                                    color = MiuixTheme.colorScheme.onPrimary,
+                                    fontWeight = FontWeight.Medium
+                                )
+                            }
+
+                        }
+                    }
+                    val primaryColor = MiuixTheme.colorScheme.primary
+                    if (useOs4 && backdrop != null) {
+                        val interactionSource = remember { MutableInteractionSource() }
+                        val tintedStyle = remember(primaryColor) {
+                            GlassStyles.TintBlue.copy(
+                                inner = GlassStyles.TintBlue.inner.copy(tint = primaryColor)
+                            )
+                        }
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxHeight()
+                                .glassPress(interactionSource)
+                                .glassPanel(
+                                    backdrop = backdrop,
+                                    shape = GlassShape(18.dp),
+                                    style = tintedStyle,
+                                    material = GlassTopAppBarDefaults.buttonMaterial(),
+                                    stroke = GlassTopAppBarDefaults.buttonStroke(),
+                                    shading = true,
+                                    fallback = Modifier.squircleSurface(primaryColor, 18.dp)
+                                )
+                                .clickable(
+                                    interactionSource = interactionSource,
+                                    indication = null,
+                                    role = Role.Button,
+                                    onClick = onDownloadClick
+                                )
+                        ) {
+                            downloadContent()
+                        }
+                    } else {
+                        Card(
+                            modifier = Modifier.weight(1f).fillMaxHeight(),
+                            onClick = onDownloadClick,
+                            cornerRadius = 18.dp,
+                            colors = CardDefaults.defaultColors(color = primaryColor)
+                        ) {
+                            downloadContent()
+                        }
+                    }
+
+                    Box(
+                        modifier = Modifier
+                            .fillMaxHeight()
+                            .aspectRatio(1f),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        if (useOs4) {
+                            GlassIconButton(
+                                onClick = { menuExpanded = !menuExpanded },
+                                modifier = Modifier.fillMaxSize().glassPopupAnchor(
+                                    anchor = menuAnchor,
+                                    cornerRadius = 28.dp,
+                                    floating = true
+                                ),
+                                backdrop = backdrop,
+                                style = GlassDefaults.style(isDark),
+                                size = 56.dp
+                            ) {
+                                Icon(
+                                    imageVector = MiuixIcons.Glass.More,
+                                    contentDescription = stringResource(R.string.more_options),
+                                    modifier = Modifier.size(24.dp).glassPopupAnchorContent(menuAnchor),
+                                    tint = MiuixTheme.colorScheme.onSurface
+                                )
+                            }
+                        } else {
+                            Card(
+                                modifier = Modifier.fillMaxSize(),
+                                onClick = { menuExpanded = !menuExpanded },
+                                cornerRadius = 999.dp,
+                                colors = CardDefaults.defaultColors(
+                                    color = MiuixTheme.colorScheme.primary
+                                )
+                            ) {
+                                Box(
+                                    modifier = Modifier.fillMaxSize(),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        imageVector = MiuixIcons.More,
+                                        contentDescription = stringResource(R.string.more_options),
+                                        modifier = Modifier.fillMaxSize(0.4f),
+                                        tint = MiuixTheme.colorScheme.onPrimary
                                     )
-                                    .squircleBackground(
-                                        color = MiuixTheme.colorScheme.surfaceVariant,
-                                        cornerRadius = 18.dp
-                                    )
-                                    .padding(32.dp),
-                                horizontalAlignment = Alignment.CenterHorizontally
+                                }
+                            }
+
+                            WindowListPopup(
+                                show = menuExpanded,
+                                popupPositionProvider = rememberOffsetPopupPositionProvider(
+                                    base = ListPopupDefaults.ContextMenuPositionProvider,
+                                    y = (-8).dp
+                                ),
+                                alignment = PopupPositionProvider.Align.BottomEnd,
+                                onDismissRequest = { menuExpanded = false },
+                                onDismissFinished = {
+                                    val selectedIndex = pendingMenuIndex
+                                    pendingMenuIndex = null
+                                    selectedIndex?.let { index ->
+                                        if (index in linkActions.indices) {
+                                            inputAction = linkActions[index]
+                                            onShowInputDialogChange(true)
+                                        } else {
+                                            onRequestClearHistory()
+                                        }
+                                    }
+                                }
+                            ) {
+                                ListPopupColumn {
+                                    menuItems.forEachIndexed { index, item ->
+                                        if (index == linkActions.size) {
+                                            top.yukonga.miuix.kmp.basic.HorizontalDivider(
+                                                modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
+                                                thickness = 1.5.dp
+                                            )
+                                        }
+                                        DropdownImpl(
+                                            item = DropdownItem(
+                                                text = item,
+                                                icon = if (index == linkActions.size) {
+                                                    { Icon(MiuixIcons.Regular.Delete, contentDescription = null, modifier = it) }
+                                                } else null
+                                            ),
+                                            optionSize = menuItems.size,
+                                            isSelected = false,
+                                            hasSubmenu = index in linkActions.indices,
+                                            onSelectedIndexChange = {
+                                                pendingMenuIndex = index
+                                                menuExpanded = false
+                                            },
+                                            index = index
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // 剪贴板检测提示气泡（叠加层，靠近底部按钮）
+                val displayedXhsLink = detectedXhsLink ?: lastDetectedXhsLink
+                AnimatedVisibility(
+                    visible = detectedXhsLink != null && !uiState.isDownloading && !manualInputLinks,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .align(Alignment.BottomCenter)
+                        .padding(
+                            start = contentStartPadding + 24.dp,
+                            end = contentEndPadding + 24.dp,
+                            bottom = navPadding + 76.dp
+                        ),
+                    enter = fadeIn(animationSpec = tween(160)) +
+                        slideInVertically(
+                            animationSpec = spring(dampingRatio = 0.72f, stiffness = 420f),
+                            initialOffsetY = { it / 3 }
+                        ) +
+                        scaleIn(
+                            animationSpec = spring(dampingRatio = 0.72f, stiffness = 420f),
+                            initialScale = 0.92f,
+                            transformOrigin = TransformOrigin(0.5f, 1f)
+                        ),
+                    exit = fadeOut(animationSpec = tween(140)) +
+                        slideOutVertically(
+                            animationSpec = tween(180),
+                            targetOffsetY = { it / 4 }
+                        ) +
+                        scaleOut(
+                            animationSpec = tween(180),
+                            targetScale = 0.96f,
+                            transformOrigin = TransformOrigin(0.5f, 1f)
+                        )
+                ) {
+                    val promptColor = MiuixTheme.colorScheme.tertiaryContainer
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth(),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            onClick = onDismissPrompt,
+                            cornerRadius = 18.dp,
+                            colors = CardDefaults.defaultColors(
+                                color = promptColor
+                            )
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(16.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(12.dp)
                             ) {
                                 Icon(
                                     imageVector = MiuixIcons.Info,
-                                    contentDescription = stringResource(
-                                        if (hasNoHistory) {
-                                            R.string.no_downloaded_files
-                                        } else {
-                                            R.string.main_search_no_results
-                                        }
-                                    ),
-                                    modifier = Modifier.size(48.dp),
-                                    tint = MiuixTheme.colorScheme.onSurfaceVariantSummary
+                                    contentDescription = null,
+                                    tint = MiuixTheme.colorScheme.onTertiaryContainer,
+                                    modifier = Modifier.size(24.dp)
                                 )
-                                Spacer(modifier = Modifier.height(16.dp))
-                                Text(
-                                    text = stringResource(
-                                        if (hasNoHistory) {
-                                            R.string.no_downloaded_files
-                                        } else {
-                                            R.string.main_search_no_results
-                                        }
-                                    ),
-                                    fontWeight = FontWeight.Medium,
-                                    fontSize = MiuixTheme.textStyles.headline1.fontSize,
-                                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary
-                                )
-                                Spacer(modifier = Modifier.height(8.dp))
-                                Text(
-                                    text = stringResource(
-                                        if (hasNoHistory) {
-                                            R.string.ready_to_download
-                                        } else {
-                                            R.string.main_search_adjust_query
-                                        }
-                                    ),
-                                    fontSize = MiuixTheme.textStyles.body2.fontSize,
-                                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary
-                                )
-                            }
-                        }
-                    } else {
-                        itemsIndexed(filteredTasks, key = { _, task -> task.id }) { _, task ->
-                            val creationVisibility = remember(task.id) {
-                                MutableTransitionState(task.id != newlyInsertedTaskId).apply {
-                                    targetState = true
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = stringResource(R.string.clipboard_xhs_link_detected),
+                                        fontWeight = FontWeight.Bold,
+                                        color = MiuixTheme.colorScheme.onTertiaryContainer
+                                    )
+                                    Text(
+                                        text = displayedXhsLink.orEmpty(),
+                                        fontSize = 12.sp,
+                                        color = MiuixTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.7f),
+                                        maxLines = 2,
+                                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                                    )
                                 }
-                            }
-                            AnimatedVisibility(
-                                visibleState = creationVisibility,
-                                enter = fadeIn(
-                                    animationSpec = tween(
-                                        durationMillis = 180,
-                                        delayMillis = 30
-                                    )
-                                ) + scaleIn(
-                                    animationSpec = spring(
-                                        dampingRatio = 0.58f,
-                                        stiffness = 420f
-                                    ),
-                                    initialScale = 0.86f
-                                ) + expandVertically(
-                                    animationSpec = spring(
-                                        dampingRatio = 0.82f,
-                                        stiffness = 460f
-                                    ),
-                                    expandFrom = Alignment.Top,
-                                    clip = false
-                                ),
-                                exit = fadeOut(animationSpec = tween(durationMillis = 120))
-                            ) {
-                                TaskCell(
-                                    task = task,
-                                    downloadSpeeds = downloadSpeeds,
-                                    // 只有正在下载的任务才使用 uiState.mediaItems
-                                    mediaItems = if (task.mediaRefs.isNotEmpty()) {
-                                        task.mediaRefs.map(::MediaItem)
-                                    } else if (task.status == com.neoruaa.xhsdn.data.TaskStatus.DOWNLOADING && uiState.mediaItems.isNotEmpty()) {
-                                        uiState.mediaItems
-                                    } else {
-                                        emptyList()
-                                    },
-
-                                    onCopyUrl = { onCopyUrl(task.noteUrl) },
-                                    onBrowseUrl = { onBrowseUrl(task.noteUrl) },
-                                    onRetry = { onRetryTask(task) },
-                                    onContinue = { onContinueTask(task) },
-                                    onWebCrawl = { onWebCrawlTask(task) },
-                                    onStop = { onStopTask(task) },
-                                    onCancel = { onCancelTask(task) },
-                                    onDelete = { taskToDelete = task },
-                                    onMediaClick = onMediaClick,
-                                    onClick = {
-                                        onOpenDetail(task)
-                                    },
-                                    modifier = Modifier.padding(
-                                        start = contentStartPadding + 12.dp,
-                                        end = contentEndPadding + 12.dp,
-                                        bottom = 12.dp
-                                    )
+                                Icon(
+                                    imageVector = MiuixIcons.Close,
+                                    contentDescription = stringResource(R.string.common_dismiss),
+                                    tint = MiuixTheme.colorScheme.onTertiaryContainer,
+                                    modifier = Modifier.size(20.dp)
                                 )
                             }
                         }
-                    }
-
-                    if (historyUiState.canLoadMore) item(key = "history_load_more") {
-                        TextButton(text = stringResource(R.string.history_load_more), onClick = onLoadMore,
-                            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp))
-                    }
-                    item(key = "history_bottom_spacer") {
-                        Spacer(
-                            modifier = Modifier
-                                .height(116.dp)
-                                .navigationBarsPadding()
-                        )
-                    }
-                }
-            }
-
-        // Floating bottom actions
-        Row(
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .zIndex(1f)
-                .padding(
-                    start = contentStartPadding + 24.dp,
-                    end = contentEndPadding + 24.dp,
-                    bottom = navPadding + 16.dp
-                )
-                .fillMaxWidth()
-                .height(IntrinsicSize.Min),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Card(
-                modifier = Modifier
-                    .weight(1f)
-                    .fillMaxHeight(),
-                onClick = {
-                    if (manualInputLinks) {
-                        inputAction = LinkInputAction.DOWNLOAD
-                        onShowInputDialogChange(true)
-                    } else onDownload()
-                },
-                cornerRadius = 18.dp,
-                colors = CardDefaults.defaultColors(
-                    color = MiuixTheme.colorScheme.primary
-                )
-            ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(all = 16.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            imageVector = if (manualInputLinks) MiuixIcons.Regular.Link else MiuixIcons.File,
-                            contentDescription = null,
-                            modifier = Modifier.padding(end = 8.dp),
-                            tint = MiuixTheme.colorScheme.onPrimary
-                        )
-                        Text(
-                            text = if (manualInputLinks) {
-                                stringResource(R.string.manual_input_links)
-                            } else {
-                                stringResource(R.string.start_download_from_clipboard)
-                            },
-                            maxLines = 1,
-                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
-                            color = MiuixTheme.colorScheme.onPrimary,
-                            fontWeight = FontWeight.Medium
-                        )
-                    }
-
-                }
-            }
-
-            Box(
-                modifier = Modifier
-                    .fillMaxHeight()
-                    .aspectRatio(1f),
-                contentAlignment = Alignment.Center
-            ) {
-                Card(
-                    modifier = Modifier.fillMaxSize(),
-                    onClick = { menuExpanded = !menuExpanded },
-                    cornerRadius = 999.dp,
-                    colors = CardDefaults.defaultColors(
-                        color = MiuixTheme.colorScheme.primary
-                    )
-                ) {
-                    Box(
-                        modifier = Modifier.fillMaxSize(),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = MiuixIcons.More,
-                            contentDescription = stringResource(R.string.more_options),
-                            modifier = Modifier.fillMaxSize(0.4f),
-                            tint = MiuixTheme.colorScheme.onPrimary
-                        )
-                    }
-                }
-
-                WindowListPopup(
-                    show = menuExpanded,
-                    popupPositionProvider = rememberOffsetPopupPositionProvider(
-                        base = ListPopupDefaults.ContextMenuPositionProvider,
-                        y = (-8).dp
-                    ),
-                    alignment = PopupPositionProvider.Align.BottomEnd,
-                    onDismissRequest = { menuExpanded = false },
-                    onDismissFinished = {
-                        val selectedIndex = pendingMenuIndex
-                        pendingMenuIndex = null
-                        selectedIndex?.let { index ->
-                            if (index in linkActions.indices) {
-                                inputAction = linkActions[index]
-                                onShowInputDialogChange(true)
-                            } else {
-                                onRequestClearHistory()
+                        // 三角形指针（紧贴卡片底部）
+                        androidx.compose.foundation.Canvas(
+                            modifier = Modifier.size(24.dp, 10.dp)
+                        ) {
+                            val path = androidx.compose.ui.graphics.Path().apply {
+                                moveTo(0f, 0f)
+                                lineTo(size.width, 0f)
+                                lineTo(size.width / 2, size.height)
+                                close()
                             }
-                        }
-                    }
-                ) {
-                    ListPopupColumn {
-                        menuItems.forEachIndexed { index, item ->
-                            if (index == linkActions.size) {
-                                top.yukonga.miuix.kmp.basic.HorizontalDivider(
-                                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
-                                    thickness = 1.5.dp
-                                )
-                            }
-                            DropdownImpl(
-                                item = DropdownItem(
-                                    text = item,
-                                    icon = if (index == linkActions.size) {
-                                        { Icon(MiuixIcons.Regular.Delete, contentDescription = null, modifier = it) }
-                                    } else null
-                                ),
-                                optionSize = menuItems.size,
-                                isSelected = false,
-                                hasSubmenu = index in linkActions.indices,
-                                onSelectedIndexChange = {
-                                    pendingMenuIndex = index
-                                    menuExpanded = false
-                                },
-                                index = index
+                            drawPath(
+                                path = path,
+                                color = promptColor
                             )
                         }
                     }
                 }
             }
+
         }
 
-        // 剪贴板检测提示气泡（叠加层，靠近底部按钮）
-        val displayedXhsLink = detectedXhsLink ?: lastDetectedXhsLink
-        AnimatedVisibility(
-            visible = detectedXhsLink != null && !uiState.isDownloading && !manualInputLinks,
-            modifier = Modifier
-                .fillMaxWidth()
-                .align(Alignment.BottomCenter)
-                .padding(
-                    start = contentStartPadding + 24.dp,
-                    end = contentEndPadding + 24.dp,
-                    bottom = navPadding + 76.dp
+        if (useOs4) {
+            GlassIconDropdownMenu(
+                show = menuExpanded,
+                onDismissRequest = { menuExpanded = false },
+                anchor = menuAnchor,
+                anchorContent = {
+                    Icon(
+                        imageVector = MiuixIcons.Glass.More,
+                        contentDescription = stringResource(R.string.more_options),
+                        modifier = Modifier.size(24.dp),
+                        tint = MiuixTheme.colorScheme.onSurface
+                    )
+                },
+                entries = listOf(
+                    DropdownEntry(items = linkActions.map { action ->
+                        DropdownItem(
+                            text = stringResource(action.labelRes),
+                            onClick = {
+                                inputAction = action
+                                onShowInputDialogChange(true)
+                            }
+                        )
+                    }),
+                    DropdownEntry(items = listOf(
+                        DropdownItem(
+                            text = stringResource(R.string.clear_history),
+                            onClick = onRequestClearHistory
+                        )
+                    ))
                 ),
-            enter = fadeIn(animationSpec = tween(160)) +
-                slideInVertically(
-                    animationSpec = spring(dampingRatio = 0.72f, stiffness = 420f),
-                    initialOffsetY = { it / 3 }
-                ) +
-                scaleIn(
-                    animationSpec = spring(dampingRatio = 0.72f, stiffness = 420f),
-                    initialScale = 0.92f,
-                    transformOrigin = TransformOrigin(0.5f, 1f)
-                ),
-            exit = fadeOut(animationSpec = tween(140)) +
-                slideOutVertically(
-                    animationSpec = tween(180),
-                    targetOffsetY = { it / 4 }
-                ) +
-                scaleOut(
-                    animationSpec = tween(180),
-                    targetScale = 0.96f,
-                    transformOrigin = TransformOrigin(0.5f, 1f)
-                )
-        ) {
-            val promptColor = MiuixTheme.colorScheme.tertiaryContainer
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth(),
-                horizontalAlignment = Alignment.CenterHorizontally
+                backdrop = menuBackdrop,
+                visuals = GlassPopupDefaults.visuals(style = GlassDefaults.style(isDark)),
+                collapseOnSelection = true
+            )
+            GlassPopup(
+                show = showTaskMenu,
+                onDismissRequest = { showTaskMenu = false },
+                anchorBounds = taskMenuBounds,
+                backdrop = menuBackdrop,
+                visuals = GlassPopupDefaults.visuals(style = GlassDefaults.style(isDark))
             ) {
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    onClick = onDismissPrompt,
-                    cornerRadius = 18.dp,
-                    colors = CardDefaults.defaultColors(
-                        color = promptColor
-                    )
-                ) {
-                    Row(
-                        modifier = Modifier.padding(16.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        Icon(
-                            imageVector = MiuixIcons.Info,
-                            contentDescription = null,
-                            tint = MiuixTheme.colorScheme.onTertiaryContainer,
-                            modifier = Modifier.size(24.dp)
-                        )
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = stringResource(R.string.clipboard_xhs_link_detected),
-                                fontWeight = FontWeight.Bold,
-                                color = MiuixTheme.colorScheme.onTertiaryContainer
-                            )
-                            Text(
-                                text = displayedXhsLink.orEmpty(),
-                                fontSize = 12.sp,
-                                color = MiuixTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.7f),
-                                maxLines = 2,
-                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
-                            )
-                        }
-                        Icon(
-                            imageVector = MiuixIcons.Close,
-                            contentDescription = stringResource(R.string.common_dismiss),
-                            tint = MiuixTheme.colorScheme.onTertiaryContainer,
-                            modifier = Modifier.size(20.dp)
-                        )
+                GlassPopupItem(
+                    text = stringResource(R.string.common_copy_link),
+                    icon = MiuixIcons.Glass.Copy,
+                    onClick = {
+                        taskMenuTarget?.let { onCopyUrl(it.noteUrl) }
+                        showTaskMenu = false
                     }
-                }
-                // 三角形指针（紧贴卡片底部）
-                androidx.compose.foundation.Canvas(
-                    modifier = Modifier.size(24.dp, 10.dp)
-                ) {
-                    val path = androidx.compose.ui.graphics.Path().apply {
-                        moveTo(0f, 0f)
-                        lineTo(size.width, 0f)
-                        lineTo(size.width / 2, size.height)
-                        close()
+                )
+                GlassPopupItem(
+                    text = stringResource(R.string.delete_content_description),
+                    icon = MiuixIcons.Glass.Delete,
+                    onClick = {
+                        taskToDelete = taskMenuTarget
+                        showTaskMenu = false
                     }
-                    drawPath(
-                        path = path,
-                        color = promptColor
-                    )
-                }
+                )
             }
         }
 
@@ -1632,13 +1837,13 @@ private fun HistoryPage(
             if (inputAction == LinkInputAction.WEB_CRAWL) R.string.webview_enter_url else R.string.enter_xhs_url
         )
         val cancelText = stringResource(R.string.cancel)
-        val confirmText = stringResource(inputAction.labelRes)
+        val confirmText = stringResource(inputAction.actionLabelRes)
         val pleaseEnterUrl = stringResource(R.string.please_enter_url)
         val invalidLink = stringResource(R.string.invalid_link_please_reenter)
 
         var inputLink by remember { mutableStateOf("") }
 
-        WindowDialog(
+        MiuixDialog(
             title = manualInputTitle,
             show = showInputDialog,
             summary = inputSummary,
@@ -1672,7 +1877,7 @@ private fun HistoryPage(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     modifier = Modifier.padding(top = 16.dp)
                 ) {
-                    TextButton(
+                    MiuixDialogButton(
                         text = cancelText,
                         onClick = {
                             onShowInputDialogChange(false)
@@ -1680,7 +1885,7 @@ private fun HistoryPage(
                         modifier = Modifier.weight(1f)
                     )
                     Spacer(Modifier.width(12.dp))
-                    TextButton(
+                    MiuixDialogButton(
                         text = confirmText,
                         onClick = {
                             val input = inputLink.trim()
@@ -1699,7 +1904,7 @@ private fun HistoryPage(
                             }
                         },
                         modifier = Modifier.weight(1f),
-                        colors = ButtonDefaults.textButtonColorsPrimary()
+                        primary = true
                     )
                 }
             }
@@ -1726,8 +1931,39 @@ private fun TaskCell(
     onCancel: () -> Unit,
     onDelete: () -> Unit,
     onMediaClick: (MediaItem) -> Unit = {},
-    onClick: (() -> Unit)? = null
+    onClick: (() -> Unit)? = null,
+    onShowActions: ((Rect) -> Unit)? = null
 ) {
+    var actionBounds by remember(task.id) { mutableStateOf(Rect.Zero) }
+    var cardCoordinates by remember(task.id) { mutableStateOf<LayoutCoordinates?>(null) }
+    var pointerPosition by remember(task.id) { mutableStateOf<Offset?>(null) }
+    var menuPosition by remember(task.id) { mutableStateOf(Offset.Zero) }
+    val menuPositionProvider = remember(menuPosition) {
+        object : PopupPositionProvider {
+            override fun calculatePosition(
+                anchorBounds: IntRect,
+                windowBounds: IntRect,
+                layoutDirection: LayoutDirection,
+                popupContentSize: IntSize,
+                popupMargin: IntRect,
+                alignment: PopupPositionProvider.Align
+            ): IntOffset {
+                val x = menuPosition.x.roundToInt()
+                val y = menuPosition.y.roundToInt()
+                return ListPopupDefaults.ContextMenuPositionProvider.calculatePosition(
+                    anchorBounds = IntRect(x, y, x, y),
+                    windowBounds = windowBounds,
+                    layoutDirection = layoutDirection,
+                    popupContentSize = popupContentSize,
+                    popupMargin = popupMargin,
+                    alignment = alignment
+                )
+            }
+
+            override fun getMargins(): PaddingValues =
+                ListPopupDefaults.ContextMenuPositionProvider.getMargins()
+        }
+    }
     val statusColor = when (task.status) {
         TaskStatus.FAILED, TaskStatus.PARTIAL -> MiuixTheme.colorScheme.error
         TaskStatus.COMPLETED, TaskStatus.SKIPPED -> MiuixTheme.colorScheme.primary
@@ -1760,6 +1996,10 @@ private fun TaskCell(
     Column(
         modifier = modifier
             .fillMaxWidth()
+            .onGloballyPositioned {
+                cardCoordinates = it
+                actionBounds = it.boundsInWindow()
+            }
             .squircleSurface(
                 color = MiuixTheme.colorScheme.surfaceVariant,
                 cornerRadius = 18.dp
@@ -1771,10 +2011,39 @@ private fun TaskCell(
                 ),
                 alignment = Alignment.TopStart
             )
+            .pointerInput(task.id) {
+                awaitEachGesture {
+                    val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+                    val coordinates = cardCoordinates?.takeIf { it.isAttached }
+                    pointerPosition = coordinates?.localToWindow(down.position) ?: actionBounds.topLeft + down.position
+                    try {
+                        while (true) {
+                            val event = awaitPointerEvent(PointerEventPass.Initial)
+                            val change = event.changes.firstOrNull { it.id == down.id }
+                            if (change != null && change.pressed) {
+                                val currentCoordinates = cardCoordinates?.takeIf { it.isAttached }
+                                pointerPosition = currentCoordinates?.localToWindow(change.position)
+                                    ?: actionBounds.topLeft + change.position
+                            }
+                            if (event.changes.none { it.pressed }) break
+                        }
+                    } finally {
+                        pointerPosition = null
+                    }
+                }
+            }
             .combinedClickable(
                 onClick = { onClick?.invoke() },
                 onLongClickLabel = stringResource(R.string.more_options),
-                onLongClick = { showActions = true }
+                onLongClick = {
+                    val position = pointerPosition ?: actionBounds.center
+                    if (onShowActions != null) {
+                        onShowActions(Rect(position.x, position.y, position.x, position.y))
+                    } else {
+                        menuPosition = position
+                        showActions = true
+                    }
+                }
             )
             .padding(vertical = 16.dp)
     ) {
@@ -1801,8 +2070,7 @@ private fun TaskCell(
                 // 状态标签
                 Box(
                     modifier = Modifier
-                        .clip(ContinuousRoundedRectangle(999.dp))
-                        .background(statusColor.copy(alpha = 0.1f))
+                        .background(statusColor.copy(alpha = 0.1f), ContinuousCapsule)
                         .padding(horizontal = 8.dp, vertical = 2.dp)
                 ) {
                     Text(
@@ -1969,7 +2237,11 @@ private fun TaskCell(
                             ActionIconButton(imageVector = MiuixIcons.Regular.Pause, contentDescription = stringResource(R.string.download_pause), onClick = onStop)
                         }
                         if (task.status in setOf(TaskStatus.PAUSED, TaskStatus.WAITING_FOR_USER)) {
-                            ActionIconButton(imageVector = if (task.status == TaskStatus.WAITING_FOR_USER) MiuixIcons.Regular.SelectAll else MiuixIcons.Regular.Play,
+                            ActionIconButton(imageVector = if (task.status == TaskStatus.WAITING_FOR_USER) {
+                                    MiuixIcons.Regular.SelectAll
+                                } else {
+                                    MiuixIcons.Regular.Play
+                                },
                                 contentDescription = stringResource(if (task.status == TaskStatus.WAITING_FOR_USER) R.string.download_select else R.string.download_resume), onClick = onContinue)
                         }
                         if (task.status in setOf(TaskStatus.FAILED, TaskStatus.PARTIAL, TaskStatus.CANCELLED)) {
@@ -1982,7 +2254,7 @@ private fun TaskCell(
         }
         WindowListPopup(
             show = showActions,
-            popupPositionProvider = ListPopupDefaults.ContextMenuPositionProvider,
+            popupPositionProvider = menuPositionProvider,
             alignment = PopupPositionProvider.Align.End,
             onDismissRequest = { showActions = false },
             onDismissFinished = {

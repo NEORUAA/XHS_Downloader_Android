@@ -25,6 +25,7 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
@@ -72,9 +73,14 @@ import com.neoruaa.xhsdn.data.settings.AppSettings
 import com.neoruaa.xhsdn.data.settings.SettingsRepository
 import com.neoruaa.xhsdn.data.settings.formatStorageDocumentPath
 import com.neoruaa.xhsdn.data.settings.storageDisplayPathFromTreeUri
+import com.neoruaa.xhsdn.ui.MiuixDialog
+import com.neoruaa.xhsdn.ui.MiuixDialogButton
 import com.neoruaa.xhsdn.ui.ActionIconButton
 import com.neoruaa.xhsdn.ui.AdaptiveTopAppBar
 import com.neoruaa.xhsdn.ui.TopAppBarIconButton
+import com.neoruaa.xhsdn.ui.MiuixSpinnerPreference
+import com.neoruaa.xhsdn.ui.MiuixComponentHost
+import com.neoruaa.xhsdn.ui.LocalMiuixComponentScope
 import com.neoruaa.xhsdn.ui.groupedCardItems
 import com.neoruaa.xhsdn.ui.miuixBackdropSource
 import com.neoruaa.xhsdn.ui.miuixVerticalScrollEffects
@@ -93,7 +99,6 @@ import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.SmallTitle
-import top.yukonga.miuix.kmp.basic.Switch
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextField
 import top.yukonga.miuix.kmp.basic.TopAppBarState
@@ -101,15 +106,13 @@ import top.yukonga.miuix.kmp.basic.rememberTopAppBarState
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Back
 import top.yukonga.miuix.kmp.icon.extended.Refresh
-import top.yukonga.miuix.kmp.menu.OverlayDropdownMenu
-import top.yukonga.miuix.kmp.basic.DropdownEntry
 import top.yukonga.miuix.kmp.basic.DropdownItem
 import top.yukonga.miuix.kmp.preference.ArrowPreference
+import top.yukonga.miuix.kmp.preference.SwitchPreference
 import top.yukonga.miuix.kmp.theme.ColorSchemeMode
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.theme.ThemeController
 import top.yukonga.miuix.kmp.squircle.squircleBorder
-import top.yukonga.miuix.kmp.window.WindowDialog
 import android.graphics.Color as AndroidColor
 
 data class SettingsUiState(
@@ -343,30 +346,32 @@ class SettingsActivity : ComponentActivity() {
         val isNightMode = (resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
         WindowInsetsControllerCompat(window, window.decorView).isAppearanceLightNavigationBars = !isNightMode
         setContent {
-            val controller = ThemeController(ColorSchemeMode.System)
+            val controller = remember { ThemeController(ColorSchemeMode.System) }
             val uiState by viewModel.state.collectAsStateWithLifecycle()
             val topBarState = rememberTopAppBarState()
             MiuixTheme(controller = controller) {
-                SettingsScreen(
-                    uiState = uiState,
-                    onBack = ::finishWithResult,
-                    onCreateLivePhotosChange = viewModel::onCreateLivePhotosChange,
-                    onUseCustomNamingChange = viewModel::onUseCustomNamingChange,
-                    onTemplateChange = viewModel::onTemplateChange,
-                    onResetTemplate = viewModel::onResetTemplate,
-                    onDebugNotificationChange = viewModel::onDebugNotificationChange,
-                    onSelectiveDownloadChange = viewModel::onSelectiveDownloadChange,
-                    onShowMediaResolutionChange = viewModel::onShowMediaResolutionChange,
-                    onKeepScreenOnChange = viewModel::onKeepScreenOnChange,
-                    onShowClipboardBubbleChange = viewModel::onShowClipboardBubbleChange,
-                    onAutoReadClipboardChange = viewModel::onAutoReadClipboardChange,
-                    onManualInputLinksChange = viewModel::onManualInputLinksChange,
-                    onCheckExistingFilesBeforeSaveChange = ::onCheckExistingFilesBeforeSaveChange,
-                    onStorageLocationClick = ::openStorageTreePicker,
-                    onResetStorageLocation = viewModel::onResetCustomStorageLocation,
-                    topBarState = topBarState
-                )
-                com.neoruaa.xhsdn.feature.update.UpdateDialog((application as XHSApplication).appContainer.updateChecker)
+                MiuixComponentHost {
+                    SettingsScreen(
+                        uiState = uiState,
+                        onBack = ::finishWithResult,
+                        onCreateLivePhotosChange = viewModel::onCreateLivePhotosChange,
+                        onUseCustomNamingChange = viewModel::onUseCustomNamingChange,
+                        onTemplateChange = viewModel::onTemplateChange,
+                        onResetTemplate = viewModel::onResetTemplate,
+                        onDebugNotificationChange = viewModel::onDebugNotificationChange,
+                        onSelectiveDownloadChange = viewModel::onSelectiveDownloadChange,
+                        onShowMediaResolutionChange = viewModel::onShowMediaResolutionChange,
+                        onKeepScreenOnChange = viewModel::onKeepScreenOnChange,
+                        onShowClipboardBubbleChange = viewModel::onShowClipboardBubbleChange,
+                        onAutoReadClipboardChange = viewModel::onAutoReadClipboardChange,
+                        onManualInputLinksChange = viewModel::onManualInputLinksChange,
+                        onCheckExistingFilesBeforeSaveChange = ::onCheckExistingFilesBeforeSaveChange,
+                        onStorageLocationClick = ::openStorageTreePicker,
+                        onResetStorageLocation = viewModel::onResetCustomStorageLocation,
+                        topBarState = topBarState
+                    )
+                    com.neoruaa.xhsdn.feature.update.UpdateDialog((application as XHSApplication).appContainer.updateChecker)
+                }
             }
         }
     }
@@ -796,6 +801,7 @@ private fun SettingsScreen(
     }
 
     top.yukonga.miuix.kmp.basic.Scaffold(
+        modifier = Modifier.miuixBackdropSource(LocalMiuixComponentScope.current.pageBackdrop),
         contentWindowInsets = androidx.compose.foundation.layout.WindowInsets.statusBars
             .union(androidx.compose.foundation.layout.WindowInsets.displayCutout),
         topBar = {
@@ -807,271 +813,273 @@ private fun SettingsScreen(
                     TopAppBarIconButton(
                         imageVector = MiuixIcons.Back,
                         contentDescription = stringResource(R.string.back),
-                        onClick = onBack,
-                        modifier = Modifier
-                            .padding(start = 4.dp)
+                        onClick = onBack
                     )
                 },
                 scrollBehavior = scrollBehavior
             )
         }
     ) { padding ->
-        LazyColumn(
+        Box(
             modifier = Modifier
                 .fillMaxSize()
+                .background(MiuixTheme.colorScheme.surface)
                 .miuixBackdropSource(topBarBackdrop)
-                .miuixVerticalScrollEffects()
-                .nestedScroll(scrollBehavior.nestedScrollConnection)
-                .background(MiuixTheme.colorScheme.surface),
-            overscrollEffect = null,
-            contentPadding = PaddingValues(
-                start = windowLayoutInfo.contentStartPadding,
-                top = padding.calculateTopPadding(),
-                end = windowLayoutInfo.contentEndPadding
-            )
         ) {
-            item(key = "account_top_spacing") { Spacer(Modifier.height(12.dp)) }
-            item(key = "web_account") {
-                com.neoruaa.xhsdn.feature.settings.WebAccountCard(
-                    modifier = Modifier.padding(horizontal = 12.dp).padding(bottom = 12.dp),
-                    onClick = onOpenAccount ?: {
-                        context.startActivity(Intent(context, WebViewActivity::class.java)
-                            .putExtra("url", com.neoruaa.xhsdn.data.account.XhsWebSession.HOME))
-                    }
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .miuixVerticalScrollEffects()
+                    .nestedScroll(scrollBehavior.nestedScrollConnection),
+                overscrollEffect = null,
+                contentPadding = PaddingValues(
+                    start = windowLayoutInfo.contentStartPadding,
+                    top = padding.calculateTopPadding(),
+                    end = windowLayoutInfo.contentEndPadding
                 )
-            }
-            item(key = "download_options_title") {
-                SmallTitle(stringResource(R.string.download_options))
-            }
+            ) {
+                item(key = "account_top_spacing") { Spacer(Modifier.height(12.dp)) }
+                item(key = "web_account") {
+                    com.neoruaa.xhsdn.feature.settings.WebAccountCard(
+                        modifier = Modifier.padding(horizontal = 12.dp).padding(bottom = 12.dp),
+                        onClick = onOpenAccount ?: {
+                            context.startActivity(Intent(context, WebViewActivity::class.java)
+                                .putExtra("url", com.neoruaa.xhsdn.data.account.XhsWebSession.HOME))
+                        }
+                    )
+                }
+                item(key = "download_options_title") {
+                    SmallTitle(stringResource(R.string.download_options))
+                }
 
-            groupedCardItems(
-                items = downloadRows,
-                key = { "download_option_$it" }
-            ) { row ->
-                when (row) {
-                    "storage_location" -> if (uiState.customStorageTreeUri == null) {
-                        com.neoruaa.xhsdn.feature.settings.DefaultStoragePreference(
-                            onClick = onStorageLocationClick
+                groupedCardItems(
+                    items = downloadRows,
+                    key = { "download_option_$it" }
+                ) { row ->
+                    when (row) {
+                        "storage_location" -> if (uiState.customStorageTreeUri == null) {
+                            com.neoruaa.xhsdn.feature.settings.DefaultStoragePreference(
+                                onClick = onStorageLocationClick
+                            )
+                        } else {
+                            BasicComponent(
+                                title = stringResource(R.string.storage_location),
+                                summary = storageDisplayPathFromTreeUri(uiState.customStorageTreeUri)
+                                    ?: uiState.customStorageDisplayName
+                                    ?: stringResource(R.string.storage_location_selected_folder),
+                                onClick = onStorageLocationClick,
+                                endActions = {
+                                    ActionIconButton(
+                                        imageVector = MiuixIcons.Refresh,
+                                        contentDescription = stringResource(R.string.storage_location_reset),
+                                        onClick = onResetStorageLocation
+                                    )
+                                }
+                            )
+                        }
+                        "check_existing_files_before_save" -> MiuixSwitchWidget(
+                            title = stringResource(R.string.settings_check_existing_files_before_save),
+                            description = stringResource(
+                                if (uiState.checkExistingFilesBeforeSave) {
+                                    R.string.settings_check_existing_files_before_save_enabled_desc
+                                } else {
+                                    R.string.settings_check_existing_files_before_save_disabled_desc
+                                }
+                            ),
+                            checked = uiState.checkExistingFilesBeforeSave,
+                            onCheckedChange = onCheckExistingFilesBeforeSaveChange
                         )
-                    } else {
-                        BasicComponent(
-                            title = stringResource(R.string.storage_location),
-                            summary = storageDisplayPathFromTreeUri(uiState.customStorageTreeUri)
-                                ?: uiState.customStorageDisplayName
-                                ?: stringResource(R.string.storage_location_selected_folder),
-                            onClick = onStorageLocationClick,
-                            endActions = {
+                        "media_advanced" -> ArrowPreference(title = stringResource(R.string.settings_media_title), onClick = { openAdvanced(0) })
+                        "archive_advanced" -> ArrowPreference(title = stringResource(R.string.settings_archive_title), onClick = { openAdvanced(1) })
+                        "network_advanced" -> ArrowPreference(title = stringResource(R.string.settings_network_title), onClick = { openAdvanced(2) })
+                        "selective_download" -> MiuixSwitchWidget(
+                            title = stringResource(R.string.selective_download),
+                            description = stringResource(R.string.selective_download_desc),
+                            checked = uiState.selectiveDownload,
+                            onCheckedChange = onSelectiveDownloadChange
+                        )
+                        "media_card_info" -> MiuixSpinnerPreference(
+                            title = stringResource(R.string.settings_media_card_info),
+                            items = listOf(
+                                DropdownItem(text = stringResource(R.string.settings_media_file_size)),
+                                DropdownItem(text = stringResource(R.string.settings_media_resolution)),
+                            ),
+                            selectedIndex = if (uiState.showMediaResolution) 1 else 0,
+                            onSelectedIndexChange = { onShowMediaResolutionChange(it == 1) },
+                        )
+                        "debug_notifications" -> MiuixSwitchWidget(
+                            title = stringResource(R.string.debug_notifications),
+                            description = stringResource(R.string.debug_notifications_desc),
+                            checked = uiState.debugNotificationEnabled,
+                            onCheckedChange = onDebugNotificationChange
+                        )
+                        "keep_screen_on" -> MiuixSwitchWidget(
+                            title = stringResource(R.string.keep_screen_on),
+                            description = stringResource(R.string.keep_screen_on_desc),
+                            checked = uiState.keepScreenOn,
+                            onCheckedChange = onKeepScreenOnChange
+                        )
+                    }
+                }
+
+                item(key = "clipboard_title") {
+                    SmallTitle(stringResource(R.string.clipboard))
+                }
+
+                groupedCardItems(
+                    items = clipboardRows,
+                    key = { "clipboard_option_$it" }
+                ) { row ->
+                    when (row) {
+                        "manual_input_links" -> MiuixSwitchWidget(
+                            title = stringResource(R.string.manual_input_links),
+                            description = stringResource(R.string.manual_input_links_desc),
+                            checked = uiState.manualInputLinks,
+                            onCheckedChange = onManualInputLinksChange
+                        )
+                        "show_clipboard_bubble" -> MiuixSwitchWidget(
+                            title = stringResource(R.string.show_clipboard_bubble),
+                            description = stringResource(R.string.show_clipboard_bubble_desc),
+                            checked = uiState.showClipboardBubble,
+                            onCheckedChange = onShowClipboardBubbleChange
+                        )
+                        "auto_read_clipboard" -> MiuixSwitchWidget(
+                            title = stringResource(R.string.auto_read_clipboard),
+                            description = stringResource(R.string.auto_read_clipboard_desc),
+                            checked = uiState.autoReadClipboard,
+                            onCheckedChange = onAutoReadClipboardChange
+                        )
+                    }
+                }
+
+                item(key = "file_naming_title") {
+                    SmallTitle(stringResource(R.string.file_naming))
+                }
+
+                groupedCardItems(
+                    items = listOf("custom_naming"),
+                    key = { "file_naming_$it" }
+                ) {
+                    MiuixSwitchWidget(
+                        title = stringResource(R.string.enable_custom_naming),
+                        description = stringResource(R.string.enable_custom_naming_desc),
+                        checked = uiState.useCustomNaming,
+                        onCheckedChange = onUseCustomNamingChange
+                    )
+                }
+
+                if (uiState.useCustomNaming) {
+                    item(key = "naming_template_field") {
+                        TextField(
+                            value = uiState.template,
+                            onValueChange = onTemplateChange,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 12.dp)
+                                .padding(bottom = 12.dp),
+                            label = stringResource(R.string.naming_template),
+                            enabled = true,
+                            singleLine = false,
+                            maxLines = 3,
+                            keyboardOptions = KeyboardOptions.Default.copy(imeAction = ImeAction.Done),
+                            keyboardActions = KeyboardActions(onDone = { }),
+                            trailingIcon = {
                                 ActionIconButton(
                                     imageVector = MiuixIcons.Refresh,
-                                    contentDescription = stringResource(R.string.storage_location_reset),
-                                    onClick = onResetStorageLocation
+                                    contentDescription = stringResource(R.string.reset_template),
+                                    onClick = onResetTemplate,
+                                    modifier = Modifier.padding(end = 8.dp)
                                 )
                             }
                         )
                     }
-                    "check_existing_files_before_save" -> MiuixSwitchWidget(
-                        title = stringResource(R.string.settings_check_existing_files_before_save),
-                        description = stringResource(
-                            if (uiState.checkExistingFilesBeforeSave) {
-                                R.string.settings_check_existing_files_before_save_enabled_desc
-                            } else {
-                                R.string.settings_check_existing_files_before_save_disabled_desc
+
+                    item(key = "naming_placeholder_hint") {
+                        Text(
+                            text = stringResource(R.string.insert_placeholder_hint),
+                            modifier = Modifier.padding(
+                                start = 16.dp,
+                                end = 12.dp,
+                                bottom = 8.dp
+                            ),
+                            fontSize = 14.sp,
+                            color = MiuixTheme.colorScheme.onSurfaceVariantSummary
+                        )
+                    }
+
+                    NamingFormat.validationError(uiState.template.text)?.let { error ->
+                        item(key = "naming_template_error") {
+                            Text(stringResource(error), color = MiuixTheme.colorScheme.error,
+                                modifier = Modifier.padding(horizontal = 16.dp).padding(bottom = 12.dp))
+                        }
+                    }
+
+                    uiState.tokens.chunked(2).forEach { row ->
+                        item(key = "naming_tokens_${row.first().key}") {
+                            Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp).padding(bottom = 12.dp),
+                                horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                row.forEach { token ->
+                                    TokenChip(token, onClick = {
+                                        if (NamingFormat.isTimeToken(token.key)) {
+                                            timeToken = token.key
+                                            showTimeFormat = true
+                                        } else insertToken(token.placeholder)
+                                    }, modifier = Modifier.weight(1f))
+                                }
+                                if (row.size == 1) Spacer(Modifier.weight(1f))
                             }
-                        ),
-                        checked = uiState.checkExistingFilesBeforeSave,
-                        onCheckedChange = onCheckExistingFilesBeforeSaveChange
-                    )
-                    "media_advanced" -> ArrowPreference(title = stringResource(R.string.settings_media_title), onClick = { openAdvanced(0) })
-                    "archive_advanced" -> ArrowPreference(title = stringResource(R.string.settings_archive_title), onClick = { openAdvanced(1) })
-                    "network_advanced" -> ArrowPreference(title = stringResource(R.string.settings_network_title), onClick = { openAdvanced(2) })
-                    "selective_download" -> MiuixSwitchWidget(
-                        title = stringResource(R.string.selective_download),
-                        description = stringResource(R.string.selective_download_desc),
-                        checked = uiState.selectiveDownload,
-                        onCheckedChange = onSelectiveDownloadChange
-                    )
-                    "media_card_info" -> OverlayDropdownMenu(
-                        title = stringResource(R.string.settings_media_card_info),
-                        summary = stringResource(if (uiState.showMediaResolution) R.string.settings_media_resolution else R.string.settings_media_file_size),
-                        entry = DropdownEntry(items = listOf(
-                            DropdownItem(text = stringResource(R.string.settings_media_file_size),
-                                selected = !uiState.showMediaResolution, onClick = { onShowMediaResolutionChange(false) }),
-                            DropdownItem(text = stringResource(R.string.settings_media_resolution),
-                                selected = uiState.showMediaResolution, onClick = { onShowMediaResolutionChange(true) }),
-                        )),
-                    )
-                    "debug_notifications" -> MiuixSwitchWidget(
-                        title = stringResource(R.string.debug_notifications),
-                        description = stringResource(R.string.debug_notifications_desc),
-                        checked = uiState.debugNotificationEnabled,
-                        onCheckedChange = onDebugNotificationChange
-                    )
-                    "keep_screen_on" -> MiuixSwitchWidget(
-                        title = stringResource(R.string.keep_screen_on),
-                        description = stringResource(R.string.keep_screen_on_desc),
-                        checked = uiState.keepScreenOn,
-                        onCheckedChange = onKeepScreenOnChange
-                    )
+                        }
+                    }
                 }
-            }
 
-            item(key = "clipboard_title") {
-                SmallTitle(stringResource(R.string.clipboard))
-            }
-
-            groupedCardItems(
-                items = clipboardRows,
-                key = { "clipboard_option_$it" }
-            ) { row ->
-                when (row) {
-                    "manual_input_links" -> MiuixSwitchWidget(
-                        title = stringResource(R.string.manual_input_links),
-                        description = stringResource(R.string.manual_input_links_desc),
-                        checked = uiState.manualInputLinks,
-                        onCheckedChange = onManualInputLinksChange
-                    )
-                    "show_clipboard_bubble" -> MiuixSwitchWidget(
-                        title = stringResource(R.string.show_clipboard_bubble),
-                        description = stringResource(R.string.show_clipboard_bubble_desc),
-                        checked = uiState.showClipboardBubble,
-                        onCheckedChange = onShowClipboardBubbleChange
-                    )
-                    "auto_read_clipboard" -> MiuixSwitchWidget(
-                        title = stringResource(R.string.auto_read_clipboard),
-                        description = stringResource(R.string.auto_read_clipboard_desc),
-                        checked = uiState.autoReadClipboard,
-                        onCheckedChange = onAutoReadClipboardChange
-                    )
+                item(key = "about_title") {
+                    SmallTitle(stringResource(R.string.about))
                 }
-            }
 
-            item(key = "file_naming_title") {
-                SmallTitle(stringResource(R.string.file_naming))
-            }
+                groupedCardItems(
+                    items = listOf("version", "check_updates", "github"),
+                    key = { "about_$it" }
+                ) { row ->
+                    when (row) {
+                        "version" -> BasicComponent(
+                            title = stringResource(R.string.version),
+                            summary = stringResource(
+                                R.string.version_with_prefix,
+                                BuildConfig.VERSION_NAME
+                            ),
+                            onClick = { }
+                        )
+                        "check_updates" -> BasicComponent(
+                            title = stringResource(R.string.settings_check_updates),
+                            summary = stringResource(if (updateState.isChecking) R.string.update_checking else R.string.update_check_hint),
+                            onClick = updateChecker::checkManually,
+                            endActions = {
+                                ActionIconButton(MiuixIcons.Regular.Refresh, stringResource(R.string.settings_check_updates), updateChecker::checkManually)
+                            }
+                        )
+                        "github" -> BasicComponent(
+                            title = stringResource(R.string.visit_github),
+                            titleColor = BasicComponentDefaults.titleColor(
+                                color = MiuixTheme.colorScheme.primary
+                            ),
+                            onClick = {
+                                val intent = Intent(
+                                    Intent.ACTION_VIEW,
+                                    Uri.parse("https://github.com/NEORUAA/XHS_Downloader_Android")
+                                )
+                                context.startActivity(intent)
+                            }
+                        )
+                    }
+                }
 
-            groupedCardItems(
-                items = listOf("custom_naming"),
-                key = { "file_naming_$it" }
-            ) {
-                MiuixSwitchWidget(
-                    title = stringResource(R.string.enable_custom_naming),
-                    description = stringResource(R.string.enable_custom_naming_desc),
-                    checked = uiState.useCustomNaming,
-                    onCheckedChange = onUseCustomNamingChange
-                )
-            }
-
-            if (uiState.useCustomNaming) {
-                item(key = "naming_template_field") {
-                    TextField(
-                        value = uiState.template,
-                        onValueChange = onTemplateChange,
+                item(key = "settings_bottom_spacer") {
+                    Spacer(
                         modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 12.dp)
-                            .padding(bottom = 12.dp),
-                        label = stringResource(R.string.naming_template),
-                        enabled = true,
-                        singleLine = false,
-                        maxLines = 3,
-                        keyboardOptions = KeyboardOptions.Default.copy(imeAction = ImeAction.Done),
-                        keyboardActions = KeyboardActions(onDone = { }),
-                        trailingIcon = {
-                            ActionIconButton(
-                                imageVector = MiuixIcons.Refresh,
-                                contentDescription = stringResource(R.string.reset_template),
-                                onClick = onResetTemplate,
-                                modifier = Modifier.padding(end = 8.dp)
-                            )
-                        }
+                            .height(24.dp)
+                            .navigationBarsPadding()
                     )
                 }
-
-                item(key = "naming_placeholder_hint") {
-                    Text(
-                        text = stringResource(R.string.insert_placeholder_hint),
-                        modifier = Modifier.padding(
-                            start = 16.dp,
-                            end = 12.dp,
-                            bottom = 8.dp
-                        ),
-                        fontSize = 14.sp,
-                        color = MiuixTheme.colorScheme.onSurfaceVariantSummary
-                    )
-                }
-
-                NamingFormat.validationError(uiState.template.text)?.let { error ->
-                    item(key = "naming_template_error") {
-                        Text(stringResource(error), color = MiuixTheme.colorScheme.error,
-                            modifier = Modifier.padding(horizontal = 16.dp).padding(bottom = 12.dp))
-                    }
-                }
-
-                uiState.tokens.chunked(2).forEach { row ->
-                    item(key = "naming_tokens_${row.first().key}") {
-                        Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp).padding(bottom = 12.dp),
-                            horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                            row.forEach { token ->
-                                TokenChip(token, onClick = {
-                                    if (NamingFormat.isTimeToken(token.key)) {
-                                        timeToken = token.key
-                                        showTimeFormat = true
-                                    } else insertToken(token.placeholder)
-                                }, modifier = Modifier.weight(1f))
-                            }
-                            if (row.size == 1) Spacer(Modifier.weight(1f))
-                        }
-                    }
-                }
-            }
-
-            item(key = "about_title") {
-                SmallTitle(stringResource(R.string.about))
-            }
-
-            groupedCardItems(
-                items = listOf("version", "check_updates", "github"),
-                key = { "about_$it" }
-            ) { row ->
-                when (row) {
-                    "version" -> BasicComponent(
-                        title = stringResource(R.string.version),
-                        summary = stringResource(
-                            R.string.version_with_prefix,
-                            BuildConfig.VERSION_NAME
-                        ),
-                        onClick = { }
-                    )
-                    "check_updates" -> BasicComponent(
-                        title = stringResource(R.string.settings_check_updates),
-                        summary = stringResource(if (updateState.isChecking) R.string.update_checking else R.string.update_check_hint),
-                        onClick = updateChecker::checkManually,
-                        endActions = {
-                            ActionIconButton(MiuixIcons.Regular.Refresh, stringResource(R.string.settings_check_updates), updateChecker::checkManually)
-                        }
-                    )
-                    "github" -> BasicComponent(
-                        title = stringResource(R.string.visit_github),
-                        titleColor = BasicComponentDefaults.titleColor(
-                            color = MiuixTheme.colorScheme.primary
-                        ),
-                        onClick = {
-                            val intent = Intent(
-                                Intent.ACTION_VIEW,
-                                Uri.parse("https://github.com/NEORUAA/XHS_Downloader_Android")
-                            )
-                            context.startActivity(intent)
-                        }
-                    )
-                }
-            }
-
-            item(key = "settings_bottom_spacer") {
-                Spacer(
-                    modifier = Modifier
-                        .height(24.dp)
-                        .navigationBarsPadding()
-                )
             }
         }
     }
@@ -1093,20 +1101,11 @@ private fun MiuixSwitchWidget(
     checked: Boolean,
     onCheckedChange: (Boolean) -> Unit
 ) {
-    val toggleAction = {
-        onCheckedChange(!checked)
-    }
-
-    BasicComponent(
+    SwitchPreference(
         title = title,
         summary = description,
-        onClick = toggleAction,
-        endActions = {
-            Switch(
-                checked = checked,
-                onCheckedChange = onCheckedChange
-            )
-        }
+        checked = checked,
+        onCheckedChange = onCheckedChange,
     )
 }
 
@@ -1146,7 +1145,7 @@ private fun TimeFormatDialog(
         token.key == NamingFormat.TOKEN_DOWNLOAD_TIMESTAMP -> timestamp.toString()
         else -> NamingFormat.formatTimestamp(timestamp, NamingFormat.DEFAULT_DATE_PATTERN)
     }
-    WindowDialog(
+    MiuixDialog(
         title = stringResource(token.labelResId),
         show = show,
         onDismissRequest = onDismiss,
@@ -1183,10 +1182,10 @@ private fun TimeFormatDialog(
                 )
             }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                TextButton(stringResource(R.string.cancel), onDismiss, Modifier.weight(1f))
-                TextButton(stringResource(R.string.common_insert), {
+                MiuixDialogButton(stringResource(R.string.cancel), onDismiss, Modifier.weight(1f))
+                MiuixDialogButton(stringResource(R.string.common_insert), {
                     onInsert(NamingFormat.buildPlaceholder(token.key, pattern.takeIf(String::isNotEmpty)))
-                }, Modifier.weight(1f), enabled = valid, colors = ButtonDefaults.textButtonColorsPrimary())
+                }, Modifier.weight(1f), enabled = valid, primary = true)
             }
         }
     }

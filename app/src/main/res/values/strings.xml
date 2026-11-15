@@ -92,6 +92,7 @@
     <!-- Download option strings -->
     <string name="create_live_photos_desc">Live Photos will be saved as image+video separately when disabled</string>
     <string name="selective_download">Selective Download</string>
+    <string name="selective_download_title">Selective Download %1$d/%2$d</string>
     <string name="selective_download_desc">Preview thumbnails, then download only the selected media</string>
     <string name="selective_download_caching">Caching media...</string>
     <string name="selective_download_ready">%1$d/%2$d selected</string>
@@ -290,6 +291,8 @@
     <string name="download_refresh">Refresh note</string>
     <string name="download_select_all">Select all / clear</string>
     <string name="history_load_more">Load more</string>
+    <string name="common_download">Download</string>
+    <string name="common_save_info">Save info</string>
     <string name="common_copy_link">Copy link</string>
     <string name="settings_media_title">Media and formats</string>
     <string name="settings_archive_title">Archive and records</string>
@@ -368,7 +371,7 @@
     <string name="update_error_version">The version format is not recognized, so update availability could not be determined.</string>
     <string name="update_notes_empty">No release notes were provided.</string>
     <string name="update_later">Later</string>
-    <string name="update_open_release">Go to download</string>
+    <string name="update_open_release">Download</string>
     <string name="update_open_failed">Could not open the release page.</string>
     <string name="update_close">Close</string>
     <string name="selective_dimensions">%1$d × %2$d</string>
@@ -419,9 +422,9 @@
     <string name="settings_naming_invalid_time_format">Not saved. Use a valid time format, such as {publishTime:MM-dd} or {downloadTimestamp:yyyy-MM-dd}.</string>
     <string name="settings_naming_time_pattern">Time format</string>
     <string name="settings_naming_time_default">Default</string>
-    <string name="settings_naming_time_date">Year, month, day</string>
-    <string name="settings_naming_time_month_day">Month, day</string>
-    <string name="settings_naming_time_full">Date and time</string>
+    <string name="settings_naming_time_date">Date</string>
+    <string name="settings_naming_time_month_day">Month/day</string>
+    <string name="settings_naming_time_full">Date/time</string>
     <string name="settings_naming_time_hint">yyyy: year · MM: month · dd: day · HH: hour · mm: minute · ss: second</string>
     <string name="settings_naming_time_invalid">Use a format such as MM-dd or yyyy-MM-dd_HH-mm-ss.</string>
     <string name="settings_naming_time_preview">Preview: %1$s</string>

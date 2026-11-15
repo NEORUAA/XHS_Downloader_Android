@@ -12,8 +12,10 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.staggeredgrid.LazyVerticalStaggeredGrid
+import androidx.compose.foundation.lazy.staggeredgrid.LazyStaggeredGridState
+import androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridItemSpan
+import androidx.compose.foundation.lazy.staggeredgrid.rememberLazyStaggeredGridState
 import androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridCells
 import androidx.compose.foundation.lazy.staggeredgrid.items
 import androidx.compose.foundation.layout.Column
@@ -71,18 +73,15 @@ import com.neoruaa.xhsdn.data.TaskStatus
 import com.neoruaa.xhsdn.XHSApplication
 import com.neoruaa.xhsdn.utils.readMediaDimensions
 import top.yukonga.miuix.kmp.basic.LinearProgressIndicator
-import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Checkbox
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.Text
-import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Delete
 import top.yukonga.miuix.kmp.icon.extended.Info
 import top.yukonga.miuix.kmp.icon.extended.Play
 import top.yukonga.miuix.kmp.squircle.squircleSurface
 import top.yukonga.miuix.kmp.theme.MiuixTheme
-import top.yukonga.miuix.kmp.window.WindowDialog
 import java.io.File
 import kotlin.math.roundToInt
 import kotlin.math.max
@@ -197,7 +196,10 @@ fun SelectableMediaWaterfall(
     modifier: Modifier = Modifier,
     items: List<CachedMediaItem>,
     selectedPaths: Set<String>,
-    onToggle: (String) -> Unit
+    onToggle: (String) -> Unit,
+    state: LazyStaggeredGridState = rememberLazyStaggeredGridState(),
+    contentPadding: PaddingValues = PaddingValues(bottom = 24.dp),
+    header: (@Composable () -> Unit)? = null
 ) {
     val showResolution = rememberShowMediaResolution()
     val density = LocalDensity.current
@@ -208,9 +210,18 @@ fun SelectableMediaWaterfall(
     val secondaryHeight = textMeasurer.measure(stringResource(R.string.selective_type_live),
         style = MiuixTheme.textStyles.footnote1).size.height
     val footerHeight = with(density) { (primaryHeight + secondaryHeight).toDp() }.coerceAtLeast(26.dp) + 20.dp
-    BoxWithConstraints(modifier.fillMaxWidth()) {
+    val leftPadding = contentPadding.calculateLeftPadding(contentDirection)
+    val rightPadding = contentPadding.calculateRightPadding(contentDirection)
+    val gridPadding = PaddingValues.Absolute(
+        left = leftPadding,
+        top = contentPadding.calculateTopPadding(),
+        right = rightPadding,
+        bottom = contentPadding.calculateBottomPadding()
+    )
+    BoxWithConstraints(modifier.fillMaxSize()) {
         val spacing = with(density) { 10.dp.roundToPx() }
-        val columnWidth = (constraints.maxWidth - spacing).coerceAtLeast(0) / 2
+        val horizontalPadding = with(density) { leftPadding.roundToPx() + rightPadding.roundToPx() }
+        val columnWidth = (constraints.maxWidth - horizontalPadding - spacing).coerceAtLeast(0) / 2
         val footerPixels = with(density) { footerHeight.roundToPx() }
         val placement = remember(items, columnWidth, footerPixels, spacing) {
             calculateBalancedWaterfallPlacement(items.map {
@@ -223,12 +234,17 @@ fun SelectableMediaWaterfall(
         CompositionLocalProvider(LocalLayoutDirection provides laneDirection) {
             LazyVerticalStaggeredGrid(
                 columns = StaggeredGridCells.Fixed(2),
-                // Equal pixel widths keep measured heights consistent with the lane calculation.
-                modifier = Modifier.width(with(density) { (columnWidth * 2 + spacing).toDp() }).miuixVerticalScrollEffects(),
+                state = state,
+                modifier = Modifier.fillMaxSize().miuixVerticalScrollEffects(),
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
                 verticalItemSpacing = 10.dp,
-                contentPadding = PaddingValues(bottom = 24.dp),
+                contentPadding = gridPadding,
             ) {
+                if (header != null) {
+                    item(key = "selectable_waterfall_header", span = StaggeredGridItemSpan.FullLine) {
+                        CompositionLocalProvider(LocalLayoutDirection provides contentDirection) { header() }
+                    }
+                }
                 items(items, key = { it.path }) { item ->
                     CompositionLocalProvider(LocalLayoutDirection provides contentDirection) {
                         SelectableMediaPreview(
@@ -493,7 +509,7 @@ fun DetailMediaPreview(
         }
     }
 
-    WindowDialog(
+    MiuixDialog(
         title = stringResource(R.string.delete_file_dialog_title),
         summary = stringResource(R.string.delete_file_dialog_message, fileName),
         show = showDeleteDialog,
@@ -509,20 +525,20 @@ fun DetailMediaPreview(
             horizontalArrangement = Arrangement.SpaceBetween,
             modifier = Modifier.padding(top = 8.dp)
         ) {
-            TextButton(
+            MiuixDialogButton(
                 text = stringResource(R.string.cancel),
                 onClick = { showDeleteDialog = false },
                 modifier = Modifier.weight(1f)
             )
             Spacer(Modifier.size(12.dp))
-            TextButton(
+            MiuixDialogButton(
                 text = stringResource(R.string.apply),
                 onClick = {
                     deleteAfterDismiss = true
                     showDeleteDialog = false
                 },
                 modifier = Modifier.weight(1f),
-                colors = ButtonDefaults.textButtonColorsPrimary()
+                primary = true
             )
         }
     }

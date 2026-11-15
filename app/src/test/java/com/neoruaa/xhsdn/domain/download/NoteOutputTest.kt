@@ -113,9 +113,40 @@ class NoteOutputTest {
     }
 
     @Test fun stripsTemporaryCdnRoutingPrefixBeforeRequestingOriginalImage() {
-        val image = ResolvedMedia.Image("https://sns-webpic-qc.xhscdn.com/202609222015/0123456789abcdef0123456789abcdef/notes_pre_post/token!nd_dft_wlteh_webp_3")
-        assertEquals("https://sns-img-bd.xhscdn.com/notes_pre_post/token", NoteOutput.imageUrls(image, ImageFormat.AUTO).first())
-        assertEquals("https://ci.xiaohongshu.com/notes_pre_post/token?imageView2/format/avif", NoteOutput.imageUrls(image, ImageFormat.AVIF).first())
+        for (token in listOf("notes_pre_post/token", "c/notes_pre_post/token")) {
+            val image = ResolvedMedia.Image("https://sns-webpic-qc.xhscdn.com/202609222015/0123456789abcdef0123456789abcdef/$token!nd_dft_wlteh_webp_3")
+            assertEquals("https://sns-img-bd.xhscdn.com/$token", NoteOutput.imageUrls(image, ImageFormat.AUTO).first())
+            assertEquals("https://ci.xiaohongshu.com/$token?imageView2/format/avif", NoteOutput.imageUrls(image, ImageFormat.AVIF).first())
+        }
+    }
+
+    @Test fun prefersFileIdForOverseasImagesAndRetainsTheirWebFallbacks() {
+        val preview = "https://sns-web-i10.rednotecdn.com/oss-sg/notes_pre_post/preview!h5_1080jpg"
+        for (fileId in listOf("notes_pre_post/original", "c/notes_pre_post/original")) {
+            val image = ResolvedMedia.Image(preview, fileId = fileId)
+            assertEquals(listOf("https://sns-img-bd.xhscdn.com/$fileId", preview),
+                NoteOutput.imageUrls(image, ImageFormat.AUTO))
+            assertEquals(listOf("https://ci.xiaohongshu.com/$fileId?imageView2/format/jpeg", preview),
+                NoteOutput.imageUrls(image, ImageFormat.JPEG))
+        }
+        val domestic = "https://sns-img-qc.xhscdn.com/notes_pre_post/token!h5_1080jpg"
+        assertEquals("https://sns-img-bd.xhscdn.com/notes_pre_post/token",
+            NoteOutput.imageUrls(ResolvedMedia.Image(domestic, fileId = " "), ImageFormat.AUTO).first())
+    }
+
+    @Test fun legacyOverseasSnapshotsRestoreOriginalCandidatesFromTheirSignedWebUrls() {
+        val preview = "http://sns-web-i10.rednotecdn.com/202611151054/20ac2aa8306a6336a7178b60311bd34f/notes_pre_post/token!rnh5jpg"
+        val image = com.neoruaa.xhsdn.data.settings.DownloadJson.decodeFromString<ResolvedMedia.Image>(
+            """{"sourceUrl":"$preview"}""")
+        assertNull(image.fileId)
+        assertEquals(listOf("https://sns-img-bd.xhscdn.com/notes_pre_post/token", preview),
+            NoteOutput.imageUrls(image, ImageFormat.AUTO))
+        assertEquals("https://ci.xiaohongshu.com/notes_pre_post/token?imageView2/format/jpeg",
+            NoteOutput.imageUrls(image, ImageFormat.JPEG).first())
+        for (host in listOf("sns-web-i10.rednotecdn.com.evil", "evilrednotecdn.com")) {
+            val unrelated = "https://$host/notes_pre_post/token!rnh5jpg"
+            assertEquals(listOf(unrelated), NoteOutput.imageUrls(ResolvedMedia.Image(unrelated), ImageFormat.AUTO))
+        }
     }
 
     @Test fun skipToggleAndNetworkSettingsDoNotChangeResourceIdentity() {

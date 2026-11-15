@@ -60,6 +60,7 @@ sealed interface ResolvedMedia {
         val commentId: String? = null,
         val width: Int = 0,
         val height: Int = 0,
+        val fileId: String? = null,
     ) : ResolvedMedia
 
     @Serializable

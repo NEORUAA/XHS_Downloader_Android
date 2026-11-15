@@ -47,11 +47,28 @@ class StructuredNoteTest {
 
     @Test fun oldResolvedSnapshotsRemainReadableWithoutPublicIds() {
         val note = com.neoruaa.xhsdn.data.settings.DownloadJson.decodeFromString<com.neoruaa.xhsdn.core.model.ResolvedNote>(
-            """{"canonicalUrl":"","title":null,"description":null,"authorName":null,"authorId":"uid","publishTime":null}"""
+            """{"canonicalUrl":"","title":null,"description":null,"authorName":null,"authorId":"uid","publishTime":null,"images":[{"sourceUrl":"https://sns-img-qc.xhscdn.com/notes_pre_post/token"}]}"""
         )
         assertEquals("uid", note.authorId)
         assertNull(note.authorRedId)
         assertNull(note.authorProfileUrl)
+        assertNull(note.images.single().fileId)
+    }
+
+    @Test fun preservesImageFileIdsAcrossParsingAndSavedSnapshots() {
+        val note = XhsNoteParser().parseNote(JSONObject("""{"noteId":"note","imageList":[
+            {"urlDefault":"https://sns-web-i10.rednotecdn.com/oss-sg/notes_pre_post/preview!h5_1080jpg","fileId":"c/notes_pre_post/original","width":4954,"height":8256},
+            {"urlDefault":"https://cdn.example/one","fileId":null},
+            {"urlDefault":"https://cdn.example/two","fileId":123},
+            {"urlDefault":"https://cdn.example/three","fileId":" "}
+        ]}"""), "")
+        assertEquals(listOf("c/notes_pre_post/original", null, null, null), note.images.map { it.fileId })
+        assertEquals("https://sns-web-i10.rednotecdn.com/oss-sg/notes_pre_post/preview!h5_1080jpg", note.images.first().previewUrl)
+        assertEquals(4954, note.images.first().width)
+        assertEquals(8256, note.images.first().height)
+        val restored = com.neoruaa.xhsdn.data.settings.DownloadJson.decodeFromString<com.neoruaa.xhsdn.core.model.ResolvedNote>(
+            com.neoruaa.xhsdn.data.settings.DownloadJson.encodeToString(note))
+        assertEquals(note, restored)
     }
 
     @Test fun webViewDetailPreservesTheMatchingPageUrlAndItsSecurityContext() {

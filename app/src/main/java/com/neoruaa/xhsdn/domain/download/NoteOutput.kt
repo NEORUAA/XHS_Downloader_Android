@@ -32,12 +32,15 @@ object NoteOutput {
 
     fun imageUrls(image: ResolvedMedia.Image, format: ImageFormat): List<String> {
         val raw = image.originalUrl
+        val fileId = image.fileId?.trim()?.takeIf(String::isNotEmpty)
         val uri = runCatching { URI(raw) }.getOrNull()
         val parts = uri?.path.orEmpty().trimStart('/').split('/')
-        val token = (if (parts.size > 2 && parts[1].matches(Regex("[a-fA-F0-9]{32}"))) parts.drop(2) else parts)
+        val token = fileId ?: (if (parts.size > 2 && parts[1].matches(Regex("[a-fA-F0-9]{32}"))) parts.drop(2) else parts)
             .joinToString("/").substringBefore('!')
-        val knownCdn = uri?.host?.let { it.endsWith(".xhscdn.com") || it.endsWith(".xiaohongshu.com") } == true
-        if (!knownCdn || token.isBlank()) return listOf(image.sourceUrl, raw).distinct()
+        val knownCdn = uri?.host?.lowercase(Locale.ROOT)?.let {
+            it.endsWith(".xhscdn.com") || it.endsWith(".xiaohongshu.com") || it.endsWith(".rednotecdn.com")
+        } == true
+        if ((fileId == null && !knownCdn) || token.isBlank()) return listOf(image.sourceUrl, raw).distinct()
         val preferred = if (format == ImageFormat.AUTO) "https://sns-img-bd.xhscdn.com/$token"
             else "https://ci.xiaohongshu.com/$token?imageView2/format/${format.name.lowercase(Locale.ROOT)}"
         return listOf(preferred, image.sourceUrl, raw).distinct()

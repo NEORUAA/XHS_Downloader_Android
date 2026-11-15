@@ -12,7 +12,7 @@ class XhsCommentImagesTest {
     private val detail = """{
       "note":{"noteId":"n","title":"Note","imageList":[{"urlDefault":"https://cdn.example/body"}]},
       "comments":{"firstRequestFinish":true,"hasMore":true,"list":[
-        {"id":"c1","noteId":"n","pictures":[{"urlPre":"https://cdn.example/preview","width":1440,"height":1440,
+        {"id":"c1","noteId":"n","pictures":[{"urlPre":"https://cdn.example/preview","width":1440,"height":1440,"fileId":"notes_pre_post/comment-original",
           "infoList":[{"imageScene":"WB_PRV","url":"https://cdn.example/preview"},{"imageScene":"WB_DFT","url":"https://cdn.example/original"}]}],
           "subComments":[{"id":"reply","pictures":[{"urlDefault":"https://cdn.example/reply"}]}]},
         {"id":"c1","pictures":[{"urlDefault":"https://cdn.example/duplicate"}]},
@@ -29,6 +29,9 @@ class XhsCommentImagesTest {
         val images = note.orderedMedia.filterIsInstance<ResolvedMedia.Image>()
         assertEquals(listOf(null, "c1", "reply"), images.map { it.commentId })
         assertEquals("https://cdn.example/original", images[1].originalUrl)
+        assertEquals("notes_pre_post/comment-original", images[1].fileId)
+        assertEquals("https://sns-img-bd.xhscdn.com/notes_pre_post/comment-original",
+            NoteOutput.imageUrls(images[1], com.neoruaa.xhsdn.data.settings.ImageFormat.AUTO).first())
         assertEquals(1440, images[1].width)
         assertEquals("n:comment:c1:1", images[1].id)
         assertTrue(note.commentsLoaded)

@@ -117,6 +117,7 @@ class XhsNoteParser(
                 id = "$noteId:${if (isCover) "cover" else "image"}:${index + 1}",
                 previewUrl = original, cover = isCover,
                 width = item.optInt("width"), height = item.optInt("height"),
+                fileId = item.xhsText("fileId"),
             )
             if (streams.isNotEmpty()) {
                 items += ResolvedMedia.LivePhoto(image, ResolvedMedia.Video(
@@ -187,7 +188,8 @@ class XhsNoteParser(
                 images += ResolvedMedia.Image(urlTransformer(original), originalUrl = original,
                     id = "$noteId:comment:$commentId:${index + 1}", commentId = commentId,
                     previewUrl = picture.optString("urlPre").takeIf(::isHttp) ?: original,
-                    width = picture.optInt("width"), height = picture.optInt("height"))
+                    width = picture.optInt("width"), height = picture.optInt("height"),
+                    fileId = picture.xhsText("fileId"))
             }
         }
         return images to hasMore

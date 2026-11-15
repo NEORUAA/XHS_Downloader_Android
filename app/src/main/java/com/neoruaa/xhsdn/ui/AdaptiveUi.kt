@@ -471,7 +471,12 @@ fun TopAppBarIconButton(
     }
     IconButton(
         onClick = onClick,
-        modifier = modifier,
+        modifier = if (enabled) modifier else modifier.clearAndSetSemantics {
+            this.contentDescription = contentDescription
+            role = Role.Button
+            disabled()
+            this.onClick { false }
+        },
         enabled = enabled,
         minHeight = 35.dp,
         minWidth = 35.dp

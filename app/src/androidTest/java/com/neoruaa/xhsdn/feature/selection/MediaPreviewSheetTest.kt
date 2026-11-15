@@ -12,6 +12,7 @@ import android.view.InputDevice
 import android.view.MotionEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -21,7 +22,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
@@ -52,7 +52,6 @@ import org.junit.Assert.*
 import org.junit.Test
 import org.junit.runner.RunWith
 import top.yukonga.miuix.kmp.basic.Text
-import top.yukonga.miuix.kmp.glass.GlassTopAppBarDefaults
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Close
 import top.yukonga.miuix.kmp.icon.extended.Download
@@ -161,12 +160,16 @@ class MediaPreviewSheetTest {
         val saveEnabled = mutableStateOf(true)
         val selectedAll = AtomicBoolean(false)
         val clickedRow = AtomicInteger(0)
+        val scrollState = ScrollState(0)
         val panelCoordinates = AtomicReference<LayoutCoordinates>()
         val viewportCoordinates = AtomicReference<LayoutCoordinates>()
+        val closeCoordinates = AtomicReference<LayoutCoordinates>()
+        val selectAllCoordinates = AtomicReference<LayoutCoordinates>()
+        val saveCoordinates = AtomicReference<LayoutCoordinates>()
         val topPaddingPx = AtomicReference(0f)
         val bottomPaddingPx = AtomicReference(0f)
         val actionSpacingPx = AtomicReference(0f)
-        val buttonRadiusPx = AtomicReference(0f)
+        val actionGapPx = AtomicReference(0f)
         val cornerCenterPx = AtomicReference(0f)
         val useGlass = AtomicBoolean(false)
         val title = app.getString(R.string.selective_download_title, 13, 13)
@@ -243,7 +246,6 @@ class MediaPreviewSheetTest {
                             )
                             val density = LocalDensity.current
                             val scope = LocalMiuixComponentScope.current
-                            val scrollState = rememberScrollState()
                             MiuixBottomSheet(
                                 show = show.value,
                                 onDismissRequest = { show.value = false },
@@ -251,8 +253,7 @@ class MediaPreviewSheetTest {
                                     panelCoordinates.set(coordinates)
                                     cornerCenterPx.set(with(density) { 46.dp.toPx() })
                                     actionSpacingPx.set(with(density) { 52.dp.toPx() })
-                                    val buttonSize = if (scope.useOs4) GlassTopAppBarDefaults.ButtonSize else 35.dp
-                                    buttonRadiusPx.set(with(density) { (buttonSize / 2).toPx() })
+                                    actionGapPx.set(with(density) { 8.dp.toPx() })
                                     useGlass.set(scope.useOs4)
                                 },
                                 title = stringResource(R.string.selective_download_title, 13, 13),
@@ -260,7 +261,8 @@ class MediaPreviewSheetTest {
                                     TopAppBarIconButton(
                                         imageVector = MiuixIcons.Close,
                                         contentDescription = stringResource(R.string.cancel),
-                                        onClick = { show.value = false }
+                                        onClick = { show.value = false },
+                                        modifier = Modifier.onGloballyPositioned { closeCoordinates.set(it) }
                                     )
                                 },
                                 endAction = {
@@ -271,12 +273,14 @@ class MediaPreviewSheetTest {
                                             onClick = {
                                                 selectedAll.set(true)
                                                 saveEnabled.value = !saveEnabled.value
-                                            }
+                                            },
+                                            modifier = Modifier.onGloballyPositioned { selectAllCoordinates.set(it) }
                                         )
                                         TopAppBarIconButton(
                                             imageVector = MiuixIcons.Regular.Download,
                                             contentDescription = stringResource(R.string.download_button),
                                             onClick = { saved.set(true) },
+                                            modifier = Modifier.onGloballyPositioned { saveCoordinates.set(it) },
                                             enabled = saveEnabled.value
                                         )
                                     }
@@ -315,16 +319,16 @@ class MediaPreviewSheetTest {
             assertConcentricActions()
             awaitText(title).getBoundsInScreen(headerBounds)
             val panelBounds = currentBounds(panelCoordinates)
-            val closeActionBounds = android.graphics.Rect()
-            val selectAllActionBounds = android.graphics.Rect()
-            val saveActionBounds = android.graphics.Rect()
-            awaitAction(close, enabled = true).getBoundsInScreen(closeActionBounds)
-            awaitAction(selectAll, enabled = true).getBoundsInScreen(selectAllActionBounds)
-            awaitAction(save, enabled = true).getBoundsInScreen(saveActionBounds)
-            val actionGap = saveActionBounds.exactCenterX() - selectAllActionBounds.exactCenterX() -
-                2 * buttonRadiusPx.get()
-            val titleStartLimit = closeActionBounds.exactCenterX() + buttonRadiusPx.get() + actionGap
-            val titleEndLimit = selectAllActionBounds.exactCenterX() - buttonRadiusPx.get() - actionGap - headerBounds.width()
+            awaitAction(close, enabled = true)
+            awaitAction(selectAll, enabled = true)
+            awaitAction(save, enabled = true)
+            val closeActionBounds = currentBounds(closeCoordinates)
+            val selectAllActionBounds = currentBounds(selectAllCoordinates)
+            val saveActionBounds = currentBounds(saveCoordinates)
+            val actionGap = saveActionBounds.left - selectAllActionBounds.right
+            assertEquals("Right action gap", actionGapPx.get(), actionGap, 1.5f)
+            val titleStartLimit = closeActionBounds.right + actionGap
+            val titleEndLimit = selectAllActionBounds.left - actionGap - headerBounds.width()
             assertTrue("Sheet title must fit between its actions", titleEndLimit >= titleStartLimit)
             val expectedTitleLeft = (panelBounds.centerX() - headerBounds.width() / 2f)
                 .coerceIn(titleStartLimit, titleEndLimit)
@@ -349,6 +353,13 @@ class MediaPreviewSheetTest {
                     scrollable?.performAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD)
                     false
                 }
+            }
+            awaitCondition("Sheet scroll animation did not finish") {
+                var settled = false
+                scenario.onActivity {
+                    settled = !scrollState.isScrollInProgress && scrollState.value == scrollState.maxValue
+                }
+                settled
             }
             automation.waitForIdle(500, 5_000)
             val screenshot = checkNotNull(automation.takeScreenshot())

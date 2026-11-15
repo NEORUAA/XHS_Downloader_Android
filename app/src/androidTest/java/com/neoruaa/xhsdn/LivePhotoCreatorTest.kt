@@ -7,12 +7,15 @@ import android.media.ExifInterface
 import android.media.MediaExtractor
 import android.media.MediaFormat
 import android.media.MediaMetadataRetriever
+import android.os.Build
+import android.os.Environment
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.neoruaa.xhsdn.data.settings.LivePhotoFormat
 import com.neoruaa.xhsdn.data.storage.AndroidStorageSink
 import com.neoruaa.xhsdn.data.storage.StorageDestination
+import com.neoruaa.xhsdn.utils.deleteStoredMedia
 import java.io.File
 import java.io.FileInputStream
 import java.nio.ByteBuffer
@@ -64,19 +67,23 @@ class LivePhotoCreatorTest {
                     output.inputStream().use { it.copyTo(stream) }
                 }
                 try {
-                    val uri = android.net.Uri.parse(stored.uri)
-                    assertEquals("image/jpeg", context.contentResolver.getType(uri))
-                    context.contentResolver.openInputStream(uri)!!.use { assertArrayEquals(bytes, it.readBytes()) }
+                    if (Build.VERSION.SDK_INT >= 29) {
+                        assertEquals("image/jpeg", context.contentResolver.getType(stored.androidUri))
+                    } else {
+                        val publicDirectory = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES), "xhsdn")
+                        assertEquals(publicDirectory.canonicalFile, File(checkNotNull(stored.legacyPath)).canonicalFile.parentFile)
+                    }
+                    sink.open(stored)!!.use { assertArrayEquals(bytes, it.readBytes()) }
                     if (format == LivePhotoFormat.STANDARD) {
                         val duplicate = sink.storeArchived(StorageDestination.DefaultMediaStore, stored.displayName,
                             "image/jpeg", output.length(), emptyList()) { stream -> output.inputStream().use { it.copyTo(stream) } }
                         try {
                             assertNotEquals(stored.displayName, duplicate.displayName)
                             assertTrue(duplicate.displayName.endsWith("MP.jpg"))
-                        } finally { context.contentResolver.delete(duplicate.androidUri, null, null) }
+                        } finally { context.deleteStoredMedia(duplicate) }
                     }
                 } finally {
-                    context.contentResolver.delete(android.net.Uri.parse(stored.uri), null, null)
+                    context.deleteStoredMedia(stored)
                 }
             }
         }
@@ -92,22 +99,29 @@ class LivePhotoCreatorTest {
         assertEquals(samples(video, 0, video.length()), samples(outputVideo, 0, outputVideo.length()))
         assertEquals("video/mp4", MotionPhotoContainer.videoMime(outputVideo))
         val refs = mutableListOf<com.neoruaa.xhsdn.data.storage.StoredMediaRef>()
+        val sink = AndroidStorageSink(context)
         try {
             val stem = "vivo_pair_test_${System.nanoTime()}"
             val paths = listOf(outputImage to "image/jpeg", outputVideo to "video/mp4").map { (file, mime) ->
-                val ref = AndroidStorageSink(context).storeArchived(StorageDestination.DefaultMediaStore,
+                val ref = sink.storeArchived(StorageDestination.DefaultMediaStore,
                     "$stem.${file.extension}", mime, file.length(), emptyList(), livePhotoPair = true) { stream ->
                     file.inputStream().use { it.copyTo(stream) }
                 }
                 refs += ref
-                context.contentResolver.query(ref.androidUri, arrayOf(android.provider.MediaStore.MediaColumns.RELATIVE_PATH), null, null, null)!!.use { cursor ->
-                    assertTrue(cursor.moveToFirst())
-                    cursor.getString(0)
+                sink.open(ref)!!.use { assertArrayEquals(file.readBytes(), it.readBytes()) }
+                if (Build.VERSION.SDK_INT >= 29) {
+                    context.contentResolver.query(ref.androidUri, arrayOf(android.provider.MediaStore.MediaColumns.RELATIVE_PATH), null, null, null)!!.use { cursor ->
+                        assertTrue(cursor.moveToFirst())
+                        cursor.getString(0)
+                    }
+                } else {
+                    val directory = File(checkNotNull(ref.legacyPath)).canonicalFile.parentFile!!
+                    directory.relativeTo(Environment.getExternalStorageDirectory().canonicalFile).invariantSeparatorsPath + "/"
                 }
             }
             assertEquals(listOf("DCIM/xhsdn/", "DCIM/xhsdn/"), paths)
             assertEquals(refs[0].displayName.substringBeforeLast('.'), refs[1].displayName.substringBeforeLast('.'))
-        } finally { refs.forEach { context.contentResolver.delete(it.androidUri, null, null) } }
+        } finally { refs.forEach { context.deleteStoredMedia(it) } }
     }
 
     @Test fun mp4OnlyProfilesRejectMovInsteadOfClaimingUnsupportedCompatibility() = fixture { image, video, directory ->

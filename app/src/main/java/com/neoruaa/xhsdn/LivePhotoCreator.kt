@@ -149,11 +149,12 @@ object LivePhotoCreator {
                 // AAC priming samples can have negative presentation times; only a missing track is EOS.
                 if (extractor.sampleTrackIndex != index) throw IOException("Empty media track")
                 if (countFrames && mime.startsWith("video/")) {
-                    do {
+                    while (extractor.sampleTrackIndex == index) {
                         checkActive()
                         if (frameCount == Int.MAX_VALUE) throw IOException("Too many video frames")
                         frameCount++
-                    } while (extractor.advance())
+                        extractor.advance()
+                    }
                 }
                 extractor.unselectTrack(index)
             }
